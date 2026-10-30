@@ -1,0 +1,32 @@
+[
+    {
+        "id": 1,
+        "nazvanie": "Создать задачу 1",
+        "opisanie": "Проверка создания задачи 1",
+        "kategoriya": "Личное",
+        "prioritet": "высокий",
+        "srok": "28.9.2026",
+        "vypolneno": true,
+        "data_sozdaniya": "27.09.2026"
+    },
+    {
+        "id": 2,
+        "nazvanie": "test",
+        "opisanie": "test",
+        "kategoriya": "Учёба",
+        "prioritet": "низкий",
+        "srok": "",
+        "vypolneno": false,
+        "data_sozdaniya": "28.09.2026"
+    },
+    {
+        "id": 4,
+        "nazvanie": "Проверить gui",
+        "opisanie": "",
+        "kategoriya": "Учёба",
+        "prioritet": "средний",
+        "srok": "",
+        "vypolneno": true,
+        "data_sozdaniya": "09.10.2026"
+    }
+]

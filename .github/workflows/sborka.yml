@@ -1,0 +1,28 @@
+# сборка программы сразу под три системы на серверах гитхаба
+# запускается сама при каждом push, или вручную: вкладка Actions -> "Сборка" -> Run workflow
+# готовые файлы потом скачиваются внизу страницы запуска (раздел Artifacts)
+name: Сборка
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  sborka:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ставим библиотеки
+        run: pip install PyQt6 pyinstaller
+      - name: Собираем
+        run: python TaskManager/sobrat.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpisokDel-${{ runner.os }}
+          path: TaskManager/dist/

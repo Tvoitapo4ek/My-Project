@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+TaskManager/build/
+TaskManager/dist/
+TaskManager/*.spec
+TaskManager/backup/
+TaskManager/zadachi_export.txt
+.DS_Store
+TaskManager.zip

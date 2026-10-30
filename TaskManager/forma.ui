@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GlavnoeOkno</class>
+ <widget class="QMainWindow" name="GlavnoeOkno">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>620</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Список дел</string>
+  </property>
+  <widget class="QWidget" name="centralnyyVidzhet">
+   <layout class="QVBoxLayout" name="glavnyyLayout">
+    <item>
+     <widget class="QLabel" name="labelZagolovok">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">font-size: 18px; font-weight: bold;</string>
+      </property>
+      <property name="text">
+       <string>Мой список дел</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="layoutFiltry">
+      <item>
+       <widget class="QLineEdit" name="lineEditPoisk">
+        <property name="placeholderText">
+         <string>Поиск по названию и описанию...</string>
+        </property>
+        <property name="clearButtonEnabled">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboFiltrKategorii">
+        <property name="toolTip">
+         <string>Фильтр по категории</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboFiltrStatusa">
+        <property name="toolTip">
+         <string>Какие задачи показывать</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboSortirovka">
+        <property name="toolTip">
+         <string>Сортировка списка</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation">
+       <enum>Qt::Orientation::Horizontal</enum>
+      </property>
+      <property name="childrenCollapsible">
+       <bool>false</bool>
+      </property>
+      <widget class="QTableWidget" name="tableZadachi">
+       <property name="editTriggers">
+        <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="selectionMode">
+        <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
+       </property>
+       <property name="selectionBehavior">
+        <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+       </property>
+       <attribute name="horizontalHeaderStretchLastSection">
+        <bool>false</bool>
+       </attribute>
+       <attribute name="verticalHeaderVisible">
+        <bool>false</bool>
+       </attribute>
+       <column>
+        <property name="text">
+         <string>№</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Готово</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Название</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Категория</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Приоритет</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Срок</string>
+        </property>
+       </column>
+      </widget>
+      <widget class="QGroupBox" name="groupBoxZadacha">
+       <property name="minimumSize">
+        <size>
+         <width>320</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>380</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="title">
+        <string>Задача</string>
+       </property>
+       <layout class="QVBoxLayout" name="layoutZadacha">
+        <item>
+         <layout class="QFormLayout" name="layoutForma">
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelNazvanie">
+            <property name="text">
+             <string>Название:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditNazvanie">
+            <property name="placeholderText">
+             <string>Обязательное поле</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelOpisanie">
+            <property name="text">
+             <string>Описание:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPlainTextEdit" name="plainTextOpisanie">
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>130</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>Необязательно</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="labelKategoriya">
+            <property name="text">
+             <string>Категория:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="comboKategoriya"/>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelPrioritet">
+            <property name="text">
+             <string>Приоритет:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QComboBox" name="comboPrioritet"/>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="labelSrok">
+            <property name="text">
+             <string>Срок:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <layout class="QHBoxLayout" name="layoutSrok">
+            <item>
+             <widget class="QCheckBox" name="checkBoxSrok">
+              <property name="text">
+               <string>указать</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDateEdit" name="dateEditSrok">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="displayFormat">
+               <string>dd.MM.yyyy</string>
+              </property>
+              <property name="calendarPopup">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="labelSozdanoNadpis">
+            <property name="text">
+             <string>Создано:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLabel" name="labelSozdano">
+            <property name="text">
+             <string>-</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="labelStatusNadpis">
+            <property name="text">
+             <string>Статус:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QLabel" name="labelStatus">
+            <property name="text">
+             <string>-</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QGridLayout" name="layoutKnopkiZadachi">
+          <item row="0" column="0">
+           <widget class="QPushButton" name="knopkaDobavit">
+            <property name="text">
+             <string>Добавить новую ➕</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="knopkaSohranit">
+            <property name="text">
+             <string>Сохранить изменения 💾</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QPushButton" name="knopkaVypolneno">
+            <property name="text">
+             <string>Выполнено ✅</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="knopkaUdalit">
+            <property name="text">
+             <string>Удалить 🗑️</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QPushButton" name="knopkaOchistit">
+            <property name="text">
+             <string>Очистить форму</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="rasporkaVniz">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>0</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="layoutNizhnieKnopki">
+      <item>
+       <widget class="QPushButton" name="knopkaStatistika">
+        <property name="text">
+         <string>Статистика 📊</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="knopkaEksport">
+        <property name="text">
+         <string>Экспорт в txt 📄</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="knopkaBackup">
+        <property name="text">
+         <string>Резервная копия 📦</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="rasporkaVpravo">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <widget class="QMenu" name="menuFayl">
+    <property name="title">
+     <string>Файл</string>
+    </property>
+    <addaction name="actionEksport"/>
+    <addaction name="actionBackup"/>
+    <addaction name="separator"/>
+    <addaction name="actionVyhod"/>
+   </widget>
+   <widget class="QMenu" name="menuZadachi">
+    <property name="title">
+     <string>Задачи</string>
+    </property>
+    <addaction name="actionNovaya"/>
+    <addaction name="actionStatistika"/>
+    <addaction name="actionProsrochennye"/>
+   </widget>
+   <widget class="QMenu" name="menuSpravka">
+    <property name="title">
+     <string>Справка</string>
+    </property>
+    <addaction name="actionOProgramme"/>
+   </widget>
+   <addaction name="menuFayl"/>
+   <addaction name="menuZadachi"/>
+   <addaction name="menuSpravka"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionEksport">
+   <property name="text">
+    <string>Экспорт в текстовый файл</string>
+   </property>
+  </action>
+  <action name="actionBackup">
+   <property name="text">
+    <string>Сделать резервную копию</string>
+   </property>
+  </action>
+  <action name="actionVyhod">
+   <property name="text">
+    <string>Выход</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="actionNovaya">
+   <property name="text">
+    <string>Новая задача</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="actionStatistika">
+   <property name="text">
+    <string>Статистика</string>
+   </property>
+  </action>
+  <action name="actionProsrochennye">
+   <property name="text">
+    <string>Показать просроченные</string>
+   </property>
+  </action>
+  <action name="actionOProgramme">
+   <property name="text">
+    <string>О программе</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
