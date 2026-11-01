@@ -1,0 +1,11 @@
+[package]
+name = "vx_physics"
+version.workspace = true
+edition.workspace = true
+description = "Физика сеток-тел (как Sable / Create Aeronautics) на rapier3d."
+
+[dependencies]
+vx_core.workspace = true
+glam.workspace = true
+rapier3d.workspace = true
+serde.workspace = true

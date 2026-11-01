@@ -1,0 +1,24 @@
+[package]
+name = "vx_game"
+version.workspace = true
+edition.workspace = true
+description = "Игра: окно, ввод, игрок, связывание модулей."
+
+[[bin]]
+name = "voxel"
+path = "src/main.rs"
+
+[dependencies]
+vx_core.workspace = true
+vx_gen.workspace = true
+vx_mesh.workspace = true
+vx_physics.workspace = true
+vx_render.workspace = true
+glam.workspace = true
+winit.workspace = true
+pollster.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+serde.workspace = true
+toml.workspace = true

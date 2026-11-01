@@ -1,0 +1,13 @@
+[package]
+name = "vx_gen"
+version.workspace = true
+edition.workspace = true
+description = "Генерация мира: рельеф по чанкам + структуры из файлов."
+
+[dependencies]
+vx_core.workspace = true
+glam.workspace = true
+serde.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+log.workspace = true

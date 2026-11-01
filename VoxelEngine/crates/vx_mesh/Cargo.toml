@@ -1,0 +1,10 @@
+[package]
+name = "vx_mesh"
+version.workspace = true
+edition.workspace = true
+description = "Построение мешей чанков (отсечение граней + ambient occlusion). Без GPU."
+
+[dependencies]
+vx_core.workspace = true
+glam.workspace = true
+bytemuck.workspace = true

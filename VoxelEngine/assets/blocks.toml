@@ -1,0 +1,65 @@
+# Реестр блоков. Порядок = номер блока (0 — воздух, добавляется сам).
+#
+# Поля (все, кроме name, необязательны):
+#   texture = "имя"       — текстура всех граней (по умолчанию = name), файл textures/<имя>.png
+#   top / bottom / side   — переопределить текстуру граней
+#   solid = true          — участвует в столкновениях
+#   opaque = true         — закрывает соседние грани (false для стекла и листвы)
+#   density = 1.0         — масса блока (важно для кораблей)
+#   lift = 0.0            — подъёмная сила (воздушный шар)
+#   terrain = false       — рельеф: не захватывается при сборке конструкции (G)
+#   [block.props]         — любые свои свойства для новых модулей
+
+[[block]]
+name = "bedrock"
+terrain = true
+[block.props]
+unbreakable = true
+
+[[block]]
+name = "stone"
+terrain = true
+
+[[block]]
+name = "dirt"
+terrain = true
+
+[[block]]
+name = "grass"
+top = "grass_top"
+side = "grass_side"
+bottom = "dirt"
+terrain = true
+
+[[block]]
+name = "cobblestone"
+density = 2.0
+
+[[block]]
+name = "planks"
+density = 0.5
+
+[[block]]
+name = "log"
+top = "log_top"
+bottom = "log_top"
+density = 0.7
+
+[[block]]
+name = "leaves"
+opaque = false
+density = 0.2
+
+[[block]]
+name = "glass"
+opaque = false
+density = 0.5
+
+[[block]]
+name = "balloon"
+density = 0.1
+lift = 19.0
+
+[[block]]
+name = "iron_block"
+density = 4.0

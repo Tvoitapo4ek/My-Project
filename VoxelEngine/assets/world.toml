@@ -1,0 +1,40 @@
+# Настройки мира.
+seed = 1337
+size = [8, 4, 8]   # в чанках 16³ по X, Y, Z → мир 128×64×128 блоков
+
+# Рельеф. `type` выбирает генератор (см. vx_gen::terrain_from_config).
+[terrain]
+type = "flat"
+layers = [            # снизу вверх
+  { block = "bedrock", depth = 1 },
+  { block = "stone", depth = 5 },
+  { block = "dirt", depth = 3 },
+  { block = "grass", depth = 1 },
+]
+
+# Структуры из assets/structures/<name>.toml.
+#   at = [x, y, z]  — точное место (иначе случайно на поверхности, `count` раз)
+#   dynamic = true  — структура появится отдельным физическим телом (кораблём)
+[[structure]]
+name = "tree"
+count = 30
+
+[[structure]]
+name = "balloon_raft"   # стоит на земле: наведитесь и нажмите G — взлетит
+at = [64, 10, 62]
+
+[[structure]]
+name = "airship"
+at = [52, 24, 28]
+dynamic = true
+
+[physics]
+gravity = 20.0
+air_ceiling = 96.0       # на этой высоте шары перестают держать
+linear_damping = 0.3
+angular_damping = 0.8
+
+[player]
+spawn = [64.5, 11.0, 72.5]
+yaw = 7.0      # градусы; 0 — взгляд на -Z
+pitch = 14.0
