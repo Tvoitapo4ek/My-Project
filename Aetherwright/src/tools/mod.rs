@@ -115,7 +115,7 @@ fn hotbar_input(
     }
 }
 
-fn update_entity_target(
+pub fn update_entity_target(
     eye: Res<EyeRay>,
     cfg: Res<GameConfig>,
     spatial: SpatialQuery,

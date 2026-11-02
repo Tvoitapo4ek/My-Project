@@ -8,6 +8,7 @@ mod app;
 mod autotest;
 mod core;
 mod items;
+mod physics;
 mod player;
 mod tools;
 mod ui;

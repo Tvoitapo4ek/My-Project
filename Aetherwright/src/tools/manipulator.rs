@@ -158,6 +158,7 @@ fn use_manipulator(
     mut detached: MessageWriter<DetachedBlock>,
     mut mechanics: MessageWriter<MechanicsUse>,
     mut scans: MessageWriter<ScanRequest>,
+    mut collect: MessageWriter<crate::physics::rigid_bodies::CollectProp>,
     mut notify: MessageWriter<Notify>,
     mut warned: Local<Option<IVec3>>,
 ) {
@@ -199,6 +200,13 @@ fn use_manipulator(
         }
         progress.target = None;
         return;
+    }
+    // Mining an object (loose block, part) collects it.
+    if let Some(e) = entity_target.entity
+        && mode == ManipulatorMode::Mine
+        && mouse.just_pressed(MouseButton::Left)
+    {
+        collect.write(crate::physics::rigid_bodies::CollectProp(e));
     }
     let hit = match (block_target.0, entity_target.entity) {
         (Some(h), None) => h,

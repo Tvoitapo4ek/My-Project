@@ -182,6 +182,7 @@ fn update_hud_text(
     entity: Res<EntityTarget>,
     progress: Res<MiningProgress>,
     scan: Res<ScanResult>,
+    gun: Res<crate::physics::physics_gun::PhysGun>,
     player: Query<(&Inventory, &Manipulator), With<Player>>,
     scannables: Query<(Option<&Scannable>, Option<&Name>, Option<&LinearVelocity>)>,
     mut texts: ParamSet<(
@@ -198,6 +199,16 @@ fn update_hud_text(
             m.mode.label(),
             if m.drill_tier >= 2 { "II" } else { "I" },
             if m.cutter { "есть" } else { "—" }
+        ),
+        ActiveTool::PhysGun => format!(
+            "Гравизахват · {}  [Q]  ·  {}",
+            gun.mode.label(),
+            match gun.mode {
+                crate::physics::physics_gun::GunMode::Grab => "ЛКМ держать · колесо дистанция · R+мышь вращать · ПКМ фиксировать",
+                crate::physics::physics_gun::GunMode::Weld => "ЛКМ: деталь, затем основание",
+                crate::physics::physics_gun::GunMode::Hinge => "ЛКМ: деталь (её грань), затем грань основания",
+                crate::physics::physics_gun::GunMode::Unlink => "ЛКМ: снять все соединения объекта",
+            }
         ),
         ActiveTool::Hand => "Рука (манипулятор, слабая добыча)".to_string(),
         ActiveTool::PlaceBlock(item, _) => format!("{} — ПКМ поставить, ЛКМ добыть", item.def().name),
