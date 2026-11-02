@@ -607,7 +607,7 @@ impl Plugin for MapSection {
         app.world_mut().resource_mut::<HoloSections>().register(SectionInfo { id: "map", title: "Карта", glyph: "◈", order: 30 });
         app.add_save_hook(SaveHook { key: "map", capture, restore })
             .add_systems(Update, reveal.run_if(crate::core::states::in_game))
-            .add_systems(Update, build.in_set(HoloSet::Build))
+            .add_systems(Update, build.in_set(HoloSet::Build).run_if(crate::holo::device_shown))
             .add_systems(
                 Update,
                 (rename_marker, track_hover, watch_view).before(HoloSet::Frame).run_if(section_active("map")),

@@ -108,8 +108,6 @@ impl Plugin for HoloPlugin {
                 projection::ProjectionPlugin,
                 sections::SectionsPlugin,
             ));
-        if std::env::var("AW_NO_ENG").is_err() {
-            app.add_plugins(engineering::EngineeringPlugin);
-        }
+        app.add_plugins(engineering::EngineeringPlugin);
     }
 }

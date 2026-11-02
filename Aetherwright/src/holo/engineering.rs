@@ -274,9 +274,9 @@ fn update_panel(world: &mut World) {
     };
     let part_t = entity.and_then(|e| world.get::<Transform>(e).copied());
     let half = entity.and_then(|e| world.get::<Part>(e)).map(|p| p.kind.half_height()).unwrap_or(0.5);
-    let mut q = world.query::<(&EngPanel, &mut Transform, &mut Visibility)>();
+    let mut q = world.query::<(&EngPanel, &mut Transform, &mut GlobalTransform, &mut Visibility)>();
     let mut cam_entity = None;
-    for (panel, mut t, mut vis) in q.iter_mut(world) {
+    for (panel, mut t, mut gt, mut vis) in q.iter_mut(world) {
         cam_entity = Some(panel.camera);
         let shown = fade > 0.0 && part_t.is_some();
         let want = if shown { Visibility::Visible } else { Visibility::Hidden };
@@ -290,6 +290,8 @@ fn update_panel(world: &mut World) {
             let rot = Transform::IDENTITY.looking_to(-dir.normalize_or(Vec3::Z), Vec3::Y).rotation;
             let s = 0.6 + 0.4 * fade;
             *t = Transform { translation: pos, rotation: rot, scale: Vec3::new(s, s * fade.max(0.05), 1.0) };
+            // Propagation already ran this frame; keep the drawn pose current.
+            *gt = GlobalTransform::from(*t);
         }
     }
     if let Some(c) = cam_entity
@@ -321,6 +323,9 @@ impl Plugin for EngineeringPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EngineeringTarget>()
             .add_systems(Startup, spawn_panel)
-            .add_systems(Update, (pick_target, update_panel).chain().run_if(crate::core::states::in_game));
+            .add_systems(Update, pick_target.run_if(crate::core::states::in_game))
+            // Exclusive: runs in `Last` so it never adds a sync point inside
+            // gameplay logic (that changed the order of joint commands).
+            .add_systems(Last, update_panel.run_if(crate::core::states::in_game));
     }
 }

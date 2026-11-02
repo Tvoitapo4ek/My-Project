@@ -117,7 +117,7 @@ impl Plugin for CraftSection {
     fn build(&self, app: &mut App) {
         app.init_resource::<HoloSections>().init_resource::<CraftUi>();
         app.world_mut().resource_mut::<HoloSections>().register(SectionInfo { id: "craft", title: "Сборка", glyph: "⊕", order: 15 });
-        app.add_systems(Update, build.in_set(HoloSet::Build))
+        app.add_systems(Update, build.in_set(HoloSet::Build).run_if(crate::holo::device_shown))
             .add_systems(Update, watch.before(HoloSet::Frame).run_if(section_active("craft")));
     }
 }
