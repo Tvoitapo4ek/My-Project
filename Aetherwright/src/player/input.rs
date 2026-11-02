@@ -34,7 +34,7 @@ fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut intent: ResMut<PlayerInten
     )
     .clamp_length_max(1.0);
     intent.sprint = keys.pressed(KeyCode::ShiftLeft);
-    intent.crouch = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyC);
+    intent.crouch = keys.pressed(KeyCode::ControlLeft);
     intent.descend = intent.crouch;
     intent.jump_held = keys.pressed(KeyCode::Space);
     if keys.just_pressed(KeyCode::Space) {

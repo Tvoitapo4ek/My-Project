@@ -29,7 +29,7 @@ fn spawn_block(world: &mut World, block: BlockId, at: Vec3) -> Entity {
     e
 }
 
-fn pos_of(world: &mut World, e: Entity) -> Vec3 {
+pub(super) fn pos_of(world: &mut World, e: Entity) -> Vec3 {
     world.get::<Position>(e).map(|p| p.0).unwrap_or(Vec3::NAN)
 }
 
@@ -43,13 +43,13 @@ fn arena(world: &World) -> Vec3 {
     Vec3::new(s.x, s.y - 1.0, s.z - 3.0)
 }
 
-fn gun(world: &mut World, mode: GunMode) {
+pub(super) fn gun(world: &mut World, mode: GunMode) {
     world.resource_mut::<PhysGun>().mode = mode;
     world.resource_mut::<PhysGun>().pending = None;
 }
 
 /// Clicks LMB at a world point over a few frames (frame offset `f0`).
-fn click_at(world: &mut World, ctx: &Ctx, f0: u32, point: Vec3) -> bool {
+pub(super) fn click_at(world: &mut World, ctx: &Ctx, f0: u32, point: Vec3) -> bool {
     if ctx.frames >= f0 && ctx.frames < f0 + 3 {
         aim_at(world, point);
     }

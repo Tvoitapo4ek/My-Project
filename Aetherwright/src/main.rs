@@ -6,8 +6,10 @@
 
 mod app;
 mod autotest;
+mod building;
 mod core;
 mod items;
+mod machinery;
 mod physics;
 mod player;
 mod tools;

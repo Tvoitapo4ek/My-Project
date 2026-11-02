@@ -140,7 +140,7 @@ mod tests {
         let e = |i| Entity::from_raw_u32(i).unwrap();
         let joints = [(e(1), e(2)), (e(2), e(3)), (e(5), e(6))];
         let mut c = construction_of(e(3), &joints);
-        c.sort();
+        c.sort_by_key(|e| e.index());
         assert_eq!(c, vec![e(1), e(2), e(3)]);
     }
 }

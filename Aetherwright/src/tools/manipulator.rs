@@ -34,17 +34,24 @@ pub enum ManipulatorMode {
     Scan,
     Cut,
     Mechanics,
+    Select,
 }
 
 impl ManipulatorMode {
-    pub const ALL: [ManipulatorMode; 4] =
-        [ManipulatorMode::Mine, ManipulatorMode::Scan, ManipulatorMode::Cut, ManipulatorMode::Mechanics];
+    pub const ALL: [ManipulatorMode; 5] = [
+        ManipulatorMode::Mine,
+        ManipulatorMode::Scan,
+        ManipulatorMode::Cut,
+        ManipulatorMode::Mechanics,
+        ManipulatorMode::Select,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             ManipulatorMode::Mine => "Добыча",
             ManipulatorMode::Scan => "Сканирование",
             ManipulatorMode::Cut => "Резка",
             ManipulatorMode::Mechanics => "Механизмы",
+            ManipulatorMode::Select => "Выделение",
         }
     }
     pub fn color(self) -> Color {
@@ -53,6 +60,7 @@ impl ManipulatorMode {
             ManipulatorMode::Scan => Color::srgb(0.5, 1.0, 0.6),
             ManipulatorMode::Cut => Color::srgb(1.0, 0.55, 0.3),
             ManipulatorMode::Mechanics => Color::srgb(1.0, 0.85, 0.35),
+            ManipulatorMode::Select => Color::srgb(0.85, 0.6, 1.0),
         }
     }
 }
@@ -190,6 +198,7 @@ fn use_manipulator(
             }
             return;
         }
+        ManipulatorMode::Select => return,
         ManipulatorMode::Mine | ManipulatorMode::Cut => {}
     }
 
