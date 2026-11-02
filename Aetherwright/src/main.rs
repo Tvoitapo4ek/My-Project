@@ -7,7 +7,9 @@
 mod app;
 mod autotest;
 mod core;
+mod items;
 mod player;
+mod tools;
 mod ui;
 mod world;
 

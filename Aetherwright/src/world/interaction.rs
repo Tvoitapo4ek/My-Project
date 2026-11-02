@@ -90,6 +90,10 @@ pub fn voxel_raycast(
     }
 }
 
+/// Systems that update the per-frame targeting.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InteractionSet;
+
 /// The block under the crosshair this frame (if within reach).
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct BlockTarget(pub Option<VoxelHit>);
@@ -180,7 +184,7 @@ impl Plugin for InteractionPlugin {
             .add_message::<BlockEditRejected>()
             .add_systems(
                 Update,
-                (update_target, draw_target).chain().run_if(gameplay_active),
+                (update_target, draw_target).chain().in_set(InteractionSet).run_if(gameplay_active),
             )
             .add_systems(PostUpdate, apply_block_edits.run_if(in_state(AppState::InGame)));
     }

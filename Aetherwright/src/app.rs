@@ -40,6 +40,8 @@ pub fn build_app(options: LaunchOptions) -> App {
         crate::core::CorePlugin,
         crate::world::WorldPlugin,
         crate::player::PlayerPlugin,
+        crate::items::ItemsPlugin,
+        crate::tools::ToolsPlugin,
         crate::ui::UiPlugin,
         crate::autotest::AutotestPlugin,
     ));

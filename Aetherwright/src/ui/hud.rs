@@ -1,61 +1,237 @@
-//! Gameplay HUD: crosshair and notification feed.
+//! Gameplay HUD built from independent panels. Each panel is a root node
+//! tagged with `HudPanel`; visibility comes from `HudConfig` (data) and the
+//! global F1 toggle, so panels can be added/removed without touching others.
 
+use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 
-use super::theme;
-use crate::core::events::{Notify, NotifyKind};
+use super::{slots::{spawn_slot, SlotSource}, theme};
+use crate::{
+    core::{
+        config::GameConfig,
+        events::{Notify, NotifyKind},
+        states::AppState,
+    },
+    items::inventory::{Inventory, HOTBAR},
+    player::Player,
+    tools::{
+        manipulator::{Manipulator, MiningProgress},
+        scanning::{ScanResult, Scannable},
+        ActiveTool, EntityTarget,
+    },
+    world::interaction::BlockTarget,
+};
 
-#[derive(Component)]
-struct NotificationFeed;
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HudPanel {
+    Crosshair,
+    Hotbar,
+    ToolLine,
+    TargetInfo,
+    ScanPanel,
+    Notifications,
+    Vitals,
+    Energy,
+}
+
+#[derive(Resource)]
+pub struct HudVisible(pub bool);
 
 #[derive(Component)]
 struct NotificationLine {
     ttl: f32,
 }
 
+#[derive(Component)]
+struct ToolLineText;
+
+#[derive(Component)]
+struct TargetText;
+
+#[derive(Component)]
+struct ProgressFill;
+
+#[derive(Component)]
+struct ScanText;
+
+fn root(panel: HudPanel, node: Node) -> impl Bundle {
+    (panel, Node { position_type: PositionType::Absolute, ..node }, Pickable::IGNORE)
+}
+
 fn spawn_hud(mut commands: Commands) {
     // Crosshair.
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
+        .spawn(root(HudPanel::Crosshair, Node {
             width: percent(100),
             height: percent(100),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
-        })
+        }))
         .with_children(|p| {
             p.spawn((
-                Node {
-                    width: px(6),
-                    height: px(6),
-                    border: UiRect::all(px(1)),
-                    ..default()
-                },
+                Node { width: px(6), height: px(6), border: UiRect::all(px(1)), ..default() },
                 BorderColor::all(theme::ACCENT),
                 BackgroundColor(Color::srgba(0.3, 0.9, 1.0, 0.25)),
             ));
         });
-    commands.spawn((
-        NotificationFeed,
-        Node {
-            position_type: PositionType::Absolute,
-            right: px(16),
-            top: px(16),
+
+    // Hotbar + tool line (bottom centre).
+    commands
+        .spawn(root(HudPanel::Hotbar, Node {
+            width: percent(100),
+            bottom: px(14),
             flex_direction: FlexDirection::Column,
-            align_items: AlignItems::FlexEnd,
+            align_items: AlignItems::Center,
+            row_gap: px(6),
+            ..default()
+        }))
+        .with_children(|p| {
+            p.spawn((HudPanel::ToolLine, ToolLineText, Text::new(""), theme::font(15.0), TextColor(theme::TEXT)));
+            p.spawn(Node { column_gap: px(4), ..default() }).with_children(|row| {
+                for i in 0..HOTBAR {
+                    spawn_slot(row, SlotSource::Player(i), true);
+                }
+            });
+        });
+
+    // Target info (top centre).
+    commands
+        .spawn(root(HudPanel::TargetInfo, Node {
+            width: percent(100),
+            top: px(14),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
             row_gap: px(4),
             ..default()
-        },
-    ));
+        }))
+        .with_children(|p| {
+            p.spawn((TargetText, Text::new(""), theme::font(16.0), TextColor(theme::TEXT)));
+            p.spawn((
+                Node { width: px(160), height: px(5), border: UiRect::all(px(1)), ..default() },
+                BorderColor::all(theme::PANEL_BORDER),
+                BackgroundColor(theme::PANEL_BG),
+            ))
+            .with_children(|b| {
+                b.spawn((ProgressFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(theme::ACCENT)));
+            });
+        });
+
+    // Scanner results (right).
+    commands
+        .spawn(root(HudPanel::ScanPanel, Node { right: px(16), top: percent(30), max_width: px(360), ..default() }))
+        .insert((BackgroundColor(theme::PANEL_BG), BorderColor::all(theme::PANEL_BORDER), Visibility::Hidden))
+        .with_children(|p| {
+            p.spawn((ScanText, Text::new(""), theme::font(14.0), TextColor(theme::TEXT), Node { margin: UiRect::all(px(8)), ..default() }));
+        });
+
+    commands.spawn(root(HudPanel::Notifications, Node {
+        right: px(16),
+        top: px(16),
+        flex_direction: FlexDirection::Column,
+        align_items: AlignItems::FlexEnd,
+        row_gap: px(4),
+        ..default()
+    }));
+}
+
+fn panel_enabled(cfg: &GameConfig, panel: HudPanel) -> bool {
+    let h = &cfg.hud;
+    match panel {
+        HudPanel::Crosshair => true,
+        HudPanel::Hotbar => h.hotbar,
+        HudPanel::ToolLine => h.tool_line,
+        HudPanel::TargetInfo => h.target_info,
+        HudPanel::ScanPanel => h.scan_panel,
+        HudPanel::Notifications => h.notifications,
+        HudPanel::Vitals => h.vitals,
+        HudPanel::Energy => h.energy,
+    }
+}
+
+fn apply_panel_visibility(
+    keys: Res<ButtonInput<KeyCode>>,
+    cfg: Res<GameConfig>,
+    mut visible: ResMut<HudVisible>,
+    scan: Res<ScanResult>,
+    state: Res<State<AppState>>,
+    mut panels: Query<(&HudPanel, &mut Visibility)>,
+    mut ui_scale: ResMut<UiScale>,
+) {
+    if keys.just_pressed(KeyCode::F1) {
+        visible.0 = !visible.0;
+    }
+    ui_scale.0 = cfg.hud.scale.clamp(0.5, 3.0);
+    let in_game = *state.get() == AppState::InGame;
+    for (panel, mut vis) in &mut panels {
+        let mut on = visible.0 && in_game && panel_enabled(&cfg, *panel);
+        if *panel == HudPanel::ScanPanel {
+            on &= scan.ttl > 0.0 && !scan.title.is_empty();
+        }
+        let want = if on { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_hud_text(
+    tool: Res<ActiveTool>,
+    block: Res<BlockTarget>,
+    entity: Res<EntityTarget>,
+    progress: Res<MiningProgress>,
+    scan: Res<ScanResult>,
+    player: Query<(&Inventory, &Manipulator), With<Player>>,
+    scannables: Query<(Option<&Scannable>, Option<&Name>, Option<&LinearVelocity>)>,
+    mut texts: ParamSet<(
+        Single<&mut Text, With<ToolLineText>>,
+        Single<&mut Text, With<TargetText>>,
+        Single<&mut Text, With<ScanText>>,
+    )>,
+    mut fill: Single<&mut Node, With<ProgressFill>>,
+) {
+    let Ok((inv, m)) = player.single() else { return };
+    let line = match *tool {
+        ActiveTool::Manipulator => format!(
+            "Манипулятор · {}  [Q]   ·  бурение {}  ·  резка {}",
+            m.mode.label(),
+            if m.drill_tier >= 2 { "II" } else { "I" },
+            if m.cutter { "есть" } else { "—" }
+        ),
+        ActiveTool::Hand => "Рука (манипулятор, слабая добыча)".to_string(),
+        ActiveTool::PlaceBlock(item, _) => format!("{} — ПКМ поставить, ЛКМ добыть", item.def().name),
+        _ => inv.selected_item().map(|i| i.def().name.to_string()).unwrap_or_default(),
+    };
+    texts.p0().0 = line;
+
+    let target = if let Some(e) = entity.entity {
+        match scannables.get(e) {
+            Ok((Some(s), _, _)) => s.title.clone(),
+            Ok((None, Some(n), _)) => n.as_str().to_string(),
+            _ => String::new(),
+        }
+    } else if let Some(hit) = block.0 {
+        hit.block.def().name.to_string()
+    } else {
+        String::new()
+    };
+    texts.p1().0 = target;
+
+    let k = if progress.target.is_some() { (progress.progress / progress.required.max(1e-3)).clamp(0.0, 1.0) } else { 0.0 };
+    fill.width = percent(k * 100.0);
+
+    if scan.ttl > 0.0 {
+        texts.p2().0 = format!("◈ {}\n{}", scan.title, scan.lines.join("\n"));
+    }
 }
 
 fn show_notifications(
     mut commands: Commands,
     mut reader: MessageReader<Notify>,
-    feed: Query<Entity, With<NotificationFeed>>,
+    feed: Query<(Entity, &HudPanel)>,
 ) {
-    let Ok(feed) = feed.single() else { return };
+    let Some((feed, _)) = feed.iter().find(|(_, p)| **p == HudPanel::Notifications) else { return };
     for n in reader.read() {
         let color = match n.kind {
             NotifyKind::Info => theme::TEXT,
@@ -63,30 +239,16 @@ fn show_notifications(
             NotifyKind::Warning => theme::WARN,
         };
         let line = commands
-            .spawn((
-                NotificationLine { ttl: 4.0 },
-                theme::panel(Node {
-                    padding: UiRect::axes(px(8), px(3)),
-                    ..default()
-                }),
-            ))
+            .spawn((NotificationLine { ttl: 4.0 }, theme::panel(Node { padding: UiRect::axes(px(8), px(3)), ..default() })))
             .with_children(|p| {
-                p.spawn((
-                    Text::new(n.text.clone()),
-                    theme::font(15.0),
-                    TextColor(color),
-                ));
+                p.spawn((Text::new(n.text.clone()), theme::font(15.0), TextColor(color)));
             })
             .id();
         commands.entity(feed).add_child(line);
     }
 }
 
-fn expire_notifications(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut lines: Query<(Entity, &mut NotificationLine)>,
-) {
+fn expire_notifications(mut commands: Commands, time: Res<Time>, mut lines: Query<(Entity, &mut NotificationLine)>) {
     for (e, mut l) in &mut lines {
         l.ttl -= time.delta_secs();
         if l.ttl <= 0.0 {
@@ -99,7 +261,16 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_hud)
-            .add_systems(Update, (show_notifications, expire_notifications));
+        app.insert_resource(HudVisible(true))
+            .add_systems(Startup, spawn_hud)
+            .add_systems(
+                Update,
+                (
+                    apply_panel_visibility,
+                    update_hud_text.run_if(in_state(AppState::InGame)),
+                    show_notifications,
+                    expire_notifications,
+                ),
+            );
     }
 }

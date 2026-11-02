@@ -5,6 +5,7 @@ pub mod config;
 pub mod events;
 pub mod layers;
 pub mod resources;
+pub mod rules;
 pub mod states;
 
 use bevy::prelude::*;
@@ -17,6 +18,7 @@ impl Plugin for CorePlugin {
             states::StatesPlugin,
             events::EventsPlugin,
             resources::ResourcesPlugin,
+            rules::RulesPlugin,
         ));
     }
 }

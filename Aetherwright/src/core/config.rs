@@ -15,11 +15,34 @@ pub struct GameConfig {
     pub controls: ControlsConfig,
     pub camera: CameraConfig,
     pub player: PlayerConfig,
+    pub hud: HudConfig,
+}
+
+/// Which HUD panels are shown (modular HUD; F1 hides everything).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HudConfig {
+    pub hotbar: bool,
+    pub vitals: bool,
+    pub target_info: bool,
+    pub scan_panel: bool,
+    pub notifications: bool,
+    pub tool_line: bool,
+    pub energy: bool,
+    /// UI scale multiplier.
+    pub scale: f32,
+}
+
+impl Default for HudConfig {
+    fn default() -> Self {
+        Self { hotbar: true, vitals: true, target_info: true, scan_panel: true, notifications: true, tool_line: true, energy: true, scale: 1.0 }
+    }
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
+            hud: HudConfig::default(),
             video: VideoConfig::default(),
             world: WorldConfig::default(),
             physics: PhysicsConfig::default(),

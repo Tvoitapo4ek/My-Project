@@ -28,3 +28,27 @@ pub fn panel(node: Node) -> impl Bundle {
         BorderColor::all(PANEL_BORDER),
     )
 }
+
+/// The UI font (embedded: Cyrillic coverage is required, the Bevy default
+/// font is ASCII-only).
+#[derive(Resource, Clone)]
+pub struct UiFont {
+    pub regular: Handle<Font>,
+    pub bold: Handle<Font>,
+}
+
+pub fn load_fonts(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
+    let regular = fonts.add(Font::from_bytes(include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf").to_vec()));
+    let bold = fonts.add(Font::from_bytes(include_bytes!("../../assets/fonts/JetBrainsMono-Bold.ttf").to_vec()));
+    commands.insert_resource(UiFont { regular, bold });
+}
+
+/// Every new text gets the UI font (bold for large titles), so UI code
+/// never has to pass font handles around.
+pub fn apply_font(font: Option<Res<UiFont>>, mut q: Query<&mut TextFont, Added<TextFont>>) {
+    let Some(font) = font else { return };
+    for mut t in &mut q {
+        let big = matches!(t.font_size, bevy::text::FontSize::Px(px) if px >= 18.0);
+        t.font = bevy::text::FontSource::Handle(if big { font.bold.clone() } else { font.regular.clone() });
+    }
+}

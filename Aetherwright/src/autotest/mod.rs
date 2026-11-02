@@ -8,6 +8,7 @@
 //! Screenshots are written when `--screenshots <dir>` is given.
 
 pub mod scenario;
+pub mod scenario3;
 
 use bevy::{
     prelude::*,
@@ -123,6 +124,6 @@ impl Plugin for AutotestPlugin {
             return;
         }
         app.insert_resource(scenario::build())
-            .add_systems(Update, run_scenario);
+            .add_systems(PreUpdate, run_scenario.after(bevy::input::InputSystems));
     }
 }

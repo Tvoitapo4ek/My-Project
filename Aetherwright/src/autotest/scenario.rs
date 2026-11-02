@@ -20,24 +20,24 @@ use crate::{
     },
 };
 
-fn step(
+pub(super) fn step(
     name: &str,
     f: impl FnMut(&mut World, &mut Ctx) -> Step + Send + Sync + 'static,
 ) -> (String, StepFn) {
     (name.to_string(), Box::new(f))
 }
 
-fn player_pos(world: &mut World) -> Option<Vec3> {
+pub(super) fn player_pos(world: &mut World) -> Option<Vec3> {
     let mut q = world.query_filtered::<&Position, With<Player>>();
     q.iter(world).next().map(|p| p.0)
 }
 
-fn player_state(world: &mut World) -> Option<CharacterState> {
+pub(super) fn player_state(world: &mut World) -> Option<CharacterState> {
     let mut q = world.query_filtered::<&CharacterState, With<Player>>();
     q.iter(world).next().cloned()
 }
 
-fn set_intent(world: &mut World, f: impl FnOnce(&mut PlayerIntent)) {
+pub(super) fn set_intent(world: &mut World, f: impl FnOnce(&mut PlayerIntent)) {
     let mut intent = world.resource_mut::<PlayerIntent>();
     f(&mut intent);
 }
@@ -187,6 +187,7 @@ pub fn build() -> Scenario {
     }));
 
     stage2(&mut steps);
+    super::scenario3::stage3(&mut steps);
 
     Scenario {
         steps,
@@ -196,11 +197,11 @@ pub fn build() -> Scenario {
     }
 }
 
-fn edit(world: &mut World, pos: IVec3, block: BlockId, cause: EditCause) {
+pub(super) fn edit(world: &mut World, pos: IVec3, block: BlockId, cause: EditCause) {
     world.write_message(BlockEdit { pos, block, cause });
 }
 
-fn block_at(world: &World, pos: IVec3) -> BlockId {
+pub(super) fn block_at(world: &World, pos: IVec3) -> BlockId {
     world.resource::<VoxelWorld>().get(pos)
 }
 
@@ -212,7 +213,7 @@ fn ray_down(world: &mut World, from: Vec3) -> Option<f32> {
     spatial.cast_ray(from, Dir3::NEG_Y, 100.0, true, &filter).map(|h| h.distance)
 }
 
-fn teleport(world: &mut World, p: Vec3) {
+pub(super) fn teleport(world: &mut World, p: Vec3) {
     let mut q = world.query_filtered::<(&mut Position, &mut LinearVelocity), With<Player>>();
     for (mut pos, mut vel) in q.iter_mut(world) {
         pos.0 = p;
