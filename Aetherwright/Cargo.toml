@@ -1,0 +1,33 @@
+[package]
+name = "aetherwright"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+description = "Aetherwright — voxel sandbox about exploration, engineering and magic (first playable)"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+# Engine. Exact pin: plugins (avian) are built against this exact minor.
+bevy = { version = "=0.20.1", features = ["serialize", "debug"] }
+# Physics: rigid bodies, colliders, joints + motors, spatial queries. 0.8.x targets Bevy 0.20.
+avian3d = { version = "=0.8.0", features = ["serialize"] }
+# Save files (versioned JSON envelope + data). Same versions Bevy already pulls in.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = []
+# Faster iterative builds on dev machines: `cargo run --features dev`
+dev = ["bevy/dynamic_linking"]
+
+[profile.dev]
+opt-level = 1
+
+# Dependencies are optimized even in debug builds — Bevy/Avian are unusably slow at opt-level 0.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

@@ -1,0 +1,39 @@
+# Aetherwright (Rust/Bevy game): build + unit tests on the target platform
+# (macOS, Apple Silicon runner) and on Linux. Only runs when the game changes.
+name: Aetherwright
+
+on:
+  push:
+    paths: ["Aetherwright/**", ".github/workflows/aetherwright.yml"]
+  pull_request:
+    paths: ["Aetherwright/**", ".github/workflows/aetherwright.yml"]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: Aetherwright
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Aetherwright/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Aetherwright/Cargo.lock', 'Aetherwright/rust-toolchain.toml') }}
+      - name: Tests
+        run: cargo test --locked
+      - name: Build
+        run: cargo build --locked
