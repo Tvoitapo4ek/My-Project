@@ -10,13 +10,16 @@ use bevy::prelude::*;
 
 use super::{
     blueprints::Blueprint,
-    construction::{capture, clear_area, paste, Area, PasteError, MAX_AREA_VOLUME},
+    construction::{Area, MAX_AREA_VOLUME, PasteError, capture, clear_area, paste},
     preview::{GhostShape, Ghosts, Validity},
 };
 use crate::{
     core::{events::Notify, states::gameplay_active},
     player::Player,
-    tools::{manipulator::{Manipulator, ManipulatorMode}, ActiveTool},
+    tools::{
+        ActiveTool,
+        manipulator::{Manipulator, ManipulatorMode},
+    },
     world::interaction::BlockTarget,
 };
 
@@ -49,8 +52,14 @@ pub enum GroupOp {
     Fill(crate::world::voxel::BlockId),
 }
 
-pub fn select_mode_active(tool: Res<ActiveTool>, player: Query<&Manipulator, With<Player>>) -> bool {
-    *tool == ActiveTool::Manipulator && player.single().is_ok_and(|m| m.mode == ManipulatorMode::Select)
+pub fn select_mode_active(
+    tool: Res<ActiveTool>,
+    player: Query<&Manipulator, With<Player>>,
+) -> bool {
+    *tool == ActiveTool::Manipulator
+        && player
+            .single()
+            .is_ok_and(|m| m.mode == ManipulatorMode::Select)
 }
 
 fn select_input(
@@ -122,13 +131,23 @@ pub fn apply_ops(world: &mut World) {
         let area = world.resource::<Selection>().area();
         match op {
             GroupOp::Paste(origin) => {
-                let Some(bp) = world.resource::<Selection>().clipboard.clone() else { continue };
+                let Some(bp) = world.resource::<Selection>().clipboard.clone() else {
+                    continue;
+                };
                 match paste(world, &bp, origin) {
                     Ok(n) => notify(world, Notify::ok(format!("Построено элементов: {n}"))),
-                    Err(PasteError::OutOfWorld) => notify(world, Notify::warn("Не помещается в мир")),
+                    Err(PasteError::OutOfWorld) => {
+                        notify(world, Notify::warn("Не помещается в мир"))
+                    }
                     Err(PasteError::MissingItems(m)) => {
-                        let list: Vec<String> = m.iter().map(|(i, n)| format!("{} ×{n}", i.def().name)).collect();
-                        notify(world, Notify::warn(format!("Не хватает: {}", list.join(", "))));
+                        let list: Vec<String> = m
+                            .iter()
+                            .map(|(i, n)| format!("{} ×{n}", i.def().name))
+                            .collect();
+                        notify(
+                            world,
+                            Notify::warn(format!("Не хватает: {}", list.join(", "))),
+                        );
                     }
                 }
             }
@@ -140,8 +159,16 @@ pub fn apply_ops(world: &mut World) {
                 }
                 let mut n = 0;
                 for c in area.cells() {
-                    if world.resource::<crate::world::chunks::VoxelWorld>().get(c).is_replaceable() {
-                        world.write_message(crate::world::interaction::BlockEdit { pos: c, block, cause: crate::world::chunks::EditCause::Creative });
+                    if world
+                        .resource::<crate::world::chunks::VoxelWorld>()
+                        .get(c)
+                        .is_replaceable()
+                    {
+                        world.write_message(crate::world::interaction::BlockEdit {
+                            pos: c,
+                            block,
+                            cause: crate::world::chunks::EditCause::Creative,
+                        });
                         n += 1;
                     }
                 }
@@ -150,13 +177,20 @@ pub fn apply_ops(world: &mut World) {
             op => {
                 let Some(area) = area else { continue };
                 if area.volume() > MAX_AREA_VOLUME {
-                    notify(world, Notify::warn("Слишком большая область (максимум 32³)"));
+                    notify(
+                        world,
+                        Notify::warn("Слишком большая область (максимум 32³)"),
+                    );
                     continue;
                 }
                 match op {
                     GroupOp::Copy => {
                         let bp = capture(world, area);
-                        let msg = format!("Скопировано: блоков {}, деталей {}", bp.blocks.len(), bp.parts.len());
+                        let msg = format!(
+                            "Скопировано: блоков {}, деталей {}",
+                            bp.blocks.len(),
+                            bp.parts.len()
+                        );
                         world.resource_mut::<Selection>().clipboard = Some(bp);
                         notify(world, Notify::ok(msg));
                     }
@@ -174,7 +208,11 @@ pub fn apply_ops(world: &mut World) {
                         let bp = capture(world, area).rotated_y90();
                         // Remove without refund, rebuild without cost.
                         let rules = *world.resource::<crate::core::rules::ModeRules>();
-                        *world.resource_mut::<crate::core::rules::ModeRules>() = crate::core::rules::ModeRules { consume_items: false, ..rules };
+                        *world.resource_mut::<crate::core::rules::ModeRules>() =
+                            crate::core::rules::ModeRules {
+                                consume_items: false,
+                                ..rules
+                            };
                         clear_area(world, area);
                         let _ = paste(world, &bp, area.min);
                         *world.resource_mut::<crate::core::rules::ModeRules>() = rules;
@@ -198,7 +236,10 @@ fn draw_selection(
     active: Query<&Manipulator, With<Player>>,
     tool: Res<ActiveTool>,
 ) {
-    let showing = *tool == ActiveTool::Manipulator && active.single().is_ok_and(|m| m.mode == ManipulatorMode::Select);
+    let showing = *tool == ActiveTool::Manipulator
+        && active
+            .single()
+            .is_ok_and(|m| m.mode == ManipulatorMode::Select);
     if !showing {
         return;
     }
@@ -206,15 +247,26 @@ fn draw_selection(
     if let Some(area) = sel.area().or_else(|| sel.a.map(|a| Area::new(a, a))) {
         let size = area.size().as_vec3();
         let center = area.min.as_vec3() + size * 0.5;
-        let color = if corner_only { Color::srgb(1.0, 0.85, 0.3) } else { Color::srgb(0.4, 0.95, 1.0) };
-        gizmos.cube(Transform::from_translation(center).with_scale(size + Vec3::splat(0.02)), color);
+        let color = if corner_only {
+            Color::srgb(1.0, 0.85, 0.3)
+        } else {
+            Color::srgb(0.4, 0.95, 1.0)
+        };
+        gizmos.cube(
+            Transform::from_translation(center).with_scale(size + Vec3::splat(0.02)),
+            color,
+        );
     }
     if sel.paste_mode
         && let (Some(bp), Some(hit)) = (&sel.clipboard, target.0)
     {
         let origin = hit.place_pos().as_vec3();
         let size = bp.size.as_vec3();
-        ghosts.0.push((GhostShape::Box(size), Transform::from_translation(origin + size * 0.5), Validity::Ok));
+        ghosts.0.push((
+            GhostShape::Box(size),
+            Transform::from_translation(origin + size * 0.5),
+            Validity::Ok,
+        ));
     }
 }
 
@@ -230,6 +282,9 @@ impl Plugin for SelectionPlugin {
                     .after(crate::tools::update_entity_target)
                     .run_if(gameplay_active),
             )
-            .add_systems(PostUpdate, apply_ops.before(crate::world::interaction::apply_block_edits));
+            .add_systems(
+                PostUpdate,
+                apply_ops.before(crate::world::interaction::apply_block_edits),
+            );
     }
 }

@@ -16,6 +16,10 @@ pub struct BuildingPlugin;
 
 impl Plugin for BuildingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((placement::PlacementPlugin, selection::SelectionPlugin, preview::PreviewPlugin));
+        app.add_plugins((
+            placement::PlacementPlugin,
+            selection::SelectionPlugin,
+            preview::PreviewPlugin,
+        ));
     }
 }

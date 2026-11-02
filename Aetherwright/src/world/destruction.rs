@@ -10,7 +10,7 @@ use super::{
     chunks::{EditCause, VoxelWorld},
     interaction::{BlockChanged, BlockEdit},
     materials::BlockMaterials,
-    voxel::{blocks, BlockId, RenderKind},
+    voxel::{BlockId, RenderKind, blocks},
 };
 
 /// A block that lost support and must become a dynamic body.
@@ -55,7 +55,10 @@ fn on_block_changed(
             continue;
         }
         // Debris burst.
-        if matches!(c.cause, EditCause::Mined) && c.old.def().render != RenderKind::Invisible && budget > 0 {
+        if matches!(c.cause, EditCause::Mined)
+            && c.old.def().render != RenderKind::Invisible
+            && budget > 0
+        {
             let mat = mats.get(c.old.def().tex[1]);
             let center = c.pos.as_vec3() + Vec3::splat(0.5);
             for i in 0..8.min(budget) {
@@ -65,7 +68,10 @@ fn on_block_changed(
                     Mesh3d(mesh.0.clone()),
                     MeshMaterial3d(mat.clone()),
                     Transform::from_translation(center + v * 0.08),
-                    Debris { velocity: v, ttl: 0.7 },
+                    Debris {
+                        velocity: v,
+                        ttl: 0.7,
+                    },
                     bevy::light::NotShadowCaster,
                 ));
             }
@@ -76,16 +82,31 @@ fn on_block_changed(
             let above = c.pos + IVec3::Y;
             let b = world.get(above);
             if b.def().render == RenderKind::Cross {
-                edits.write(BlockEdit { pos: above, block: blocks::AIR, cause: EditCause::Mined });
+                edits.write(BlockEdit {
+                    pos: above,
+                    block: blocks::AIR,
+                    cause: EditCause::Mined,
+                });
             } else if is_loose(b) {
-                edits.write(BlockEdit { pos: above, block: blocks::AIR, cause: EditCause::Cut });
-                detached.write(DetachedBlock { pos: above, block: b });
+                edits.write(BlockEdit {
+                    pos: above,
+                    block: blocks::AIR,
+                    cause: EditCause::Cut,
+                });
+                detached.write(DetachedBlock {
+                    pos: above,
+                    block: b,
+                });
             }
         }
     }
 }
 
-fn update_debris(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Transform, &mut Debris)>) {
+fn update_debris(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Transform, &mut Debris)>,
+) {
     let dt = time.delta_secs();
     for (e, mut t, mut d) in &mut q {
         d.ttl -= dt;
@@ -105,7 +126,10 @@ impl Plugin for DestructionPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<DetachedBlock>()
             .add_systems(Startup, setup)
-            .add_systems(PostUpdate, on_block_changed.after(super::interaction::apply_block_edits))
+            .add_systems(
+                PostUpdate,
+                on_block_changed.after(super::interaction::apply_block_edits),
+            )
             .add_systems(Update, update_debris);
     }
 }

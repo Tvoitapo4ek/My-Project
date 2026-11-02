@@ -11,9 +11,9 @@ use bevy::{
 
 use super::{Player, movement::CharacterState};
 use crate::core::{
+    config::GameConfig,
     layers::Layer,
     resources::{EyeRay, MainCamera},
-    config::GameConfig,
     states::{InputFocus, gameplay_active},
 };
 

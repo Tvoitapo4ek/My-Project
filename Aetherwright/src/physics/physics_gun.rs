@@ -19,13 +19,13 @@ use bevy::{
 };
 
 use super::{
-    joints::{spawn_connection, Connection, JointKind, LocalFrame},
     Frozen, Immovable,
+    joints::{Connection, JointKind, LocalFrame, spawn_connection},
 };
 use crate::{
-    core::{events::Notify, resources::EyeRay, states::gameplay_active},
+    core::{events::Notify, layers::Layer, resources::EyeRay, states::gameplay_active},
     tools::{ActiveTool, EntityTarget, WheelCaptured},
-    world::{interaction::BlockTarget, ChunkEntities, chunks::VoxelWorld},
+    world::{ChunkEntities, chunks::VoxelWorld, interaction::BlockTarget},
 };
 
 /// Max force of the gun (N). Lift limit ≈ GUN_FORCE / g.
@@ -43,7 +43,12 @@ pub enum GunMode {
 }
 
 impl GunMode {
-    pub const ALL: [GunMode; 4] = [GunMode::Grab, GunMode::Weld, GunMode::Hinge, GunMode::Unlink];
+    pub const ALL: [GunMode; 4] = [
+        GunMode::Grab,
+        GunMode::Weld,
+        GunMode::Hinge,
+        GunMode::Unlink,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             GunMode::Grab => "Захват",
@@ -90,13 +95,27 @@ struct Pick {
     normal: Vec3,
 }
 
-fn pick(entity_target: &EntityTarget, block: &BlockTarget, eye: &EyeRay, world: &VoxelWorld, chunks: &ChunkEntities) -> Option<Pick> {
+fn pick(
+    entity_target: &EntityTarget,
+    block: &BlockTarget,
+    eye: &EyeRay,
+    world: &VoxelWorld,
+    chunks: &ChunkEntities,
+) -> Option<Pick> {
     if let Some(e) = entity_target.entity {
-        return Some(Pick { entity: e, point: entity_target.point, normal: entity_target.normal });
+        return Some(Pick {
+            entity: e,
+            point: entity_target.point,
+            normal: entity_target.normal,
+        });
     }
     let hit = block.0?;
     let chunk = *chunks.0.get(&world.chunk_of(hit.pos))?;
-    Some(Pick { entity: chunk, point: eye.origin + eye.direction * hit.distance, normal: hit.normal.as_vec3() })
+    Some(Pick {
+        entity: chunk,
+        point: eye.origin + eye.direction * hit.distance,
+        normal: hit.normal.as_vec3(),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -114,10 +133,18 @@ fn gun_input(
     chunks: Res<ChunkEntities>,
     mut gun: ResMut<PhysGun>,
     mut wheel: ResMut<WheelCaptured>,
-    mut bodies: Query<(&RigidBody, &mut Position, &mut Rotation, &ComputedMass, Has<Immovable>, Has<Frozen>)>,
+    bodies: Query<(
+        &RigidBody,
+        &Position,
+        &Rotation,
+        &ComputedMass,
+        Has<Immovable>,
+        Has<Frozen>,
+    )>,
     joints: Query<(Entity, &Connection)>,
-    mut notify: MessageWriter<Notify>,
+    out: (MessageWriter<Notify>, MessageWriter<JointRequest>),
 ) {
+    let (mut notify, mut requests) = out;
     if *tool != ActiveTool::PhysGun {
         if let Some(h) = gun.held.take() {
             commands.entity(h.entity).remove::<Held>();
@@ -127,7 +154,10 @@ fn gun_input(
         return;
     }
     if keys.just_pressed(KeyCode::KeyQ) && gun.held.is_none() {
-        let i = GunMode::ALL.iter().position(|m| *m == gun.mode).unwrap_or(0);
+        let i = GunMode::ALL
+            .iter()
+            .position(|m| *m == gun.mode)
+            .unwrap_or(0);
         gun.mode = GunMode::ALL[(i + 1) % GunMode::ALL.len()];
         gun.pending = None;
         notify.write(Notify::info(format!("Гравизахват: {}", gun.mode.label())));
@@ -142,10 +172,17 @@ fn gun_input(
                     MouseScrollUnit::Pixel => scroll.delta.y * 0.02,
                 };
                 gun.held.as_mut().unwrap().distance = (h.distance + d).clamp(1.5, MAX_HOLD_DIST);
-                gun.rotate = if keys.pressed(KeyCode::KeyR) { motion.delta * 0.01 } else { Vec2::ZERO };
+                gun.rotate = if keys.pressed(KeyCode::KeyR) {
+                    motion.delta * 0.01
+                } else {
+                    Vec2::ZERO
+                };
                 if mouse.just_pressed(MouseButton::Right) {
                     // Freeze in space.
-                    commands.entity(h.entity).remove::<Held>().insert((Frozen, RigidBody::Static));
+                    commands
+                        .entity(h.entity)
+                        .remove::<Held>()
+                        .insert((Frozen, RigidBody::Static));
                     gun.held = None;
                     notify.write(Notify::info("Объект зафиксирован"));
                 } else if !mouse.pressed(MouseButton::Left) {
@@ -162,20 +199,33 @@ fn gun_input(
                     notify.write(Notify::warn("Объект закреплён"));
                 } else {
                     if frozen {
-                        commands.entity(e).remove::<Frozen>().insert(RigidBody::Dynamic);
+                        commands
+                            .entity(e)
+                            .remove::<Frozen>()
+                            .insert(RigidBody::Dynamic);
                     }
                     if mass.value() * 19.0 > GUN_FORCE {
-                        notify.write(Notify::warn(format!("Слишком тяжело поднять ({:.0} кг) — только волочь", mass.value())));
+                        notify.write(Notify::warn(format!(
+                            "Слишком тяжело поднять ({:.0} кг) — только волочь",
+                            mass.value()
+                        )));
                     }
                     let local_point = rot.0.inverse() * (entity_target.point - pos.0);
-                    gun.held = Some(HeldInfo { entity: e, distance: entity_target.distance.max(1.5), local_point });
+                    gun.held = Some(HeldInfo {
+                        entity: e,
+                        distance: entity_target.distance.max(1.5),
+                        local_point,
+                    });
                     commands.entity(e).insert(Held);
                 }
             } else if mouse.just_pressed(MouseButton::Right)
                 && let Some(e) = entity_target.entity
                 && let Ok((_, _, _, _, _, true)) = bodies.get(e)
             {
-                commands.entity(e).remove::<Frozen>().insert(RigidBody::Dynamic);
+                commands
+                    .entity(e)
+                    .remove::<Frozen>()
+                    .insert(RigidBody::Dynamic);
                 notify.write(Notify::info("Фиксация снята"));
             }
             wheel.0 = gun.held.is_some();
@@ -188,11 +238,15 @@ fn gun_input(
             if !mouse.just_pressed(MouseButton::Left) {
                 return;
             }
-            let Some(p) = pick(&entity_target, &block_target, &eye, &voxels, &chunks) else { return };
+            let Some(p) = pick(&entity_target, &block_target, &eye, &voxels, &chunks) else {
+                return;
+            };
             match gun.pending {
                 None => {
                     // The first pick must be a movable body (the part).
-                    let Ok((rb, pos, rot, ..)) = bodies.get(p.entity) else { return };
+                    let Ok((rb, pos, rot, ..)) = bodies.get(p.entity) else {
+                        return;
+                    };
                     if rb.is_static() && chunks.0.values().any(|c| *c == p.entity) {
                         notify.write(Notify::warn("Сначала выберите деталь, затем основание"));
                         return;
@@ -208,40 +262,26 @@ fn gun_input(
                     if first.entity == p.entity {
                         return;
                     }
-                    let exists = joints.iter().any(|(_, c)| (c.a == first.entity && c.b == p.entity) || (c.b == first.entity && c.a == p.entity));
+                    let exists = joints.iter().any(|(_, c)| {
+                        (c.a == first.entity && c.b == p.entity)
+                            || (c.b == first.entity && c.a == p.entity)
+                    });
                     if exists {
                         notify.write(Notify::warn("Уже соединены"));
                         return;
                     }
-                    let Ok((_, pos_b, rot_b, ..)) = bodies.get(p.entity) else { return };
-                    let (pos_b, rot_b) = (pos_b.0, rot_b.0);
-                    let kind = if gun.mode == GunMode::Weld { JointKind::Weld } else { JointKind::Hinge };
-                    let Ok((_, mut pos_a, mut rot_a, ..)) = bodies.get_mut(first.entity) else { return };
-                    let (anchor, basis) = if kind == JointKind::Hinge {
-                        // Snap the part's face onto the base face.
-                        let n_a = rot_a.0 * first.local_normal;
-                        let q = Quat::from_rotation_arc(n_a.normalize(), -p.normal.normalize());
-                        let new_rot = (q * rot_a.0).normalize();
-                        let new_pos = p.point - new_rot * first.local_point + p.normal * 0.02;
-                        rot_a.0 = new_rot;
-                        pos_a.0 = new_pos;
-                        commands.entity(first.entity).insert((Transform::from_translation(new_pos).with_rotation(new_rot), LinearVelocity::ZERO, AngularVelocity::ZERO));
-                        (p.point, Quat::from_rotation_arc(Vec3::Z, p.normal.normalize()))
+                    let kind = if gun.mode == GunMode::Weld {
+                        JointKind::Weld
                     } else {
-                        (p.point, Quat::IDENTITY)
+                        JointKind::Hinge
                     };
-                    let (pa, ra) = (pos_a.0, rot_a.0);
-                    spawn_connection(
-                        &mut commands,
-                        Connection {
-                            a: p.entity,
-                            b: first.entity,
-                            kind,
-                            frame_a: LocalFrame::from_world(pos_b, rot_b, anchor, basis),
-                            frame_b: LocalFrame::from_world(pa, ra, anchor, basis),
-                        },
-                    );
-                    notify.write(Notify::ok(if kind == JointKind::Weld { "Сварено" } else { "Шарнир установлен" }));
+                    requests.write(JointRequest {
+                        part: first,
+                        base: p.entity,
+                        point: p.point,
+                        normal: p.normal,
+                        kind,
+                    });
                 }
             }
         }
@@ -263,6 +303,82 @@ fn gun_input(
     }
 }
 
+/// Request to join `part` to `base` at a point on the base's surface.
+#[derive(Message, Debug, Clone, Copy)]
+pub struct JointRequest {
+    pub part: PendingPick,
+    pub base: Entity,
+    pub point: Vec3,
+    pub normal: Vec3,
+    pub kind: JointKind,
+}
+
+/// Creates requested joints. Hinges first snap the part's picked face onto
+/// the base face; this is refused when the part would overlap another body
+/// (forcing a joint into interpenetration makes the solver explode).
+pub fn apply_joint_requests(
+    mut commands: Commands,
+    mut requests: MessageReader<JointRequest>,
+    spatial: SpatialQuery,
+    bodies: Query<(&Position, &Rotation, &Collider)>,
+    mut notify: MessageWriter<Notify>,
+) {
+    for r in requests.read() {
+        let (Ok((pos_a, rot_a, collider)), Ok((pos_b, rot_b, _))) =
+            (bodies.get(r.part.entity), bodies.get(r.base))
+        else {
+            continue;
+        };
+        let (mut pa, mut ra) = (pos_a.0, rot_a.0);
+        let normal = r.normal.normalize_or_zero();
+        let basis = if r.kind == JointKind::Hinge {
+            let n_a = (ra * r.part.local_normal).normalize_or_zero();
+            let q = Quat::from_rotation_arc(n_a, -normal);
+            ra = (q * ra).normalize();
+            pa = r.point - ra * r.part.local_point + normal * 0.02;
+            let mut shrunk = collider.clone();
+            shrunk.set_scale(Vec3::splat(0.92), 8);
+            let filter =
+                SpatialQueryFilter::from_mask([Layer::Prop, Layer::Creature, Layer::Player])
+                    .with_excluded_entities([r.part.entity, r.base]);
+            if !spatial
+                .shape_intersections(&shrunk, pa, ra, &filter)
+                .is_empty()
+            {
+                notify.write(Notify::warn(
+                    "Нет места: деталь пересечётся с другим объектом",
+                ));
+                continue;
+            }
+            commands.entity(r.part.entity).insert((
+                Position(pa),
+                Rotation(ra),
+                Transform::from_translation(pa).with_rotation(ra),
+                LinearVelocity::ZERO,
+                AngularVelocity::ZERO,
+            ));
+            Quat::from_rotation_arc(Vec3::Z, normal)
+        } else {
+            Quat::IDENTITY
+        };
+        spawn_connection(
+            &mut commands,
+            Connection {
+                a: r.base,
+                b: r.part.entity,
+                kind: r.kind,
+                frame_a: LocalFrame::from_world(pos_b.0, rot_b.0, r.point, basis),
+                frame_b: LocalFrame::from_world(pa, ra, r.point, basis),
+            },
+        );
+        notify.write(Notify::ok(if r.kind == JointKind::Weld {
+            "Сварено"
+        } else {
+            "Шарнир установлен"
+        }));
+    }
+}
+
 /// Fixed-step drive of the held body (mass-limited acceleration).
 ///
 /// The whole construction (bodies linked by joints) is driven together:
@@ -278,16 +394,31 @@ fn drive_held(
     gravity: Res<Gravity>,
     mut commands: Commands,
     joints: Query<&Connection>,
-    mut bodies: Query<(&RigidBody, &Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &ComputedMass)>,
+    mut bodies: Query<(
+        &RigidBody,
+        &Position,
+        &Rotation,
+        &mut LinearVelocity,
+        &mut AngularVelocity,
+        &ComputedMass,
+    )>,
 ) {
     let Some(h) = gun.held else { return };
     let pairs: Vec<(Entity, Entity)> = joints.iter().map(|c| (c.a, c.b)).collect();
     let group = super::joints::construction_of(h.entity, &pairs);
-    let anchored = group.iter().any(|e| bodies.get(*e).is_ok_and(|b| !b.0.is_dynamic()));
+    let anchored = group
+        .iter()
+        .any(|e| bodies.get(*e).is_ok_and(|b| !b.0.is_dynamic()));
     let members: Vec<Entity> = if anchored { vec![h.entity] } else { group };
-    let total_mass: f32 = members.iter().filter_map(|e| bodies.get(*e).ok()).map(|b| b.5.value()).sum();
+    let total_mass: f32 = members
+        .iter()
+        .filter_map(|e| bodies.get(*e).ok())
+        .map(|b| b.5.value())
+        .sum();
 
-    let Ok((_, pos, rot, lin, _, _)) = bodies.get(h.entity) else { return };
+    let Ok((_, pos, rot, lin, _, _)) = bodies.get(h.entity) else {
+        return;
+    };
     let dt = time.delta_secs();
     let target = eye.origin + eye.direction * h.distance;
     let grab = pos.0 + rot.0 * h.local_point;
@@ -341,8 +472,16 @@ fn draw_gun(
         && let Ok((p, r)) = bodies.get(pp.entity)
     {
         let pt = p.0 + r.0 * pp.local_point;
-        gizmos.sphere(Isometry3d::from_translation(pt), 0.12, Color::srgb(0.4, 1.0, 0.8));
-        gizmos.line(pt, pt + r.0 * pp.local_normal * 0.6, Color::srgb(0.4, 1.0, 0.8));
+        gizmos.sphere(
+            Isometry3d::from_translation(pt),
+            0.12,
+            Color::srgb(0.4, 1.0, 0.8),
+        );
+        gizmos.line(
+            pt,
+            pt + r.0 * pp.local_normal * 0.6,
+            Color::srgb(0.4, 1.0, 0.8),
+        );
     }
 }
 
@@ -351,9 +490,10 @@ pub struct PhysicsGunPlugin;
 impl Plugin for PhysicsGunPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PhysGun>()
+            .add_message::<JointRequest>()
             .add_systems(
                 Update,
-                (gun_input, draw_gun)
+                (gun_input, apply_joint_requests, draw_gun)
                     .chain()
                     .after(crate::tools::update_entity_target)
                     .run_if(gameplay_active),

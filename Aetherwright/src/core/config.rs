@@ -35,7 +35,16 @@ pub struct HudConfig {
 
 impl Default for HudConfig {
     fn default() -> Self {
-        Self { hotbar: true, vitals: true, target_info: true, scan_panel: true, notifications: true, tool_line: true, energy: true, scale: 1.0 }
+        Self {
+            hotbar: true,
+            vitals: true,
+            target_info: true,
+            scan_panel: true,
+            notifications: true,
+            tool_line: true,
+            energy: true,
+            scale: 1.0,
+        }
     }
 }
 

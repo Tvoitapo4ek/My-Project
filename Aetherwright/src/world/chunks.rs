@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
-use super::voxel::{blocks, BlockId};
+use super::voxel::{BlockId, blocks};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChunkData {
@@ -21,7 +21,11 @@ pub struct ChunkData {
 
 impl ChunkData {
     pub fn new(size: i32) -> Self {
-        Self { size, blocks: vec![blocks::AIR; (size * size * size) as usize], non_air: 0 }
+        Self {
+            size,
+            blocks: vec![blocks::AIR; (size * size * size) as usize],
+            non_air: 0,
+        }
     }
 
     #[inline]
@@ -266,7 +270,10 @@ mod tests {
         w.dirty.clear();
         w.set(IVec3::new(8, 3, 3), blocks::DIRT);
         assert!(w.dirty.contains(&IVec3::new(1, 0, 0)));
-        assert!(w.dirty.contains(&IVec3::new(0, 0, 0)), "neighbour across x border");
+        assert!(
+            w.dirty.contains(&IVec3::new(0, 0, 0)),
+            "neighbour across x border"
+        );
         w.dirty.clear();
         w.set(IVec3::new(12, 3, 3), blocks::DIRT);
         assert_eq!(w.dirty.len(), 1, "interior edit touches one chunk");
@@ -289,7 +296,10 @@ mod tests {
         assert!(rle.len() < 10);
         let back = ChunkData::from_rle(8, &rle).unwrap();
         assert_eq!(back, c);
-        assert!(ChunkData::from_rle(8, &[(3, 1)]).is_none(), "truncated data is rejected");
+        assert!(
+            ChunkData::from_rle(8, &[(3, 1)]).is_none(),
+            "truncated data is rejected"
+        );
     }
 
     #[test]

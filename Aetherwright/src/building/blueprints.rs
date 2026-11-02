@@ -49,7 +49,11 @@ impl Blueprint {
         // (x, z) → (z, s.x-1-x) for cells; continuous: (x, z) → (z, s.x - x).
         Blueprint {
             size: IVec3::new(s.z, s.y, s.x),
-            blocks: self.blocks.iter().map(|(p, b)| (IVec3::new(p.z, p.y, s.x - 1 - p.x), *b)).collect(),
+            blocks: self
+                .blocks
+                .iter()
+                .map(|(p, b)| (IVec3::new(p.z, p.y, s.x - 1 - p.x), *b))
+                .collect(),
             parts: self
                 .parts
                 .iter()
@@ -96,8 +100,15 @@ mod tests {
     fn sample() -> Blueprint {
         Blueprint {
             size: IVec3::new(3, 1, 2),
-            blocks: vec![(IVec3::new(0, 0, 0), blocks::STONE), (IVec3::new(2, 0, 1), blocks::PLANKS)],
-            parts: vec![BlueprintPart { kind: PartKind::Frame, offset: Vec3::new(0.5, 0.5, 0.5), rotation: Quat::IDENTITY }],
+            blocks: vec![
+                (IVec3::new(0, 0, 0), blocks::STONE),
+                (IVec3::new(2, 0, 1), blocks::PLANKS),
+            ],
+            parts: vec![BlueprintPart {
+                kind: PartKind::Frame,
+                offset: Vec3::new(0.5, 0.5, 0.5),
+                rotation: Quat::IDENTITY,
+            }],
             joints: vec![],
         }
     }

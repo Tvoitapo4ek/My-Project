@@ -8,7 +8,12 @@ use crate::core::config::LaunchOptions;
 pub fn build_app(options: LaunchOptions) -> App {
     let mut app = App::new();
 
-    let config = crate::core::config::GameConfig::load_or_default();
+    let mut config = crate::core::config::GameConfig::load_or_default();
+    if options.autotest {
+        // Software rendering in CI/containers is pixel-bound.
+        config.video.width = 1280;
+        config.video.height = 720;
+    }
 
     app.add_plugins(
         DefaultPlugins
@@ -47,6 +52,9 @@ pub fn build_app(options: LaunchOptions) -> App {
         crate::building::BuildingPlugin,
         crate::magic::MagicPlugin,
         crate::survival::SurvivalPlugin,
+        crate::crafting::CraftingPlugin,
+        crate::save::SavePlugin,
+        crate::creative::CreativePlugin,
         crate::ui::UiPlugin,
         crate::autotest::AutotestPlugin,
     ));

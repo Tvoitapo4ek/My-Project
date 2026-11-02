@@ -5,12 +5,15 @@
 use bevy::prelude::*;
 
 use super::{
-    slots::{spawn_slot, CursorStack, SlotSource, SlotView},
+    slots::{CursorStack, SlotSource, SlotView, spawn_slot},
     theme,
 };
 use crate::{
-    core::states::{gameplay_active, GameMode, InputFocus},
-    items::{inventory::{Inventory, HOTBAR, SLOTS}, ItemStack, ITEMS},
+    core::states::{GameMode, InputFocus, gameplay_active},
+    items::{
+        ITEMS, ItemStack,
+        inventory::{HOTBAR, Inventory, SLOTS},
+    },
     player::Player,
 };
 
@@ -34,7 +37,10 @@ fn open_inventory(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<In
 }
 
 fn close_inventory(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<InputFocus>>) {
-    if keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::Tab) || keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::KeyI)
+        || keys.just_pressed(KeyCode::Tab)
+        || keys.just_pressed(KeyCode::Escape)
+    {
         next.set(InputFocus::Gameplay);
     }
 }
@@ -96,7 +102,13 @@ fn spawn_screen(mut commands: Commands, mode: Res<State<GameMode>>) {
     commands.spawn((
         InventoryScreen,
         CursorIcon,
-        Node { position_type: PositionType::Absolute, width: px(26), height: px(26), border: UiRect::all(px(1)), ..default() },
+        Node {
+            position_type: PositionType::Absolute,
+            width: px(26),
+            height: px(26),
+            border: UiRect::all(px(1)),
+            ..default()
+        },
         BackgroundColor(Color::NONE),
         BorderColor::all(Color::NONE),
         GlobalZIndex(60),
@@ -145,7 +157,11 @@ fn update_cursor_and_tooltip(
             node.top = px(pos.y + 8.0);
         }
         bg.0 = cursor.0.map(|s| s.item.color()).unwrap_or(Color::NONE);
-        *border = if cursor.0.is_some() { BorderColor::all(theme::ACCENT) } else { BorderColor::all(Color::NONE) };
+        *border = if cursor.0.is_some() {
+            BorderColor::all(theme::ACCENT)
+        } else {
+            BorderColor::all(Color::NONE)
+        };
     }
     let Ok(inv) = player.single() else { return };
     let mut text = String::new();
@@ -159,11 +175,22 @@ fn update_cursor_and_tooltip(
         };
         if let Some(item) = item {
             let d = item.def();
-            text = format!("{} · {} · стопка {}\n{}", d.name, d.category.label(), d.max_stack, d.info);
+            text = format!(
+                "{} · {} · стопка {}\n{}",
+                d.name,
+                d.category.label(),
+                d.max_stack,
+                d.info
+            );
         }
     }
     if let Some(stack) = cursor.0 {
-        text = format!("В руке: {} ×{}\n{}", stack.item.def().name, stack.count, text);
+        text = format!(
+            "В руке: {} ×{}\n{}",
+            stack.item.def().name,
+            stack.count,
+            text
+        );
     }
     for mut t in &mut tooltip {
         if t.0 != text {
@@ -175,7 +202,9 @@ fn update_cursor_and_tooltip(
 /// Adds `Hovered` tracking to slots (needed for tooltips).
 fn track_hover(mut commands: Commands, added: Query<Entity, Added<SlotView>>) {
     for e in &added {
-        commands.entity(e).insert(bevy::picking::hover::Hovered::default());
+        commands
+            .entity(e)
+            .insert(bevy::picking::hover::Hovered::default());
     }
 }
 
@@ -186,7 +215,8 @@ impl Plugin for InventoryUiPlugin {
         app.add_systems(Update, open_inventory.run_if(gameplay_active))
             .add_systems(
                 Update,
-                (close_inventory, update_cursor_and_tooltip).run_if(in_state(InputFocus::Inventory)),
+                (close_inventory, update_cursor_and_tooltip)
+                    .run_if(in_state(InputFocus::Inventory)),
             )
             .add_systems(Update, track_hover)
             .add_systems(OnEnter(InputFocus::Inventory), spawn_screen)

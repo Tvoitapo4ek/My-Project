@@ -25,7 +25,10 @@ impl LocalFrame {
     /// Expresses a world-space frame in a body's local space.
     pub fn from_world(body_pos: Vec3, body_rot: Quat, anchor: Vec3, basis: Quat) -> Self {
         let inv = body_rot.inverse();
-        Self { anchor: inv * (anchor - body_pos), basis: (inv * basis).normalize() }
+        Self {
+            anchor: inv * (anchor - body_pos),
+            basis: (inv * basis).normalize(),
+        }
     }
     fn iso(self) -> Isometry3d {
         Isometry3d::new(self.anchor, self.basis)
@@ -44,10 +47,17 @@ pub struct Connection {
 /// Spawns a joint entity (Connection + Avian joint). Bodies joined together
 /// don't collide with each other.
 pub fn spawn_connection(commands: &mut Commands, c: Connection) -> Entity {
-    let mut e = commands.spawn((Name::new(format!("{:?} joint", c.kind)), JointCollisionDisabled));
+    let mut e = commands.spawn((
+        Name::new(format!("{:?} joint", c.kind)),
+        JointCollisionDisabled,
+    ));
     match c.kind {
         JointKind::Weld => {
-            e.insert(FixedJoint::new(c.a, c.b).with_local_frame1(c.frame_a.iso()).with_local_frame2(c.frame_b.iso()));
+            e.insert(
+                FixedJoint::new(c.a, c.b)
+                    .with_local_frame1(c.frame_a.iso())
+                    .with_local_frame2(c.frame_b.iso()),
+            );
         }
         JointKind::Hinge => {
             e.insert(
@@ -63,7 +73,11 @@ pub fn spawn_connection(commands: &mut Commands, c: Connection) -> Entity {
 }
 
 /// Removes joints whose bodies no longer exist.
-fn prune_dangling(mut commands: Commands, joints: Query<(Entity, &Connection)>, bodies: Query<(), With<RigidBody>>) {
+fn prune_dangling(
+    mut commands: Commands,
+    joints: Query<(Entity, &Connection)>,
+    bodies: Query<(), With<RigidBody>>,
+) {
     for (e, c) in &joints {
         if bodies.get(c.a).is_err() || bodies.get(c.b).is_err() {
             commands.entity(e).despawn();
@@ -78,7 +92,13 @@ pub fn construction_of(start: Entity, joints: &[(Entity, Entity)]) -> Vec<Entity
     while i < seen.len() {
         let cur = seen[i];
         for &(a, b) in joints {
-            let other = if a == cur { b } else if b == cur { a } else { continue };
+            let other = if a == cur {
+                b
+            } else if b == cur {
+                a
+            } else {
+                continue;
+            };
             if !seen.contains(&other) {
                 seen.push(other);
             }
@@ -98,7 +118,9 @@ fn draw_joints(
         return;
     }
     for c in &joints {
-        let Ok((pa, ra)) = bodies.get(c.a) else { continue };
+        let Ok((pa, ra)) = bodies.get(c.a) else {
+            continue;
+        };
         let p = pa.0 + ra.0 * c.frame_a.anchor;
         let color = match c.kind {
             JointKind::Weld => Color::srgb(1.0, 0.8, 0.3),

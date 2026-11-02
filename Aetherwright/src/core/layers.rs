@@ -17,4 +17,3 @@ pub enum Layer {
     Creature,
     Projectile,
 }
-

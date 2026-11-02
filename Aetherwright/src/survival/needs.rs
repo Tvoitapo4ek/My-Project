@@ -9,10 +9,16 @@ use serde::{Deserialize, Serialize};
 
 use super::damage::{Damage, DamageSource, Health};
 use crate::{
-    core::{config::GameConfig, events::Notify, resources::{EyeRay, WorldClock}, rules::ModeRules, states::gameplay_active},
-    items::{inventory::Inventory, Use},
+    core::{
+        config::GameConfig,
+        events::Notify,
+        resources::{EyeRay, WorldClock},
+        rules::ModeRules,
+        states::gameplay_active,
+    },
+    items::{Use, inventory::Inventory},
     machinery::components::{Part, PartKind},
-    player::{input::PlayerIntent, movement::CharacterState, Player},
+    player::{Player, input::PlayerIntent, movement::CharacterState},
     tools::ActiveTool,
     world::{chunks::VoxelWorld, interaction::voxel_raycast},
 };
@@ -29,7 +35,11 @@ pub struct Vitals {
 
 impl Default for Vitals {
     fn default() -> Self {
-        Self { hunger: 90.0, thirst: 90.0, body_temp: 37.0 }
+        Self {
+            hunger: 90.0,
+            thirst: 90.0,
+            body_temp: 37.0,
+        }
     }
 }
 
@@ -37,7 +47,12 @@ pub const HUNGER_PER_SEC: f32 = 100.0 / (40.0 * 60.0);
 pub const THIRST_PER_SEC: f32 = 100.0 / (30.0 * 60.0);
 
 /// Ambient temperature (°C) at a point: altitude, night, water, heat sources.
-pub fn ambient_temperature(height_above_sea: f32, daylight: f32, in_water: bool, near_heat: bool) -> f32 {
+pub fn ambient_temperature(
+    height_above_sea: f32,
+    daylight: f32,
+    in_water: bool,
+    near_heat: bool,
+) -> f32 {
     let mut t = 12.0 + daylight * 10.0 - (height_above_sea.max(0.0) * 0.25);
     if in_water {
         t -= 8.0;
@@ -56,7 +71,16 @@ fn tick_needs(
     world: Res<VoxelWorld>,
     intent: Res<PlayerIntent>,
     heat: Query<(&Transform, &Part)>,
-    mut q: Query<(Entity, &Transform, &CharacterState, &mut Vitals, &mut Health), With<Player>>,
+    mut q: Query<
+        (
+            Entity,
+            &Transform,
+            &CharacterState,
+            &mut Vitals,
+            &mut Health,
+        ),
+        With<Player>,
+    >,
     mut damage: MessageWriter<Damage>,
 ) {
     if !rules.needs {
@@ -64,25 +88,54 @@ fn tick_needs(
     }
     let dt = time.delta_secs();
     for (e, t, state, mut v, mut h) in &mut q {
-        let effort = if intent.sprint && intent.movement != Vec2::ZERO { 1.6 } else { 1.0 };
+        let effort = if intent.sprint && intent.movement != Vec2::ZERO {
+            1.6
+        } else {
+            1.0
+        };
         v.hunger = (v.hunger - HUNGER_PER_SEC * effort * dt).max(0.0);
         v.thirst = (v.thirst - THIRST_PER_SEC * effort * dt).max(0.0);
 
-        let near_heat = heat.iter().any(|(ht, p)| p.kind == PartKind::Smelter && ht.translation.distance(t.translation) < 5.0);
-        let ambient = ambient_temperature(t.translation.y - world.sea_level as f32, clock.daylight(), state.submerged > 0.3, near_heat);
+        let near_heat = heat.iter().any(|(ht, p)| {
+            p.kind == PartKind::Smelter && ht.translation.distance(t.translation) < 5.0
+        });
+        let ambient = ambient_temperature(
+            t.translation.y - world.sea_level as f32,
+            clock.daylight(),
+            state.submerged > 0.3,
+            near_heat,
+        );
         // Body drifts towards 37 °C when the ambient is comfortable, and
         // slowly towards cold/heat outside 8..30 °C.
-        let target = if ambient < 8.0 { 37.0 - (8.0 - ambient) * 0.5 } else if ambient > 30.0 { 37.0 + (ambient - 30.0) * 0.2 } else { 37.0 };
+        let target = if ambient < 8.0 {
+            37.0 - (8.0 - ambient) * 0.5
+        } else if ambient > 30.0 {
+            37.0 + (ambient - 30.0) * 0.2
+        } else {
+            37.0
+        };
         v.body_temp += (target - v.body_temp) * (dt / 60.0).min(1.0);
 
         if v.hunger <= 0.0 {
-            damage.write(Damage { target: e, amount: 0.4 * dt, source: DamageSource::Starvation });
+            damage.write(Damage {
+                target: e,
+                amount: 0.4 * dt,
+                source: DamageSource::Starvation,
+            });
         }
         if v.thirst <= 0.0 {
-            damage.write(Damage { target: e, amount: 0.5 * dt, source: DamageSource::Starvation });
+            damage.write(Damage {
+                target: e,
+                amount: 0.5 * dt,
+                source: DamageSource::Starvation,
+            });
         }
         if v.body_temp < 35.0 {
-            damage.write(Damage { target: e, amount: 0.3 * dt, source: DamageSource::Cold });
+            damage.write(Damage {
+                target: e,
+                amount: 0.3 * dt,
+                source: DamageSource::Cold,
+            });
         }
         // Regeneration when well fed.
         if v.hunger > 50.0 && v.thirst > 50.0 && h.hp < h.max {
@@ -98,12 +151,18 @@ fn eat(
     mut q: Query<(&mut Inventory, &mut Vitals, &mut Health), With<Player>>,
     mut notify: MessageWriter<Notify>,
 ) {
-    let ActiveTool::Consume(item) = *tool else { return };
+    let ActiveTool::Consume(item) = *tool else {
+        return;
+    };
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let Use::Eat(food, water) = item.def().use_ else { return };
-    let Ok((mut inv, mut v, mut h)) = q.single_mut() else { return };
+    let Use::Eat(food, water) = item.def().use_ else {
+        return;
+    };
+    let Ok((mut inv, mut v, mut h)) = q.single_mut() else {
+        return;
+    };
     if v.hunger > 98.0 && water <= 0.0 {
         notify.write(Notify::info("Вы не голодны"));
         return;
@@ -128,7 +187,9 @@ fn drink(
     if !keys.just_pressed(KeyCode::KeyE) {
         return;
     }
-    let hit = voxel_raycast(&world, eye.origin, eye.direction, cfg.player.reach, |b| b.is_liquid() || b.is_solid());
+    let hit = voxel_raycast(&world, eye.origin, eye.direction, cfg.player.reach, |b| {
+        b.is_liquid() || b.is_solid()
+    });
     if hit.is_some_and(|h| h.block.is_liquid())
         && let Ok(mut v) = q.single_mut()
     {

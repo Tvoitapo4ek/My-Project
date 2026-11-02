@@ -13,6 +13,8 @@ pub mod scenario4;
 pub mod scenario5;
 pub mod scenario6;
 pub mod scenario7;
+pub mod scenario8;
+pub mod scenario9;
 
 use bevy::{
     prelude::*,
@@ -71,7 +73,7 @@ fn run_scenario(world: &mut World) {
         return;
     };
     scenario.elapsed_total += dt;
-    if scenario.elapsed_total > 600.0 {
+    if scenario.elapsed_total > 2400.0 {
         scenario.ctx.failed.push("scenario timeout".into());
         scenario.index = scenario.steps.len();
     }
@@ -81,7 +83,21 @@ fn run_scenario(world: &mut World) {
         scenario.ctx.frames += 1;
         let (name, step) = &mut scenario.steps[idx];
         if scenario.ctx.frames == 1 {
-            info!("[AUTOTEST] step {}: {}", idx + 1, name);
+            let fps = world
+                .resource::<bevy::diagnostic::DiagnosticsStore>()
+                .get(&bevy::diagnostic::FrameTimeDiagnosticsPlugin::FPS)
+                .and_then(|d| d.smoothed())
+                .unwrap_or(0.0);
+            let entities = world.entities().count_spawned();
+            let bodies = world
+                .query::<&avian3d::prelude::RigidBody>()
+                .iter(world)
+                .count();
+            info!(
+                "[AUTOTEST] step {}: {}  (fps {fps:.1}, entities {entities}, bodies {bodies})",
+                idx + 1,
+                name
+            );
         }
         let result = step(world, &mut scenario.ctx);
         if matches!(result, Step::Next) {

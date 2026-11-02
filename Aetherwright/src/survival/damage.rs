@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     core::{events::Notify, resources::SpawnPoint, rules::ModeRules},
-    player::{movement::CharacterState, Player},
+    player::{Player, movement::CharacterState},
 };
 
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
@@ -19,7 +19,11 @@ pub struct Health {
 
 impl Health {
     pub fn new(max: f32) -> Self {
-        Self { hp: max, max, invulnerable: 0.0 }
+        Self {
+            hp: max,
+            max,
+            invulnerable: 0.0,
+        }
     }
 }
 
@@ -52,11 +56,17 @@ fn apply_damage(
     mut died: MessageWriter<Died>,
 ) {
     for d in reader.read() {
-        let Ok((mut h, is_player)) = q.get_mut(d.target) else { continue };
+        let Ok((mut h, is_player)) = q.get_mut(d.target) else {
+            continue;
+        };
         if is_player && !rules.player_damage {
             continue;
         }
-        if h.hp <= 0.0 || (h.invulnerable > 0.0 && d.source != DamageSource::Starvation && d.source != DamageSource::Cold) {
+        if h.hp <= 0.0
+            || (h.invulnerable > 0.0
+                && d.source != DamageSource::Starvation
+                && d.source != DamageSource::Cold)
+        {
             continue;
         }
         h.hp = (h.hp - d.amount).max(0.0);
@@ -85,7 +95,11 @@ fn fall(mut q: Query<(Entity, &mut CharacterState)>, mut out: MessageWriter<Dama
         if let Some(v) = s.landed_with_speed.take() {
             let dmg = fall_damage(v);
             if dmg > 0.0 {
-                out.write(Damage { target: e, amount: dmg, source: DamageSource::Fall });
+                out.write(Damage {
+                    target: e,
+                    amount: dmg,
+                    source: DamageSource::Fall,
+                });
             }
         }
     }
@@ -95,7 +109,15 @@ fn fall(mut q: Query<(Entity, &mut CharacterState)>, mut out: MessageWriter<Dama
 fn player_death(
     mut died: MessageReader<Died>,
     spawn: Res<SpawnPoint>,
-    mut q: Query<(&mut Health, &mut avian3d::prelude::Position, &mut avian3d::prelude::LinearVelocity, Option<&mut super::needs::Vitals>), With<Player>>,
+    mut q: Query<
+        (
+            &mut Health,
+            &mut avian3d::prelude::Position,
+            &mut avian3d::prelude::LinearVelocity,
+            Option<&mut super::needs::Vitals>,
+        ),
+        With<Player>,
+    >,
     mut notify: MessageWriter<Notify>,
 ) {
     for d in died.read() {
@@ -119,7 +141,10 @@ impl Plugin for DamagePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Damage>()
             .add_message::<Died>()
-            .add_systems(Update, (fall, apply_damage, player_death, tick_invulnerability).chain());
+            .add_systems(
+                Update,
+                (fall, apply_damage, player_death, tick_invulnerability).chain(),
+            );
     }
 }
 

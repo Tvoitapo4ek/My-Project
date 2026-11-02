@@ -73,7 +73,10 @@ pub fn sample_field(sources: &[(Vec3, AetherKind, f32)], p: Vec3) -> FieldSample
         .max_by(|a, b| by_kind[*a as usize].total_cmp(&by_kind[*b as usize]))
         .filter(|k| by_kind[*k as usize] > 0.0)
         .unwrap_or_default();
-    FieldSample { strength: total, kind }
+    FieldSample {
+        strength: total,
+        kind,
+    }
 }
 
 #[cfg(test)]
@@ -82,7 +85,10 @@ mod tests {
 
     #[test]
     fn field_falls_off_and_picks_kind() {
-        let src = [(Vec3::ZERO, AetherKind::Agitated, 3.0), (Vec3::new(10.0, 0.0, 0.0), AetherKind::Calm, 1.0)];
+        let src = [
+            (Vec3::ZERO, AetherKind::Agitated, 3.0),
+            (Vec3::new(10.0, 0.0, 0.0), AetherKind::Calm, 1.0),
+        ];
         let near = sample_field(&src, Vec3::new(0.5, 0.0, 0.0));
         let far = sample_field(&src, Vec3::new(5.0, 0.0, 0.0));
         let nowhere = sample_field(&src, Vec3::new(100.0, 0.0, 0.0));

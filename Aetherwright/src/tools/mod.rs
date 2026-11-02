@@ -15,7 +15,10 @@ use bevy::{
 
 use crate::{
     core::{config::GameConfig, layers::Layer, resources::EyeRay, states::gameplay_active},
-    items::{inventory::{Inventory, HOTBAR}, ItemId, Use},
+    items::{
+        ItemId, Use,
+        inventory::{HOTBAR, Inventory},
+    },
     player::Player,
     world::{interaction::BlockTarget, voxel::BlockId},
 };
@@ -40,7 +43,13 @@ pub enum ActiveTool {
 impl ActiveTool {
     /// Tools whose left button mines blocks.
     pub fn mines(self) -> bool {
-        matches!(self, ActiveTool::Hand | ActiveTool::Manipulator | ActiveTool::PlaceBlock(..) | ActiveTool::Inert(_))
+        matches!(
+            self,
+            ActiveTool::Hand
+                | ActiveTool::Manipulator
+                | ActiveTool::PlaceBlock(..)
+                | ActiveTool::Inert(_)
+        )
     }
 }
 
@@ -64,7 +73,9 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
         None => ActiveTool::Hand,
         Some(item) => match item.def().use_ {
             Use::Manipulator => ActiveTool::Manipulator,
-            Use::Block(_) => item.block().map_or(ActiveTool::Inert(item), |b| ActiveTool::PlaceBlock(item, b)),
+            Use::Block(_) => item
+                .block()
+                .map_or(ActiveTool::Inert(item), |b| ActiveTool::PlaceBlock(item, b)),
             Use::Part(_) => ActiveTool::PlacePart(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
@@ -87,10 +98,19 @@ fn hotbar_input(
     mut player: Query<&mut Inventory, With<Player>>,
     mut accum: Local<f32>,
 ) {
-    let Ok(mut inv) = player.single_mut() else { return };
+    let Ok(mut inv) = player.single_mut() else {
+        return;
+    };
     const DIGITS: [KeyCode; HOTBAR] = [
-        KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5,
-        KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9,
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
     ];
     for (i, k) in DIGITS.iter().enumerate() {
         if keys.just_pressed(*k) {
@@ -124,7 +144,9 @@ pub fn update_entity_target(
     mut target: ResMut<EntityTarget>,
 ) {
     *target = EntityTarget::default();
-    let Ok(dir) = Dir3::new(eye.direction) else { return };
+    let Ok(dir) = Dir3::new(eye.direction) else {
+        return;
+    };
     let mut filter = SpatialQueryFilter::from_mask([Layer::Prop, Layer::Creature, Layer::Item]);
     if let Ok(p) = player.single() {
         filter = filter.with_excluded_entities([p]);

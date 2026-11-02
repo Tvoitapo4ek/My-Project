@@ -7,7 +7,10 @@
 
 use bevy::math::{IVec3, Vec2};
 
-use super::{chunks::ChunkData, voxel::{blocks, BlockId}};
+use super::{
+    chunks::ChunkData,
+    voxel::{BlockId, blocks},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GenParams {
@@ -32,7 +35,11 @@ fn hash(mut x: u32) -> u32 {
 
 #[inline]
 pub fn hash2(seed: u32, x: i32, z: i32) -> u32 {
-    hash(seed ^ hash((x as u32).wrapping_mul(0x9E37_79B1) ^ hash(z as u32).wrapping_add(0x632B_E5AB)))
+    hash(
+        seed ^ hash(
+            (x as u32).wrapping_mul(0x9E37_79B1) ^ hash(z as u32).wrapping_add(0x632B_E5AB),
+        ),
+    )
 }
 
 #[inline]
@@ -62,7 +69,11 @@ pub fn noise2(seed: u32, x: f32, z: f32) -> f32 {
 
 pub fn noise3(seed: u32, x: f32, y: f32, z: f32) -> f32 {
     let (xi, yi, zi) = (x.floor() as i32, y.floor() as i32, z.floor() as i32);
-    let (fx, fy, fz) = (smooth(x - xi as f32), smooth(y - yi as f32), smooth(z - zi as f32));
+    let (fx, fy, fz) = (
+        smooth(x - xi as f32),
+        smooth(y - yi as f32),
+        smooth(z - zi as f32),
+    );
     let v = |dx, dy, dz| unit(hash3(seed, xi + dx, yi + dy, zi + dz));
     let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
     let x00 = lerp(v(0, 0, 0), v(1, 0, 0), fx);
@@ -107,10 +118,13 @@ pub fn height_at(p: &GenParams, x: i32, z: i32) -> i32 {
     let base = fbm2(p.seed, fx / 52.0, fz / 52.0, 4);
     let hills = fbm2(p.seed ^ 0xA5A5, fx / 23.0, fz / 23.0, 3);
     let mountains = (1.0 - fbm2(p.seed ^ 0x5151, fx / 70.0, fz / 70.0, 3).abs()).powi(3);
-    let mask = smooth(((fbm2(p.seed ^ 0x77, fx / 90.0, fz / 90.0, 2) + 0.15) * 1.6).clamp(0.0, 1.0));
+    let mask =
+        smooth(((fbm2(p.seed ^ 0x77, fx / 90.0, fz / 90.0, 2) + 0.15) * 1.6).clamp(0.0, 1.0));
     // Lake basins: smooth depressions that dip below sea level.
-    let lake = smooth(((-fbm2(p.seed ^ 0x1A4E, fx / 42.0, fz / 42.0, 2) - 0.1) * 3.0).clamp(0.0, 1.0));
-    let mut h = p.sea_level as f32 + 5.0 + base * 9.0 + hills * 2.5 + mountains * mask * 20.0 - lake * 11.0;
+    let lake =
+        smooth(((-fbm2(p.seed ^ 0x1A4E, fx / 42.0, fz / 42.0, 2) - 0.1) * 3.0).clamp(0.0, 1.0));
+    let mut h =
+        p.sea_level as f32 + 5.0 + base * 9.0 + hills * 2.5 + mountains * mask * 20.0 - lake * 11.0;
 
     // Flatten a clearing around the spire and anomaly so they read clearly.
     let s = sites(p);
@@ -142,7 +156,12 @@ fn is_cave(p: &GenParams, x: i32, y: i32, z: i32, surface: i32) -> bool {
 
 fn ore_at(p: &GenParams, x: i32, y: i32, z: i32) -> Option<BlockId> {
     let cluster = |salt: u32, scale: f32, threshold: f32| {
-        noise3(p.seed ^ salt, x as f32 / scale, y as f32 / scale, z as f32 / scale) > threshold
+        noise3(
+            p.seed ^ salt,
+            x as f32 / scale,
+            y as f32 / scale,
+            z as f32 / scale,
+        ) > threshold
     };
     if y < p.sea_level + 10 && cluster(0x1111, 4.0, 0.62) {
         return Some(blocks::COAL_ORE);
@@ -175,13 +194,22 @@ fn site_block(p: &GenParams, s: &Sites, x: i32, y: i32, z: i32) -> Option<BlockI
         }
     }
     if hy == 0 && ds < 9.0 {
-        return Some(if ds < 3.5 { blocks::ANCIENT_STONE } else { blocks::MOSS_STONE });
+        return Some(if ds < 3.5 {
+            blocks::ANCIENT_STONE
+        } else {
+            blocks::MOSS_STONE
+        });
     }
     if (1..=4).contains(&hy) && (8.0..9.2).contains(&ds) {
         // Eight broken pillars.
         let ang = (v.y - s.spire.y).atan2(v.x - s.spire.x);
         let sector = ((ang / std::f32::consts::TAU * 8.0).rem_euclid(1.0) - 0.5).abs();
-        let pillar_height = 2 + (hash2(p.seed, (ang * 8.0 / std::f32::consts::TAU).round() as i32, 7) % 3) as i32;
+        let pillar_height = 2
+            + (hash2(
+                p.seed,
+                (ang * 8.0 / std::f32::consts::TAU).round() as i32,
+                7,
+            ) % 3) as i32;
         if sector > 0.38 && hy <= pillar_height {
             return Some(blocks::ANCIENT_STONE);
         }
@@ -211,7 +239,8 @@ struct Column {
 
 fn column(p: &GenParams, x: i32, z: i32) -> Column {
     let h = height_at(p, x, z);
-    let rocky = fbm2(p.seed ^ 0x9999, x as f32 / 40.0, z as f32 / 40.0, 2) > 0.32 || h > p.sea_level + 22;
+    let rocky =
+        fbm2(p.seed ^ 0x9999, x as f32 / 40.0, z as f32 / 40.0, 2) > 0.32 || h > p.sea_level + 22;
     let (surface, sub) = if h <= p.sea_level + 1 {
         if fbm2(p.seed ^ 0x6060, x as f32 / 12.0, z as f32 / 12.0, 2) > 0.2 {
             (blocks::CLAY, blocks::SAND)
@@ -219,11 +248,20 @@ fn column(p: &GenParams, x: i32, z: i32) -> Column {
             (blocks::SAND, blocks::SAND)
         }
     } else if rocky {
-        if unit(hash2(p.seed ^ 3, x, z)) < 0.3 { (blocks::MOSS_STONE, blocks::STONE) } else { (blocks::STONE, blocks::STONE) }
+        if unit(hash2(p.seed ^ 3, x, z)) < 0.3 {
+            (blocks::MOSS_STONE, blocks::STONE)
+        } else {
+            (blocks::STONE, blocks::STONE)
+        }
     } else {
         (blocks::GRASS, blocks::DIRT)
     };
-    Column { h, surface, sub, rocky }
+    Column {
+        h,
+        surface,
+        sub,
+        rocky,
+    }
 }
 
 /// Tree root at this column? Returns trunk height.
@@ -266,7 +304,11 @@ pub fn generate_chunk(p: &GenParams, cc: IVec3) -> ChunkData {
                 } else if y == 0 {
                     blocks::BEDROCK
                 } else if y > col.h {
-                    if y <= p.sea_level { blocks::WATER } else { blocks::AIR }
+                    if y <= p.sea_level {
+                        blocks::WATER
+                    } else {
+                        blocks::AIR
+                    }
                 } else if is_cave(p, x, y, z, col.h) {
                     if y <= 6 { blocks::WATER } else { blocks::AIR }
                 } else if y == col.h {
@@ -286,7 +328,10 @@ pub fn generate_chunk(p: &GenParams, cc: IVec3) -> ChunkData {
             }
             // Ground plants.
             let ly = col.h + 1 - origin.y;
-            if col.surface == blocks::GRASS && (0..n).contains(&ly) && site_block(p, &s, x, col.h + 1, z).is_none() {
+            if col.surface == blocks::GRASS
+                && (0..n).contains(&ly)
+                && site_block(p, &s, x, col.h + 1, z).is_none()
+            {
                 let r = unit(hash2(p.seed ^ 0x5EED, x, z));
                 let plant = if r < 0.10 {
                     Some(blocks::TALL_GRASS)
@@ -307,7 +352,9 @@ pub fn generate_chunk(p: &GenParams, cc: IVec3) -> ChunkData {
     const R: i32 = 3;
     for z in origin.z - R..origin.z + n + R {
         for x in origin.x - R..origin.x + n + R {
-            let Some(trunk) = tree_at(p, &s, x, z) else { continue };
+            let Some(trunk) = tree_at(p, &s, x, z) else {
+                continue;
+            };
             let base = height_at(p, x, z) + 1;
             let top = base + trunk;
             let mut put = |wp: IVec3, b: BlockId, force: bool| {
@@ -324,7 +371,9 @@ pub fn generate_chunk(p: &GenParams, cc: IVec3) -> ChunkData {
                 for dz in -radius..=radius {
                     for dx in -radius..=radius {
                         let corner = dx.abs() == radius && dz.abs() == radius;
-                        if corner && (dy == 1 || unit(hash3(p.seed, x + dx, top + dy, z + dz)) < 0.5) {
+                        if corner
+                            && (dy == 1 || unit(hash3(p.seed, x + dx, top + dy, z + dz)) < 0.5)
+                        {
                             continue;
                         }
                         put(IVec3::new(x + dx, top + dy, z + dz), blocks::LEAVES, false);
@@ -344,28 +393,39 @@ mod tests {
     use super::*;
 
     fn params() -> GenParams {
-        GenParams { seed: 42, chunk_size: 16, size: IVec3::new(160, 80, 160), sea_level: 22 }
+        GenParams {
+            seed: 42,
+            chunk_size: 16,
+            size: IVec3::new(160, 80, 160),
+            sea_level: 22,
+        }
     }
 
     #[test]
     fn deterministic() {
         let p = params();
-        assert_eq!(generate_chunk(&p, IVec3::new(2, 1, 3)), generate_chunk(&p, IVec3::new(2, 1, 3)));
+        assert_eq!(
+            generate_chunk(&p, IVec3::new(2, 1, 3)),
+            generate_chunk(&p, IVec3::new(2, 1, 3))
+        );
     }
 
     #[test]
     fn has_lakes() {
         for seed in [42, 1337, 7] {
-        let p = GenParams { seed, ..params() };
-        let mut deep = 0;
-        for z in 0..p.size.z {
-            for x in 0..p.size.x {
-                if height_at(&p, x, z) <= p.sea_level - 2 {
-                    deep += 1;
+            let p = GenParams { seed, ..params() };
+            let mut deep = 0;
+            for z in 0..p.size.z {
+                for x in 0..p.size.x {
+                    if height_at(&p, x, z) <= p.sea_level - 2 {
+                        deep += 1;
+                    }
                 }
             }
-        }
-        assert!(deep > 150, "seed {seed}: only {deep} columns with ≥ 3 m of water");
+            assert!(
+                deep > 150,
+                "seed {seed}: only {deep} columns with ≥ 3 m of water"
+            );
         }
     }
 
@@ -392,11 +452,26 @@ mod tests {
             }
         }
         for b in [
-            blocks::GRASS, blocks::STONE, blocks::WATER, blocks::LOG, blocks::LEAVES, blocks::IRON_ORE,
-            blocks::COAL_ORE, blocks::COPPER_ORE, blocks::AETHER_CRYSTAL, blocks::AGITATED_CRYSTAL,
-            blocks::TALL_GRASS, blocks::BERRY_BUSH, blocks::BEDROCK, blocks::ANCIENT_STONE,
+            blocks::GRASS,
+            blocks::STONE,
+            blocks::WATER,
+            blocks::LOG,
+            blocks::LEAVES,
+            blocks::IRON_ORE,
+            blocks::COAL_ORE,
+            blocks::COPPER_ORE,
+            blocks::AETHER_CRYSTAL,
+            blocks::AGITATED_CRYSTAL,
+            blocks::TALL_GRASS,
+            blocks::BERRY_BUSH,
+            blocks::BEDROCK,
+            blocks::ANCIENT_STONE,
         ] {
-            assert!(counts.get(&b).copied().unwrap_or(0) > 0, "missing {}", b.def().key);
+            assert!(
+                counts.get(&b).copied().unwrap_or(0) > 0,
+                "missing {}",
+                b.def().key
+            );
         }
     }
 }

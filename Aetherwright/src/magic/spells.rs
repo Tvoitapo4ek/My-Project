@@ -11,9 +11,14 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::{energy::AetherKind, sources::{AetherSources, AetherStore}};
+use super::{
+    energy::AetherKind,
+    sources::{AetherSources, AetherStore},
+};
 use crate::{
-    core::{events::Notify, layers::Layer, resources::EyeRay, rules::ModeRules, states::gameplay_active},
+    core::{
+        events::Notify, layers::Layer, resources::EyeRay, rules::ModeRules, states::gameplay_active,
+    },
     machinery::components::PowerCell,
     player::Player,
     tools::{ActiveTool, EntityTarget},
@@ -27,7 +32,10 @@ pub struct AetherReserve {
 
 impl Default for AetherReserve {
     fn default() -> Self {
-        Self { amount: 60.0, max: 100.0 }
+        Self {
+            amount: 60.0,
+            max: 100.0,
+        }
     }
 }
 
@@ -103,10 +111,20 @@ impl VfxAssets {
     }
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     let mut glow = |k: AetherKind| {
         let c = k.color();
-        materials.add(StandardMaterial { base_color: c.with_alpha(0.7), emissive: c.to_linear() * 6.0, alpha_mode: AlphaMode::Add, unlit: true, ..default() })
+        materials.add(StandardMaterial {
+            base_color: c.with_alpha(0.7),
+            emissive: c.to_linear() * 6.0,
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            ..default()
+        })
     };
     commands.insert_resource(VfxAssets {
         mesh: meshes.add(Sphere::new(0.12).mesh().ico(1).unwrap()),
@@ -116,7 +134,15 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     });
 }
 
-pub fn burst(commands: &mut Commands, assets_mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, at: Vec3, dir: Vec3, n: usize, spread: f32) {
+pub fn burst(
+    commands: &mut Commands,
+    assets_mesh: Handle<Mesh>,
+    mat: Handle<StandardMaterial>,
+    at: Vec3,
+    dir: Vec3,
+    n: usize,
+    spread: f32,
+) {
     for i in 0..n {
         let a = i as f32 * 2.399;
         let side = Vec3::new(a.cos(), (i as f32 * 0.7).sin(), a.sin()) * spread;
@@ -124,14 +150,22 @@ pub fn burst(commands: &mut Commands, assets_mesh: Handle<Mesh>, mat: Handle<Sta
             Mesh3d(assets_mesh.clone()),
             MeshMaterial3d(mat.clone()),
             Transform::from_translation(at),
-            Vfx { ttl: 0.6, velocity: dir * 9.0 + side * 4.0, grow: 1.5 },
+            Vfx {
+                ttl: 0.6,
+                velocity: dir * 9.0 + side * 4.0,
+                grow: 1.5,
+            },
             bevy::light::NotShadowCaster,
         ));
     }
 }
 
 /// Regenerates the reserve from the local field.
-fn regenerate(time: Res<Time>, sources: Res<AetherSources>, mut q: Query<(&Transform, &mut AetherReserve), With<Player>>) {
+fn regenerate(
+    time: Res<Time>,
+    sources: Res<AetherSources>,
+    mut q: Query<(&Transform, &mut AetherReserve), With<Player>>,
+) {
     for (t, mut r) in &mut q {
         let f = sources.sample(t.translation);
         r.amount = (r.amount + (0.8 + f.strength * 2.0) * time.delta_secs()).min(r.max);
@@ -153,7 +187,10 @@ fn cast(
     spatial: SpatialQuery,
     mut state: ResMut<SpellState>,
     mut player: Query<(Entity, &mut AetherReserve), With<Player>>,
-    phys: (Query<(&RigidBody, &Position, &ComputedMass)>, ResMut<crate::physics::impulses::ImpulseQueue>),
+    phys: (
+        Query<(&RigidBody, &Position, &ComputedMass)>,
+        ResMut<crate::physics::impulses::ImpulseQueue>,
+    ),
     mut targets: (Query<&mut PowerCell>, Query<&mut AetherStore>),
     mut out: (MessageWriter<MagicHit>, MessageWriter<Notify>),
 ) {
@@ -165,31 +202,51 @@ fn cast(
         return;
     }
     if keys.just_pressed(KeyCode::KeyQ) {
-        let i = Spell::ALL.iter().position(|s| *s == state.selected).unwrap_or(0);
+        let i = Spell::ALL
+            .iter()
+            .position(|s| *s == state.selected)
+            .unwrap_or(0);
         state.selected = Spell::ALL[(i + 1) % Spell::ALL.len()];
-        notify.write(Notify::info(format!("Заклинание: {}", state.selected.label())));
+        notify.write(Notify::info(format!(
+            "Заклинание: {}",
+            state.selected.label()
+        )));
     }
     if !mouse.just_pressed(MouseButton::Left) || state.cooldown > 0.0 {
         return;
     }
-    let Ok((player_e, mut reserve)) = player.single_mut() else { return };
+    let Ok((player_e, mut reserve)) = player.single_mut() else {
+        return;
+    };
     let spell = state.selected;
     if rules.consume_items && reserve.amount < spell.cost() {
         notify.write(Notify::warn("Недостаточно эфира"));
         return;
     }
     let field = sources.sample(eye.origin);
-    let kind = if field.strength > super::energy::BACKGROUND * 1.5 { field.kind } else { AetherKind::Calm };
+    let kind = if field.strength > super::energy::BACKGROUND * 1.5 {
+        field.kind
+    } else {
+        AetherKind::Calm
+    };
     // Stronger fields amplify spells.
     let power = 1.0 + (field.strength - super::energy::BACKGROUND).max(0.0) * 0.5;
     let mat = vfx.mat(kind);
     let hand = eye.origin + eye.direction * 0.7 - Vec3::Y * 0.2;
     match spell {
         Spell::Impulse => {
-            let filter = SpatialQueryFilter::from_mask([Layer::Prop, Layer::Creature, Layer::Item]).with_excluded_entities([player_e]);
-            let hits_in = spatial.shape_intersections(&Collider::sphere(8.0), eye.origin, Quat::IDENTITY, &filter);
+            let filter = SpatialQueryFilter::from_mask([Layer::Prop, Layer::Creature, Layer::Item])
+                .with_excluded_entities([player_e]);
+            let hits_in = spatial.shape_intersections(
+                &Collider::sphere(8.0),
+                eye.origin,
+                Quat::IDENTITY,
+                &filter,
+            );
             for e in hits_in {
-                let Ok((rb, p, mass)) = bodies.get(e) else { continue };
+                let Ok((rb, p, mass)) = bodies.get(e) else {
+                    continue;
+                };
                 if !rb.is_dynamic() {
                     continue;
                 }
@@ -202,7 +259,11 @@ fn cast(
                 let m = mass.value().max(1.0);
                 let impulse = (900.0 * power * (1.0 - d / 9.0)).min(25.0 * m);
                 impulses.push(e, (to.normalize_or_zero() + Vec3::Y * 0.3) * impulse / m);
-                hits.write(MagicHit { target: e, damage: 8.0 * power, kind });
+                hits.write(MagicHit {
+                    target: e,
+                    damage: 8.0 * power,
+                    kind,
+                });
             }
         }
         Spell::Levitate => {
@@ -211,7 +272,15 @@ fn cast(
                 return;
             };
             commands.entity(e).insert(Levitating { ttl: 6.0 * power });
-            burst(&mut commands, vfx.mesh.clone(), mat, target.point, Vec3::Y * 0.3, 10, 0.6);
+            burst(
+                &mut commands,
+                vfx.mesh.clone(),
+                mat,
+                target.point,
+                Vec3::Y * 0.3,
+                10,
+                0.6,
+            );
         }
         Spell::Discharge => {
             let Some(e) = target.entity else {
@@ -221,11 +290,18 @@ fn cast(
             let amount = 40.0 * power * kind.potency();
             if let Ok(mut c) = cells.get_mut(e) {
                 c.energy = (c.energy + amount).min(c.capacity);
-                notify.write(Notify::ok(format!("Энергоячейка заряжена: {:.0}/{:.0}", c.energy, c.capacity)));
+                notify.write(Notify::ok(format!(
+                    "Энергоячейка заряжена: {:.0}/{:.0}",
+                    c.energy, c.capacity
+                )));
             } else if let Ok(mut s) = stores.get_mut(e) {
                 s.amount = (s.amount + amount * 0.5).min(s.capacity);
             } else {
-                hits.write(MagicHit { target: e, damage: 30.0 * power, kind });
+                hits.write(MagicHit {
+                    target: e,
+                    damage: 30.0 * power,
+                    kind,
+                });
             }
             let dir = (target.point - hand).normalize_or_zero();
             let n = (target.distance * 3.0) as usize;
@@ -235,7 +311,11 @@ fn cast(
                     Mesh3d(vfx.mesh.clone()),
                     MeshMaterial3d(vfx.mat(kind)),
                     Transform::from_translation(p),
-                    Vfx { ttl: 0.35, velocity: Vec3::ZERO, grow: -1.0 },
+                    Vfx {
+                        ttl: 0.35,
+                        velocity: Vec3::ZERO,
+                        grow: -1.0,
+                    },
                 ));
             }
         }
@@ -246,7 +326,12 @@ fn cast(
     state.cooldown = 0.35;
 }
 
-fn levitate(mut commands: Commands, time: Res<Time>, gravity: Res<Gravity>, mut q: Query<(Entity, &mut Levitating, &mut LinearVelocity, &RigidBody)>) {
+fn levitate(
+    mut commands: Commands,
+    time: Res<Time>,
+    gravity: Res<Gravity>,
+    mut q: Query<(Entity, &mut Levitating, &mut LinearVelocity, &RigidBody)>,
+) {
     let dt = time.delta_secs();
     for (e, mut l, mut v, rb) in &mut q {
         l.ttl -= dt;
@@ -267,12 +352,23 @@ fn levitate_vfx(q: Query<&Position, With<Levitating>>, time: Res<Time>, mut gizm
     for p in &q {
         for i in 0..3 {
             let a = t * 2.0 + i as f32 * 2.09;
-            gizmos.circle(Isometry3d::new(p.0 - Vec3::Y * (0.6 + i as f32 * 0.15), Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), 0.5 + 0.1 * a.sin(), AetherKind::Calm.color());
+            gizmos.circle(
+                Isometry3d::new(
+                    p.0 - Vec3::Y * (0.6 + i as f32 * 0.15),
+                    Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                ),
+                0.5 + 0.1 * a.sin(),
+                AetherKind::Calm.color(),
+            );
         }
     }
 }
 
-fn update_vfx(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Transform, &mut Vfx)>) {
+fn update_vfx(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Transform, &mut Vfx)>,
+) {
     let dt = time.delta_secs();
     for (e, mut t, mut v) in &mut q {
         v.ttl -= dt;
@@ -293,8 +389,15 @@ impl Plugin for SpellsPlugin {
         app.init_resource::<SpellState>()
             .add_message::<MagicHit>()
             .add_systems(Startup, setup)
-            .add_systems(Update, cast.after(crate::tools::update_entity_target).run_if(gameplay_active))
-            .add_systems(Update, (regenerate, levitate_vfx, update_vfx).run_if(crate::core::states::in_game))
+            .add_systems(
+                Update,
+                cast.after(crate::tools::update_entity_target)
+                    .run_if(gameplay_active),
+            )
+            .add_systems(
+                Update,
+                (regenerate, levitate_vfx, update_vfx).run_if(crate::core::states::in_game),
+            )
             .add_systems(FixedUpdate, levitate);
     }
 }

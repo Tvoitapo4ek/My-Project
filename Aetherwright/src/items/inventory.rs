@@ -16,7 +16,10 @@ pub struct Inventory {
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: vec![None; SLOTS], selected: 0 }
+        Self {
+            slots: vec![None; SLOTS],
+            selected: 0,
+        }
     }
 }
 
@@ -57,7 +60,12 @@ impl Inventory {
     }
 
     pub fn count(&self, item: ItemId) -> u32 {
-        self.slots.iter().flatten().filter(|s| s.item == item).map(|s| s.count).sum()
+        self.slots
+            .iter()
+            .flatten()
+            .filter(|s| s.item == item)
+            .map(|s| s.count)
+            .sum()
     }
 
     /// Removes `count` items if available (all-or-nothing).
@@ -100,7 +108,9 @@ impl Inventory {
     /// Click on a slot while carrying `cursor` (classic grid interaction):
     /// empty cursor picks the stack up, same item merges, otherwise swaps.
     pub fn click_slot(&mut self, slot: usize, cursor: &mut Option<ItemStack>) {
-        let Some(target) = self.slots.get_mut(slot) else { return };
+        let Some(target) = self.slots.get_mut(slot) else {
+            return;
+        };
         match (target.as_mut(), cursor.as_mut()) {
             (Some(t), Some(c)) if t.item == c.item => {
                 let max = t.item.def().max_stack;
@@ -117,7 +127,9 @@ impl Inventory {
 
     /// Right click: split half off, or drop a single item from the cursor.
     pub fn right_click_slot(&mut self, slot: usize, cursor: &mut Option<ItemStack>) {
-        let Some(target) = self.slots.get_mut(slot) else { return };
+        let Some(target) = self.slots.get_mut(slot) else {
+            return;
+        };
         match (target.as_mut(), cursor.as_mut()) {
             (Some(t), None) => {
                 let half = t.count.div_ceil(2);
@@ -197,7 +209,11 @@ mod tests {
         assert_eq!(inv.slots[0].unwrap().count, 64);
         assert_eq!(inv.slots[1].unwrap().count, 36);
         assert_eq!(inv.add(stone, 10), 0);
-        assert_eq!(inv.slots[1].unwrap().count, 46, "existing stack filled first");
+        assert_eq!(
+            inv.slots[1].unwrap().count,
+            46,
+            "existing stack filled first"
+        );
         assert_eq!(inv.count(stone), 110);
     }
 
@@ -244,7 +260,10 @@ mod tests {
     fn saved_roundtrip_skips_unknown() {
         let inv = starter_inventory();
         let mut saved = inv.to_saved();
-        saved[20] = Some(SavedStack { item: "removed_item".into(), count: 3 });
+        saved[20] = Some(SavedStack {
+            item: "removed_item".into(),
+            count: 3,
+        });
         let back = Inventory::from_saved(&saved, 2);
         assert_eq!(back.slots[..20], inv.slots[..20]);
         assert!(back.slots[20].is_none());

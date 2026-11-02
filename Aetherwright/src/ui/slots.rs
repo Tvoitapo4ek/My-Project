@@ -8,7 +8,7 @@ use bevy::{picking::pointer::PointerButton, prelude::*};
 use super::theme;
 use crate::{
     core::states::InputFocus,
-    items::{inventory::Inventory, ItemId, ItemStack, ITEMS},
+    items::{ITEMS, ItemId, ItemStack, inventory::Inventory},
     player::Player,
 };
 
@@ -64,14 +64,34 @@ pub fn spawn_slot(parent: &mut ChildSpawnerCommands, source: SlotSource, hotbar:
         ))
         .observe(on_slot_click)
         .with_children(|s| {
-            s.spawn((SlotIcon, Node { width: px(18), height: px(18), ..default() }, BackgroundColor(Color::NONE), Pickable::IGNORE));
-            s.spawn((SlotLabel, Text::new(""), theme::font(10.0), TextColor(theme::TEXT), Pickable::IGNORE));
+            s.spawn((
+                SlotIcon,
+                Node {
+                    width: px(18),
+                    height: px(18),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Pickable::IGNORE,
+            ));
+            s.spawn((
+                SlotLabel,
+                Text::new(""),
+                theme::font(10.0),
+                TextColor(theme::TEXT),
+                Pickable::IGNORE,
+            ));
             s.spawn((
                 SlotCount,
                 Text::new(""),
                 theme::font(11.0),
                 TextColor(theme::ACCENT),
-                Node { position_type: PositionType::Absolute, right: px(3), top: px(1), ..default() },
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: px(3),
+                    top: px(1),
+                    ..default()
+                },
                 Pickable::IGNORE,
             ));
         });
@@ -88,8 +108,12 @@ fn on_slot_click(
     if *focus.get() != InputFocus::Inventory {
         return;
     }
-    let Ok(view) = views.get(ev.event_target()) else { return };
-    let Ok(mut inv) = player.single_mut() else { return };
+    let Ok(view) = views.get(ev.event_target()) else {
+        return;
+    };
+    let Ok(mut inv) = player.single_mut() else {
+        return;
+    };
     match view.source {
         SlotSource::Player(i) => {
             let shift = keys.pressed(KeyCode::ShiftLeft);
@@ -121,7 +145,11 @@ fn on_slot_click(
         }
         SlotSource::Catalog(k) => {
             let item = ItemId(k as u16);
-            let n = if ev.button == PointerButton::Secondary { 1 } else { item.def().max_stack };
+            let n = if ev.button == PointerButton::Secondary {
+                1
+            } else {
+                item.def().max_stack
+            };
             cursor.0 = Some(ItemStack::new(item, n));
         }
     }
@@ -138,14 +166,25 @@ fn refresh_slots(
     for (view, children, mut border, mut bg) in views {
         let stack = match view.source {
             SlotSource::Player(i) => inv.slots.get(i).copied().flatten(),
-            SlotSource::Catalog(k) => (k < ITEMS.len()).then(|| ItemStack::new(ItemId(k as u16), 0)),
+            SlotSource::Catalog(k) => {
+                (k < ITEMS.len()).then(|| ItemStack::new(ItemId(k as u16), 0))
+            }
         };
-        let selected = view.hotbar && matches!(view.source, SlotSource::Player(i) if i == inv.selected);
-        let want_border = if selected { BorderColor::all(theme::ACCENT) } else { BorderColor::all(theme::PANEL_BORDER) };
+        let selected =
+            view.hotbar && matches!(view.source, SlotSource::Player(i) if i == inv.selected);
+        let want_border = if selected {
+            BorderColor::all(theme::ACCENT)
+        } else {
+            BorderColor::all(theme::PANEL_BORDER)
+        };
         if *border != want_border {
             *border = want_border;
         }
-        bg.0 = if selected { Color::srgba(0.1, 0.3, 0.4, 0.7) } else { theme::PANEL_BG };
+        bg.0 = if selected {
+            Color::srgba(0.1, 0.3, 0.4, 0.7)
+        } else {
+            theme::PANEL_BG
+        };
         for child in children.iter() {
             if let Ok(mut icon) = icons.get_mut(child) {
                 icon.0 = stack.map(|s| s.item.color()).unwrap_or(Color::NONE);
@@ -173,6 +212,7 @@ pub struct SlotsPlugin;
 
 impl Plugin for SlotsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CursorStack>().add_systems(Update, refresh_slots);
+        app.init_resource::<CursorStack>()
+            .add_systems(Update, refresh_slots);
     }
 }

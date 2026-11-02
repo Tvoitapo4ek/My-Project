@@ -76,7 +76,11 @@ pub struct Manipulator {
 
 impl Default for Manipulator {
     fn default() -> Self {
-        Self { mode: ManipulatorMode::Mine, drill_tier: 1, cutter: false }
+        Self {
+            mode: ManipulatorMode::Mine,
+            drill_tier: 1,
+            cutter: false,
+        }
     }
 }
 
@@ -115,20 +119,32 @@ fn cycle_mode(
         return;
     }
     for mut m in &mut q {
-        let i = ManipulatorMode::ALL.iter().position(|x| *x == m.mode).unwrap_or(0);
+        let i = ManipulatorMode::ALL
+            .iter()
+            .position(|x| *x == m.mode)
+            .unwrap_or(0);
         m.mode = ManipulatorMode::ALL[(i + 1) % ManipulatorMode::ALL.len()];
         notify.write(Notify::info(format!("Манипулятор: {}", m.mode.label())));
     }
 }
 
 /// Mining time in seconds for the current tool, or an error message.
-pub fn mining_time(block: crate::world::voxel::BlockId, tier: u8, hand: bool, cutting: bool) -> Result<f32, String> {
+pub fn mining_time(
+    block: crate::world::voxel::BlockId,
+    tier: u8,
+    hand: bool,
+    cutting: bool,
+) -> Result<f32, String> {
     let def = block.def();
     if def.hardness.is_infinite() {
         return Err(format!("{}: неразрушимо", def.name));
     }
     if def.tier > tier {
-        return Err(format!("{}: нужен модуль бурения {}", def.name, roman(def.tier)));
+        return Err(format!(
+            "{}: нужен модуль бурения {}",
+            def.name,
+            roman(def.tier)
+        ));
     }
     let mut t = def.hardness;
     if tier >= 2 {
@@ -171,7 +187,11 @@ fn use_manipulator(
     mut warned: Local<Option<IVec3>>,
 ) {
     let Ok(m) = player.single() else { return };
-    let mode = if *tool == ActiveTool::Manipulator { m.mode } else { ManipulatorMode::Mine };
+    let mode = if *tool == ActiveTool::Manipulator {
+        m.mode
+    } else {
+        ManipulatorMode::Mine
+    };
     if !tool.mines() {
         progress.target = None;
         return;
@@ -193,7 +213,10 @@ fn use_manipulator(
                 if mouse.just_pressed(button)
                     && let Some(e) = entity_target.entity
                 {
-                    mechanics.write(MechanicsUse { entity: e, secondary });
+                    mechanics.write(MechanicsUse {
+                        entity: e,
+                        secondary,
+                    });
                 }
             }
             return;
@@ -247,15 +270,31 @@ fn use_manipulator(
         }
     };
     if progress.target != Some(hit.pos) || progress.cutting != cutting {
-        *progress = MiningProgress { target: Some(hit.pos), progress: 0.0, required, cutting };
+        *progress = MiningProgress {
+            target: Some(hit.pos),
+            progress: 0.0,
+            required,
+            cutting,
+        };
     }
     progress.progress += time.delta_secs();
     if progress.progress >= progress.required {
         if cutting {
-            edits.write(BlockEdit { pos: hit.pos, block: blocks::AIR, cause: EditCause::Cut });
-            detached.write(DetachedBlock { pos: hit.pos, block: hit.block });
+            edits.write(BlockEdit {
+                pos: hit.pos,
+                block: blocks::AIR,
+                cause: EditCause::Cut,
+            });
+            detached.write(DetachedBlock {
+                pos: hit.pos,
+                block: hit.block,
+            });
         } else {
-            edits.write(BlockEdit { pos: hit.pos, block: blocks::AIR, cause: EditCause::Mined });
+            edits.write(BlockEdit {
+                pos: hit.pos,
+                block: blocks::AIR,
+                cause: EditCause::Mined,
+            });
         }
         progress.target = None;
     }
@@ -274,7 +313,9 @@ fn place_block(
     mut changed: MessageReader<crate::world::interaction::BlockChanged>,
 ) {
     // Consume the item only when the edit was actually applied.
-    let Ok(mut inv) = player.single_mut() else { return };
+    let Ok(mut inv) = player.single_mut() else {
+        return;
+    };
     for c in changed.read() {
         if c.cause == EditCause::Placed
             && let Some(i) = pending.iter().position(|(p, _, _)| *p == c.pos)
@@ -290,13 +331,23 @@ fn place_block(
         *age += 1;
         *age < 10
     });
-    let ActiveTool::PlaceBlock(item, block) = *tool else { return };
+    let ActiveTool::PlaceBlock(item, block) = *tool else {
+        return;
+    };
     if !mouse.just_pressed(MouseButton::Right) || entity_target.entity.is_some() {
         return;
     }
     if let Some(hit) = target.0 {
-        let pos = if hit.block.is_replaceable() { hit.pos } else { hit.place_pos() };
-        edits.write(BlockEdit { pos, block, cause: EditCause::Placed });
+        let pos = if hit.block.is_replaceable() {
+            hit.pos
+        } else {
+            hit.place_pos()
+        };
+        edits.write(BlockEdit {
+            pos,
+            block,
+            cause: EditCause::Placed,
+        });
         pending.push((pos, item, 0));
     }
 }
@@ -311,13 +362,22 @@ fn draw_beam(
 ) {
     let Some(pos) = progress.target else { return };
     let mode = player.single().map(|m| m.mode).unwrap_or_default();
-    let color = if progress.cutting { ManipulatorMode::Cut.color() } else if *tool == ActiveTool::Manipulator { mode.color() } else { ManipulatorMode::Mine.color() };
+    let color = if progress.cutting {
+        ManipulatorMode::Cut.color()
+    } else if *tool == ActiveTool::Manipulator {
+        mode.color()
+    } else {
+        ManipulatorMode::Mine.color()
+    };
     let right = eye.direction.cross(Vec3::Y).normalize_or_zero();
     let start = eye.origin + eye.direction * 0.5 + right * 0.28 - Vec3::Y * 0.22;
     let center = pos.as_vec3() + Vec3::splat(0.5);
     gizmos.line(start, center, color);
     let k = 1.0 - (progress.progress / progress.required.max(1e-3)).clamp(0.0, 1.0);
-    gizmos.cube(Transform::from_translation(center).with_scale(Vec3::splat(0.3 + 0.7 * k)), color);
+    gizmos.cube(
+        Transform::from_translation(center).with_scale(Vec3::splat(0.3 + 0.7 * k)),
+        color,
+    );
 }
 
 pub struct ManipulatorPlugin;

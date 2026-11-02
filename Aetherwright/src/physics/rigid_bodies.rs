@@ -8,12 +8,12 @@ use bevy::prelude::*;
 use super::Prop;
 use crate::{
     core::{events::Notify, layers::Layer, rules::ModeRules},
-    items::{block_drop, inventory::Inventory, ItemId},
+    items::{ItemId, block_drop, inventory::Inventory},
     player::Player,
     tools::scanning::Scannable,
     world::{
         chunks::{EditCause, VoxelWorld},
-        destruction::{is_loose, DetachedBlock},
+        destruction::{DetachedBlock, is_loose},
         interaction::BlockEdit,
         materials::BlockMaterials,
         voxel::{BlockId, RenderKind},
@@ -39,7 +39,11 @@ pub struct CollectProp(pub Entity);
 /// blocks can be carried by the physics gun, dense ones only dragged.
 pub fn block_mass(b: BlockId) -> f32 {
     let h = b.def().hardness;
-    if h.is_finite() { 40.0 + h * 60.0 } else { 1000.0 }
+    if h.is_finite() {
+        40.0 + h * 60.0
+    } else {
+        1000.0
+    }
 }
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
@@ -60,8 +64,15 @@ pub fn spawn_loose_block(
         .spawn((
             Name::new(format!("Loose {}", def.key)),
             Prop::Block(def.key.to_string()),
-            LooseBlock { block, settles, rest_time: 0.0 },
-            Scannable { title: format!("{} (свободный блок)", def.name), info: def.info.to_string() },
+            LooseBlock {
+                block,
+                settles,
+                rest_time: 0.0,
+            },
+            Scannable {
+                title: format!("{} (свободный блок)", def.name),
+                info: def.info.to_string(),
+            },
             Mesh3d(mesh),
             MeshMaterial3d(mats.get(def.tex[1])),
             transform,
@@ -81,11 +92,20 @@ fn on_detached(
     mats: Res<BlockMaterials>,
 ) {
     for d in reader.read() {
-        if d.block.def().render != RenderKind::Cube && d.block.def().render != RenderKind::Transparent {
+        if d.block.def().render != RenderKind::Cube
+            && d.block.def().render != RenderKind::Transparent
+        {
             continue;
         }
         let t = Transform::from_translation(d.pos.as_vec3() + Vec3::splat(0.5));
-        spawn_loose_block(&mut commands, mesh.0.clone(), &mats, d.block, t, is_loose(d.block));
+        spawn_loose_block(
+            &mut commands,
+            mesh.0.clone(),
+            &mats,
+            d.block,
+            t,
+            is_loose(d.block),
+        );
     }
 }
 
@@ -94,7 +114,10 @@ fn settle(
     mut commands: Commands,
     time: Res<Time>,
     world: Res<VoxelWorld>,
-    mut q: Query<(Entity, &Transform, &LinearVelocity, &mut LooseBlock), Without<super::physics_gun::Held>>,
+    mut q: Query<
+        (Entity, &Transform, &LinearVelocity, &mut LooseBlock),
+        Without<super::physics_gun::Held>,
+    >,
     mut edits: MessageWriter<BlockEdit>,
 ) {
     for (e, t, v, mut lb) in &mut q {
@@ -110,7 +133,11 @@ fn settle(
             let cell = t.translation.floor().as_ivec3();
             if world.get(cell).is_replaceable() {
                 commands.entity(e).despawn();
-                edits.write(BlockEdit { pos: cell, block: lb.block, cause: EditCause::Script });
+                edits.write(BlockEdit {
+                    pos: cell,
+                    block: lb.block,
+                    cause: EditCause::Script,
+                });
             } else {
                 lb.settles = false;
             }
@@ -128,7 +155,9 @@ pub fn collect_props(
     mut player: Query<&mut Inventory, With<Player>>,
     mut notify: MessageWriter<Notify>,
 ) {
-    let Ok(mut inv) = player.single_mut() else { return };
+    let Ok(mut inv) = player.single_mut() else {
+        return;
+    };
     for CollectProp(e) in reader.read() {
         let Ok(prop) = props.get(*e) else { continue };
         let item = match prop {
@@ -158,8 +187,14 @@ impl Plugin for RigidBodiesPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<CollectProp>()
             .add_systems(Startup, setup)
-            .add_systems(PostUpdate, on_detached.after(crate::world::interaction::apply_block_edits))
-            .add_systems(Update, (settle, collect_props).run_if(in_state(crate::core::states::AppState::InGame)));
+            .add_systems(
+                PostUpdate,
+                on_detached.after(crate::world::interaction::apply_block_edits),
+            )
+            .add_systems(
+                Update,
+                (settle, collect_props).run_if(in_state(crate::core::states::AppState::InGame)),
+            );
     }
 }
 

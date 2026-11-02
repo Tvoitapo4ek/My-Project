@@ -11,6 +11,9 @@ pub mod engines;
 pub mod power;
 pub mod transmission;
 
+#[cfg(test)]
+mod stability_tests;
+
 use avian3d::prelude::PhysicsSystems;
 use bevy::prelude::*;
 
@@ -24,14 +27,17 @@ pub struct MachineryPlugin;
 
 impl Plugin for MachineryPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(FixedUpdate, (MachinerySet::Power, MachinerySet::Drive).chain())
-            .add_plugins((
-                components::ComponentsPlugin,
-                power::PowerPlugin,
-                engines::EnginesPlugin,
-                transmission::TransmissionPlugin,
-                connections::ConnectionsPlugin,
-            ));
+        app.configure_sets(
+            FixedUpdate,
+            (MachinerySet::Power, MachinerySet::Drive).chain(),
+        )
+        .add_plugins((
+            components::ComponentsPlugin,
+            power::PowerPlugin,
+            engines::EnginesPlugin,
+            transmission::TransmissionPlugin,
+            connections::ConnectionsPlugin,
+        ));
         let _ = PhysicsSystems::First;
     }
 }

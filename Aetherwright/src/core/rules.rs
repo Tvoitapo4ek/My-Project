@@ -74,7 +74,10 @@ fn toggle_mode(
     }
 }
 
-fn apply_launch_mode(opts: Res<super::config::LaunchOptions>, mut next: ResMut<NextState<GameMode>>) {
+fn apply_launch_mode(
+    opts: Res<super::config::LaunchOptions>,
+    mut next: ResMut<NextState<GameMode>>,
+) {
     if opts.creative {
         next.set(GameMode::Creative);
     }

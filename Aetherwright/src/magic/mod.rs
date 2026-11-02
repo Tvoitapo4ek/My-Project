@@ -13,7 +13,11 @@ use crate::tools::scanning::ScanExtras;
 
 fn field_scan_line(world: &World, p: Vec3) -> Option<String> {
     let f = world.get_resource::<sources::AetherSources>()?.sample(p);
-    Some(format!("Эфирное поле: {:.2} ({})", f.strength, f.kind.label()))
+    Some(format!(
+        "Эфирное поле: {:.2} ({})",
+        f.strength,
+        f.kind.label()
+    ))
 }
 
 fn store_scan_line(world: &World, p: Vec3) -> Option<String> {
@@ -25,8 +29,15 @@ pub struct MagicPlugin;
 
 impl Plugin for MagicPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((sources::SourcesPlugin, spells::SpellsPlugin, anomalies::AnomaliesPlugin));
-        app.world_mut().resource_mut::<ScanExtras>().0.push(field_scan_line);
+        app.add_plugins((
+            sources::SourcesPlugin,
+            spells::SpellsPlugin,
+            anomalies::AnomaliesPlugin,
+        ));
+        app.world_mut()
+            .resource_mut::<ScanExtras>()
+            .0
+            .push(field_scan_line);
         let _ = store_scan_line;
     }
 }

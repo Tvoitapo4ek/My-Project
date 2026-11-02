@@ -11,8 +11,10 @@ use super::{
     damage::{Damage, DamageSource},
 };
 use crate::{
-    core::{events::Notify, layers::Layer, resources::EyeRay, rules::ModeRules, states::gameplay_active},
-    items::{inventory::Inventory, ItemId},
+    core::{
+        events::Notify, layers::Layer, resources::EyeRay, rules::ModeRules, states::gameplay_active,
+    },
+    items::{ItemId, inventory::Inventory},
     physics::impulses::ImpulseQueue,
     player::Player,
     tools::ActiveTool,
@@ -38,10 +40,19 @@ pub const MELEE_DAMAGE: f32 = 22.0;
 pub const BOLT_DAMAGE: f32 = 28.0;
 const BOLT_SPEED: f32 = 45.0;
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     commands.insert_resource(BoltAssets {
         mesh: meshes.add(Capsule3d::new(0.04, 0.35)),
-        mat: materials.add(StandardMaterial { base_color: Color::srgb(0.9, 0.8, 0.5), emissive: LinearRgba::rgb(2.0, 1.4, 0.4), metallic: 0.8, ..default() }),
+        mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.9, 0.8, 0.5),
+            emissive: LinearRgba::rgb(2.0, 1.4, 0.4),
+            metallic: 0.8,
+            ..default()
+        }),
     });
 }
 
@@ -66,7 +77,9 @@ fn attack(
     if !mouse.just_pressed(MouseButton::Left) || cd.0 > 0.0 {
         return;
     }
-    let Ok((pe, mut inv)) = player.single_mut() else { return };
+    let Ok((pe, mut inv)) = player.single_mut() else {
+        return;
+    };
     match *tool {
         ActiveTool::Melee => {
             cd.0 = 0.45;
@@ -74,7 +87,11 @@ fn attack(
             for (e, p, mut c) in &mut creatures {
                 let to = p.0 - eye.origin;
                 if to.length() < 2.8 && to.normalize_or_zero().dot(eye.direction) > 0.6 {
-                    damage.write(Damage { target: e, amount: MELEE_DAMAGE, source: DamageSource::Weapon });
+                    damage.write(Damage {
+                        target: e,
+                        amount: MELEE_DAMAGE,
+                        source: DamageSource::Weapon,
+                    });
                     impulses.push(e, (eye.direction + Vec3::Y * 0.4) * 7.0);
                     c.mind = Mind::Recover(0.5);
                     hit += 1;
@@ -85,7 +102,11 @@ fn attack(
             for i in 0..6 {
                 let a = -0.6 + i as f32 * 0.24;
                 let d = (eye.direction + right * a).normalize();
-                gizmos.line(eye.origin + d * 0.8, eye.origin + d * 2.4, Color::srgb(0.9, 0.95, 1.0));
+                gizmos.line(
+                    eye.origin + d * 0.8,
+                    eye.origin + d * 2.4,
+                    Color::srgb(0.9, 0.95, 1.0),
+                );
             }
             let _ = (hit, pe);
         }
@@ -99,16 +120,24 @@ fn attack(
             let start = eye.origin + eye.direction * 0.8;
             commands.spawn((
                 Name::new("Bolt"),
-                Bolt { last: start, ttl: 6.0, spent: false },
+                Bolt {
+                    last: start,
+                    ttl: 6.0,
+                    spent: false,
+                },
                 Mesh3d(assets.mesh.clone()),
                 MeshMaterial3d(assets.mat.clone()),
-                Transform::from_translation(start).with_rotation(Quat::from_rotation_arc(Vec3::Y, eye.direction)),
+                Transform::from_translation(start)
+                    .with_rotation(Quat::from_rotation_arc(Vec3::Y, eye.direction)),
                 RigidBody::Dynamic,
                 Collider::capsule(0.04, 0.35),
                 Mass(0.2),
                 LinearVelocity(eye.direction * BOLT_SPEED),
                 SweptCcd::default(),
-                CollisionLayers::new(Layer::Projectile, [Layer::Terrain, Layer::Prop, Layer::Creature]),
+                CollisionLayers::new(
+                    Layer::Projectile,
+                    [Layer::Terrain, Layer::Prop, Layer::Creature],
+                ),
             ));
         }
         _ => {}
@@ -121,7 +150,7 @@ fn bolt_hits(
     time: Res<Time>,
     spatial: SpatialQuery,
     mut bolts: Query<(Entity, &Position, &mut Bolt)>,
-    creatures: Query<(), With<Creature>>,
+    creatures: Query<(Entity, &Position), (With<Creature>, Without<Bolt>)>,
     mut impulses: ResMut<ImpulseQueue>,
     mut damage: MessageWriter<Damage>,
 ) {
@@ -133,12 +162,34 @@ fn bolt_hits(
         }
         if !b.spent {
             let seg = p.0 - b.last;
-            if let Ok(dir) = Dir3::new(seg)
-                && let Some(hit) = spatial.cast_ray(b.last, dir, seg.length() + 0.3, true, &SpatialQueryFilter::from_mask([Layer::Creature]).with_excluded_entities([e]))
-                && creatures.get(hit.entity).is_ok()
+            let swept = Dir3::new(seg).ok().and_then(|dir| {
+                spatial
+                    .cast_ray(
+                        b.last,
+                        dir,
+                        seg.length() + 0.3,
+                        true,
+                        &SpatialQueryFilter::from_mask([Layer::Creature])
+                            .with_excluded_entities([e]),
+                    )
+                    .map(|h| (h.entity, dir.as_vec3()))
+            });
+            // The physical contact can stop the bolt at the surface before the
+            // sweep sees it, so also accept a bolt touching a creature.
+            let touching = creatures
+                .iter()
+                .find(|(_, cp)| cp.0.distance(p.0) < 0.7)
+                .map(|(ce, cp)| (ce, (cp.0 - b.last).normalize_or_zero()));
+            if let Some((target, dir)) = swept
+                .filter(|(t, _)| creatures.get(*t).is_ok())
+                .or(touching)
             {
-                damage.write(Damage { target: hit.entity, amount: BOLT_DAMAGE, source: DamageSource::Weapon });
-                impulses.push(hit.entity, dir.as_vec3() * 4.0);
+                damage.write(Damage {
+                    target,
+                    amount: BOLT_DAMAGE,
+                    source: DamageSource::Weapon,
+                });
+                impulses.push(target, dir * 4.0);
                 b.spent = true;
                 b.ttl = b.ttl.min(1.0);
             }
@@ -153,7 +204,12 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WeaponCooldown>()
             .add_systems(Startup, setup)
-            .add_systems(Update, attack.after(crate::tools::update_entity_target).run_if(gameplay_active))
+            .add_systems(
+                Update,
+                attack
+                    .after(crate::tools::update_entity_target)
+                    .run_if(gameplay_active),
+            )
             .add_systems(FixedUpdate, bolt_hits.run_if(crate::core::states::in_game));
     }
 }

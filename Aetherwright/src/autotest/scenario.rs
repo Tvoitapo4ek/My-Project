@@ -13,10 +13,10 @@ use crate::{
         movement::CharacterState,
     },
     world::{
+        ChunkEntities, LoadProgress,
         chunks::{EditCause, VoxelWorld},
         interaction::{BlockEdit, BlockTarget},
-        voxel::{blocks, BlockId},
-        ChunkEntities, LoadProgress,
+        voxel::{BlockId, blocks},
     },
 };
 
@@ -192,6 +192,8 @@ pub fn build() -> Scenario {
     super::scenario5::stage5(&mut steps);
     super::scenario6::stage6(&mut steps);
     super::scenario7::stage7(&mut steps);
+    super::scenario8::stage8(&mut steps);
+    super::scenario9::stage9(&mut steps);
 
     Scenario {
         steps,
@@ -214,7 +216,9 @@ fn ray_down(world: &mut World, from: Vec3) -> Option<f32> {
     let mut state = bevy::ecs::system::SystemState::<SpatialQuery>::new(world);
     let spatial = state.get(world).expect("spatial query");
     let filter = SpatialQueryFilter::from_mask(crate::core::layers::Layer::Terrain);
-    spatial.cast_ray(from, Dir3::NEG_Y, 100.0, true, &filter).map(|h| h.distance)
+    spatial
+        .cast_ray(from, Dir3::NEG_Y, 100.0, true, &filter)
+        .map(|h| h.distance)
 }
 
 pub(super) fn teleport(world: &mut World, p: Vec3) {
@@ -229,7 +233,11 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
     steps.push(step("world generated", |world, ctx| {
         let progress = world.resource::<LoadProgress>().clone();
         let chunks = world.resource::<ChunkEntities>().0.len();
-        ctx.check("all chunks generated + meshed", progress.total > 0 && chunks == progress.total, format!("{chunks}/{}", progress.total));
+        ctx.check(
+            "all chunks generated + meshed",
+            progress.total > 0 && chunks == progress.total,
+            format!("{chunks}/{}", progress.total),
+        );
         let w = world.resource::<VoxelWorld>();
         let mut kinds = std::collections::HashSet::new();
         for c in w.chunks.values() {
@@ -237,7 +245,11 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
                 kinds.insert(*b);
             }
         }
-        ctx.check("several materials present", kinds.len() >= 15, format!("{} block types", kinds.len()));
+        ctx.check(
+            "several materials present",
+            kinds.len() >= 15,
+            format!("{} block types", kinds.len()),
+        );
         Step::Next
     }));
     steps.push(step("break a block", |world, ctx| {
@@ -246,49 +258,88 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
             let x = p.x.floor() as i32 + 3;
             let z = p.z.floor() as i32;
             let w = world.resource::<VoxelWorld>();
-            let y = (0..w.size_blocks().y).rev().find(|&y| w.get(IVec3::new(x, y, z)).is_solid()).unwrap();
+            let y = (0..w.size_blocks().y)
+                .rev()
+                .find(|&y| w.get(IVec3::new(x, y, z)).is_solid())
+                .unwrap();
             ctx.vars.insert("bx".into(), x as f32);
             ctx.vars.insert("by".into(), y as f32);
             ctx.vars.insert("bz".into(), z as f32);
-            let d = ray_down(world, Vec3::new(x as f32 + 0.5, y as f32 + 5.0, z as f32 + 0.5)).unwrap_or(-1.0);
+            let d = ray_down(
+                world,
+                Vec3::new(x as f32 + 0.5, y as f32 + 5.0, z as f32 + 0.5),
+            )
+            .unwrap_or(-1.0);
             ctx.vars.insert("ray_before".into(), d);
             edit(world, IVec3::new(x, y, z), blocks::AIR, EditCause::Mined);
         }
         if ctx.frames == 6 {
-            let pos = IVec3::new(ctx.vars["bx"] as i32, ctx.vars["by"] as i32, ctx.vars["bz"] as i32);
-            ctx.check("block removed from voxel data", block_at(world, pos).is_air(), format!("{:?}", block_at(world, pos)));
+            let pos = IVec3::new(
+                ctx.vars["bx"] as i32,
+                ctx.vars["by"] as i32,
+                ctx.vars["bz"] as i32,
+            );
+            ctx.check(
+                "block removed from voxel data",
+                block_at(world, pos).is_air(),
+                format!("{:?}", block_at(world, pos)),
+            );
             let d = ray_down(world, pos.as_vec3() + Vec3::new(0.5, 5.0, 0.5)).unwrap_or(-1.0);
             let before = ctx.vars["ray_before"];
-            ctx.check("collider updated after break", d > before + 0.9, format!("ray {before:.2} -> {d:.2}"));
+            ctx.check(
+                "collider updated after break",
+                d > before + 0.9,
+                format!("ray {before:.2} -> {d:.2}"),
+            );
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("place a block", |world, ctx| {
-        let pos = IVec3::new(ctx.vars["bx"] as i32, ctx.vars["by"] as i32 + 3, ctx.vars["bz"] as i32);
+        let pos = IVec3::new(
+            ctx.vars["bx"] as i32,
+            ctx.vars["by"] as i32 + 3,
+            ctx.vars["bz"] as i32,
+        );
         if ctx.frames == 1 {
             edit(world, pos, blocks::BRICKS, EditCause::Placed);
         }
         if ctx.frames == 6 {
-            ctx.check("block placed", block_at(world, pos) == blocks::BRICKS, format!("{:?}", block_at(world, pos)));
+            ctx.check(
+                "block placed",
+                block_at(world, pos) == blocks::BRICKS,
+                format!("{:?}", block_at(world, pos)),
+            );
             let d = ray_down(world, pos.as_vec3() + Vec3::new(0.5, 5.0, 0.5)).unwrap_or(-1.0);
-            ctx.check("collider has the new block", (d - 4.0).abs() < 0.05, format!("ray {d:.2}"));
+            ctx.check(
+                "collider has the new block",
+                (d - 4.0).abs() < 0.05,
+                format!("ray {d:.2}"),
+            );
             return Step::Next;
         }
         Step::Wait
     }));
-    steps.push(step("placement into the player is rejected", |world, ctx| {
-        let p = player_pos(world).unwrap().floor().as_ivec3();
-        if ctx.frames == 1 {
-            ctx.vars.insert("before".into(), block_at(world, p).0 as f32);
-            edit(world, p, blocks::STONE, EditCause::Placed);
-        }
-        if ctx.frames == 6 {
-            ctx.check("occupied cell not filled", block_at(world, p).0 as f32 == ctx.vars["before"], "player cell");
-            return Step::Next;
-        }
-        Step::Wait
-    }));
+    steps.push(step(
+        "placement into the player is rejected",
+        |world, ctx| {
+            let p = player_pos(world).unwrap().floor().as_ivec3();
+            if ctx.frames == 1 {
+                ctx.vars
+                    .insert("before".into(), block_at(world, p).0 as f32);
+                edit(world, p, blocks::STONE, EditCause::Placed);
+            }
+            if ctx.frames == 6 {
+                ctx.check(
+                    "occupied cell not filled",
+                    block_at(world, p).0 as f32 == ctx.vars["before"],
+                    "player cell",
+                );
+                return Step::Next;
+            }
+            Step::Wait
+        },
+    ));
     steps.push(step("chunk border edit", |world, ctx| {
         if ctx.frames == 1 {
             let w = world.resource::<VoxelWorld>();
@@ -298,16 +349,34 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
             let y = w.surface_y(x, z).unwrap();
             ctx.vars.insert("cy".into(), y as f32);
             edit(world, IVec3::new(x, y, z), blocks::AIR, EditCause::Mined);
-            edit(world, IVec3::new(x - 1, y, z), blocks::AIR, EditCause::Mined);
+            edit(
+                world,
+                IVec3::new(x - 1, y, z),
+                blocks::AIR,
+                EditCause::Mined,
+            );
         }
         if ctx.frames == 6 {
             let w = world.resource::<VoxelWorld>();
             let n = w.chunk_size;
             let y = ctx.vars["cy"] as i32;
-            let ok = w.get(IVec3::new(n * 3, y, n * 3 + 5)).is_air() && w.get(IVec3::new(n * 3 - 1, y, n * 3 + 5)).is_air();
-            ctx.check("edits on both sides of a chunk border", ok && w.dirty.is_empty(), format!("dirty left {}", w.dirty.len()));
-            let d = ray_down(world, Vec3::new(n as f32 * 3.0 - 0.5, y as f32 + 5.0, n as f32 * 3.0 + 5.5)).unwrap_or(-1.0);
-            ctx.check("neighbour chunk collider updated", (d - 5.0).abs() < 0.05, format!("ray {d:.2} (expected 5.00)"));
+            let ok = w.get(IVec3::new(n * 3, y, n * 3 + 5)).is_air()
+                && w.get(IVec3::new(n * 3 - 1, y, n * 3 + 5)).is_air();
+            ctx.check(
+                "edits on both sides of a chunk border",
+                ok && w.dirty.is_empty(),
+                format!("dirty left {}", w.dirty.len()),
+            );
+            let d = ray_down(
+                world,
+                Vec3::new(n as f32 * 3.0 - 0.5, y as f32 + 5.0, n as f32 * 3.0 + 5.5),
+            )
+            .unwrap_or(-1.0);
+            ctx.check(
+                "neighbour chunk collider updated",
+                (d - 5.0).abs() < 0.05,
+                format!("ray {d:.2} (expected 5.00)"),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -316,7 +385,11 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
         world.resource_mut::<CameraRig>().pitch = -1.2;
         if ctx.t > 0.4 {
             let t = world.resource::<BlockTarget>().0;
-            ctx.check("crosshair targets a block", t.is_some(), format!("{:?}", t.map(|h| h.block)));
+            ctx.check(
+                "crosshair targets a block",
+                t.is_some(),
+                format!("{:?}", t.map(|h| h.block)),
+            );
             world.resource_mut::<CameraRig>().pitch = -0.1;
             return Step::Next;
         }
@@ -327,7 +400,11 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
             let w = world.resource::<VoxelWorld>();
             let size = w.size_blocks();
             let spire = crate::world::generation::sites(&crate::world::gen_params(w)).spire;
-            let from = Vec3::new(size.x as f32 * 0.45, w.sea_level as f32 + 26.0, size.z as f32 * 0.55);
+            let from = Vec3::new(
+                size.x as f32 * 0.45,
+                w.sea_level as f32 + 26.0,
+                size.z as f32 * 0.55,
+            );
             let sea = w.sea_level as f32;
             teleport(world, from);
             let mut q = world.query_filtered::<&mut CharacterState, With<Player>>();
@@ -377,7 +454,11 @@ fn stage2(steps: &mut Vec<(String, StepFn)>) {
         }
         if (1.0..1.1).contains(&ctx.t) {
             let s = player_state(world).unwrap();
-            ctx.check("player is submerged", s.submerged > 0.3, format!("{:.2}", s.submerged));
+            ctx.check(
+                "player is submerged",
+                s.submerged > 0.3,
+                format!("{:.2}", s.submerged),
+            );
             ctx.vars.insert("wy".into(), player_pos(world).unwrap().y);
         }
         if ctx.t > 1.1 {

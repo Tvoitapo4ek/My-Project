@@ -3,10 +3,10 @@
 
 use bevy::prelude::*;
 
-use super::{manipulator::Manipulator, ActiveTool};
+use super::{ActiveTool, manipulator::Manipulator};
 use crate::{
     core::{events::Notify, states::gameplay_active},
-    items::{inventory::Inventory, Use},
+    items::{Use, inventory::Inventory},
     player::Player,
 };
 
@@ -31,12 +31,18 @@ fn install_module(
     mut player: Query<(&mut Inventory, &mut Manipulator), With<Player>>,
     mut notify: MessageWriter<Notify>,
 ) {
-    let ActiveTool::Module(item) = *tool else { return };
+    let ActiveTool::Module(item) = *tool else {
+        return;
+    };
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let Ok((mut inv, mut m)) = player.single_mut() else { return };
-    let Use::Module(key) = item.def().use_ else { return };
+    let Ok((mut inv, mut m)) = player.single_mut() else {
+        return;
+    };
+    let Use::Module(key) = item.def().use_ else {
+        return;
+    };
     if install(&mut m, key) {
         inv.remove(item, 1);
         notify.write(Notify::ok(format!("Установлен: {}", item.def().name)));

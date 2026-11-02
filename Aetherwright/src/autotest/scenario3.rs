@@ -3,15 +3,29 @@
 use bevy::prelude::*;
 
 use super::{
+    Ctx, Step, StepFn,
     scenario::{block_at, edit, player_pos, step, teleport},
-    screenshot, Ctx, Step, StepFn,
+    screenshot,
 };
 use crate::{
-    core::{resources::{EyeRay, SpawnPoint}, states::InputFocus},
-    items::{drops::{ItemDrop, PickupSettings}, inventory::Inventory, ItemId},
-    player::{camera::CameraRig, Player},
-    tools::{manipulator::{Manipulator, ManipulatorMode}, scanning::ScanResult},
-    world::{chunks::{EditCause, VoxelWorld}, voxel::{blocks, BlockId}},
+    core::{
+        resources::{EyeRay, SpawnPoint},
+        states::InputFocus,
+    },
+    items::{
+        ItemId,
+        drops::{ItemDrop, PickupSettings},
+        inventory::Inventory,
+    },
+    player::{Player, camera::CameraRig},
+    tools::{
+        manipulator::{Manipulator, ManipulatorMode},
+        scanning::ScanResult,
+    },
+    world::{
+        chunks::{EditCause, VoxelWorld},
+        voxel::{BlockId, blocks},
+    },
 };
 
 pub(super) fn inv(world: &mut World) -> Inventory {
@@ -36,7 +50,11 @@ pub(super) fn with_manip(world: &mut World, f: impl FnOnce(&mut Manipulator)) {
 pub(super) fn select(world: &mut World, key: &str) {
     let item = ItemId::k(key);
     with_inv(world, |inv| {
-        if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| s.item == item)) {
+        if let Some(i) = inv
+            .slots
+            .iter()
+            .position(|s| s.is_some_and(|s| s.item == item))
+        {
             if i >= 9 {
                 inv.slots.swap(i, 8);
                 inv.selected = 8;
@@ -83,7 +101,10 @@ fn test_cell(world: &World) -> IVec3 {
     let w = world.resource::<VoxelWorld>();
     let x = s.x.floor() as i32 + 2;
     let z = s.z.floor() as i32;
-    let y = (0..w.size_blocks().y).rev().find(|&y| w.get(IVec3::new(x, y, z)).is_solid()).unwrap();
+    let y = (0..w.size_blocks().y)
+        .rev()
+        .find(|&y| w.get(IVec3::new(x, y, z)).is_solid())
+        .unwrap();
     IVec3::new(x, y, z)
 }
 
@@ -123,7 +144,11 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
                 }
             }
             let i = inv(world);
-            ctx.check("starter inventory", i.count(ItemId::k("manipulator")) == 1 && i.count(ItemId::k("planks")) == 16, "manipulator + planks");
+            ctx.check(
+                "starter inventory",
+                i.count(ItemId::k("manipulator")) == 1 && i.count(ItemId::k("planks")) == 16,
+                "manipulator + planks",
+            );
         }
         if ctx.t > 0.8 { Step::Next } else { Step::Wait }
     }));
@@ -135,15 +160,29 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
             ctx.vars.insert("cx".into(), c.x as f32);
             ctx.vars.insert("cy".into(), c.y as f32);
             ctx.vars.insert("cz".into(), c.z as f32);
-            let drop = crate::items::block_drop(block_at(world, c)).map(|i| i.def().key).unwrap_or("dirt");
+            let drop = crate::items::block_drop(block_at(world, c))
+                .map(|i| i.def().key)
+                .unwrap_or("dirt");
             ctx.vars.insert("before".into(), count(world, drop) as f32);
             ctx.vars.insert("drop".into(), ItemId::k(drop).0 as f32);
         }
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32,
+            ctx.vars["cz"] as i32,
+        );
         match mine(world, ctx, c, 6.0) {
             Some(ok) => {
-                ctx.check("hold-to-mine removes the block", ok, format!("after {:.2}s", ctx.t));
-                ctx.check("mining is not instant in survival", ctx.t > 0.3, format!("{:.2}s", ctx.t));
+                ctx.check(
+                    "hold-to-mine removes the block",
+                    ok,
+                    format!("after {:.2}s", ctx.t),
+                );
+                ctx.check(
+                    "mining is not instant in survival",
+                    ctx.t > 0.3,
+                    format!("{:.2}s", ctx.t),
+                );
                 Step::Next
             }
             None => Step::Wait,
@@ -153,16 +192,25 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         let item = ItemId(ctx.vars["drop"] as u16);
         let n = inv(world).count(item) as f32;
         if n > ctx.vars["before"] || ctx.t > 4.0 {
-            ctx.check("drop collected automatically", n > ctx.vars["before"], format!("{} {} → {}", item.def().name, ctx.vars["before"], n));
+            ctx.check(
+                "drop collected automatically",
+                n > ctx.vars["before"],
+                format!("{} {} → {}", item.def().name, ctx.vars["before"], n),
+            );
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("place a block from the hotbar", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32,
+            ctx.vars["cz"] as i32,
+        );
         if ctx.frames == 1 {
             select(world, "planks");
-            ctx.vars.insert("planks".into(), count(world, "planks") as f32);
+            ctx.vars
+                .insert("planks".into(), count(world, "planks") as f32);
         }
         aim_at(world, c.as_vec3() + Vec3::new(0.5, 0.05, 0.5));
         if ctx.frames == 5 {
@@ -171,7 +219,11 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
                 ctx.check("has a target for placement", false, "none");
                 return Step::Next;
             };
-            let p = if hit.block.is_replaceable() { hit.pos } else { hit.place_pos() };
+            let p = if hit.block.is_replaceable() {
+                hit.pos
+            } else {
+                hit.place_pos()
+            };
             ctx.vars.insert("cx".into(), p.x as f32);
             ctx.vars.insert("cy".into(), p.y as f32);
             ctx.vars.insert("cz".into(), p.z as f32);
@@ -181,15 +233,27 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
             mouse(world, MouseButton::Right, false);
         }
         if ctx.frames == 14 {
-            ctx.check("block placed at the targeted face", block_at(world, c) == blocks::PLANKS, format!("{:?}", block_at(world, c).def().key));
+            ctx.check(
+                "block placed at the targeted face",
+                block_at(world, c) == blocks::PLANKS,
+                format!("{:?}", block_at(world, c).def().key),
+            );
             let now = count(world, "planks") as f32;
-            ctx.check("placing consumes the item", now == ctx.vars["planks"] - 1.0, format!("{} → {now}", ctx.vars["planks"]));
+            ctx.check(
+                "placing consumes the item",
+                now == ctx.vars["planks"] - 1.0,
+                format!("{} → {now}", ctx.vars["planks"]),
+            );
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("scanner", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32,
+            ctx.vars["cz"] as i32,
+        );
         if ctx.frames == 1 {
             select(world, "manipulator");
             with_manip(world, |m| m.mode = ManipulatorMode::Scan);
@@ -204,14 +268,22 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.frames == 12 {
             let r = world.resource::<ScanResult>().clone();
-            ctx.check("scan describes the block", r.title == "Доски" && r.lines.len() >= 2, format!("{} / {} lines", r.title, r.lines.len()));
+            ctx.check(
+                "scan describes the block",
+                r.title == "Доски" && r.lines.len() >= 2,
+                format!("{} / {} lines", r.title, r.lines.len()),
+            );
             screenshot(world, "05_scan");
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("special material needs a module", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32,
+            ctx.vars["cz"] as i32,
+        );
         if ctx.frames == 1 {
             edit(world, c, blocks::ANCIENT_STONE, EditCause::Script);
             with_manip(world, |m| m.mode = ManipulatorMode::Mine);
@@ -221,7 +293,11 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         }
         match mine(world, ctx, c, 2.0) {
             Some(gone) => {
-                ctx.check("tier-2 block resists the base drill", !gone, block_at(world, c).def().key);
+                ctx.check(
+                    "tier-2 block resists the base drill",
+                    !gone,
+                    block_at(world, c).def().key,
+                );
                 Step::Next
             }
             None => Step::Wait,
@@ -243,27 +319,44 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         if ctx.frames == 10 {
             let mut q = world.query_filtered::<&Manipulator, With<Player>>();
             let tier = q.iter(world).next().unwrap().drill_tier;
-            ctx.check("module installed", tier == 2 && count(world, "drill_module_2") == 0, format!("tier {tier}"));
+            ctx.check(
+                "module installed",
+                tier == 2 && count(world, "drill_module_2") == 0,
+                format!("tier {tier}"),
+            );
             select(world, "manipulator");
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("mine ancient stone with module", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32,
+            ctx.vars["cz"] as i32,
+        );
         match mine(world, ctx, c, 6.0) {
             Some(gone) => {
-                ctx.check("module unlocks special material", gone, format!("{:.2}s", ctx.t));
+                ctx.check(
+                    "module unlocks special material",
+                    gone,
+                    format!("{:.2}s", ctx.t),
+                );
                 Step::Next
             }
             None => Step::Wait,
         }
     }));
     steps.push(step("cutting needs the cutter module", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32 - 1, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32 - 1,
+            ctx.vars["cz"] as i32,
+        );
         if ctx.frames == 1 {
             with_manip(world, |m| m.mode = ManipulatorMode::Cut);
-            ctx.vars.insert("cut_block".into(), block_at(world, c).0 as f32);
+            ctx.vars
+                .insert("cut_block".into(), block_at(world, c).0 as f32);
         }
         if ctx.frames < 3 {
             return Step::Wait;
@@ -277,13 +370,21 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         }
     }));
     steps.push(step("cut a block out", |world, ctx| {
-        let c = IVec3::new(ctx.vars["cx"] as i32, ctx.vars["cy"] as i32 - 1, ctx.vars["cz"] as i32);
+        let c = IVec3::new(
+            ctx.vars["cx"] as i32,
+            ctx.vars["cy"] as i32 - 1,
+            ctx.vars["cz"] as i32,
+        );
         if ctx.frames == 1 {
             with_manip(world, |m| m.cutter = true);
         }
         match mine(world, ctx, c, 6.0) {
             Some(gone) => {
-                ctx.check("cutter removes block from the terrain", gone, format!("{:.2}s", ctx.t));
+                ctx.check(
+                    "cutter removes block from the terrain",
+                    gone,
+                    format!("{:.2}s", ctx.t),
+                );
                 Step::Next
             }
             None => Step::Wait,
@@ -303,7 +404,11 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         if ctx.frames == 1 + 60 {
             let mut q = world.query::<&ItemDrop>();
             let lying = q.iter(world).any(|d| d.stack.item == ItemId::k("coal"));
-            ctx.check("item stays when auto-pickup is off", lying && count(world, "coal") as f32 == ctx.vars["coal"], "coal on the ground");
+            ctx.check(
+                "item stays when auto-pickup is off",
+                lying && count(world, "coal") as f32 == ctx.vars["coal"],
+                "coal on the ground",
+            );
             key(world, KeyCode::KeyE, true);
         }
         if ctx.frames == 62 {
@@ -311,7 +416,11 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.frames == 70 {
             let now = count(world, "coal") as f32;
-            ctx.check("E picks the item up", now == ctx.vars["coal"] + 3.0, format!("coal {now}"));
+            ctx.check(
+                "E picks the item up",
+                now == ctx.vars["coal"] + 3.0,
+                format!("coal {now}"),
+            );
             world.resource_mut::<PickupSettings>().auto = true;
             return Step::Next;
         }
@@ -319,14 +428,18 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
     }));
     steps.push(step("inventory screen", |world, ctx| {
         if ctx.frames == 1 {
-            world.resource_mut::<NextState<InputFocus>>().set(InputFocus::Inventory);
+            world
+                .resource_mut::<NextState<InputFocus>>()
+                .set(InputFocus::Inventory);
         }
         if ctx.t > 1.0 && ctx.vars.get("inv_shot").is_none() {
             ctx.vars.insert("inv_shot".into(), 1.0);
             screenshot(world, "06_inventory");
         }
         if ctx.t > 2.0 {
-            world.resource_mut::<NextState<InputFocus>>().set(InputFocus::Gameplay);
+            world
+                .resource_mut::<NextState<InputFocus>>()
+                .set(InputFocus::Gameplay);
             let _: BlockId = blocks::AIR;
             return Step::Next;
         }

@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use bevy::math::IVec3;
 
-use super::voxel::{blocks, BlockId, RenderKind, Tex};
+use super::voxel::{BlockId, RenderKind, Tex, blocks};
 
 #[derive(Default, Debug, Clone)]
 pub struct MeshBuffers {
@@ -74,7 +74,10 @@ fn face_visible(b: BlockId, neighbour: BlockId) -> bool {
     match b.def().render {
         RenderKind::Cube => !neighbour.is_opaque(),
         RenderKind::Transparent => !neighbour.is_opaque() && neighbour != b,
-        RenderKind::Liquid => matches!(neighbour.def().render, RenderKind::Invisible | RenderKind::Cross),
+        RenderKind::Liquid => matches!(
+            neighbour.def().render,
+            RenderKind::Invisible | RenderKind::Cross
+        ),
         RenderKind::Invisible | RenderKind::Cross => false,
     }
 }
@@ -118,18 +121,31 @@ pub fn mesh_chunk(input: &Padded) -> ChunkMesh {
                             let ao = if b.def().render == RenderKind::Cube {
                                 let occ = |o: IVec3| input.get(q + o).is_opaque() as u8;
                                 let mut ao = [3u8; 4];
-                                for (k, (su, sv)) in [(-1, -1), (1, -1), (1, 1), (-1, 1)].into_iter().enumerate() {
+                                for (k, (su, sv)) in
+                                    [(-1, -1), (1, -1), (1, 1), (-1, 1)].into_iter().enumerate()
+                                {
                                     let s1 = occ(eu * su);
                                     let s2 = occ(ev * sv);
                                     let c = occ(eu * su + ev * sv);
-                                    ao[k] = if s1 == 1 && s2 == 1 { 0 } else { 3 - (s1 + s2 + c) };
+                                    ao[k] = if s1 == 1 && s2 == 1 {
+                                        0
+                                    } else {
+                                        3 - (s1 + s2 + c)
+                                    };
                                 }
                                 ao
                             } else {
                                 [3; 4]
                             };
-                            let lowered = b.is_liquid() && d == 1 && side == 1 && !input.get(p + IVec3::Y).is_liquid();
-                            Some(FaceKey { tex: face_tex(b, d, side), ao, lowered })
+                            let lowered = b.is_liquid()
+                                && d == 1
+                                && side == 1
+                                && !input.get(p + IVec3::Y).is_liquid();
+                            Some(FaceKey {
+                                tex: face_tex(b, d, side),
+                                ao,
+                                lowered,
+                            })
                         } else {
                             None
                         };
@@ -188,7 +204,19 @@ pub fn mesh_chunk(input: &Padded) -> ChunkMesh {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn emit_quad(out: &mut ChunkMesh, d: usize, u: usize, v: usize, side: i32, slice: i32, i: i32, j: i32, w: i32, h: i32, key: FaceKey) {
+fn emit_quad(
+    out: &mut ChunkMesh,
+    d: usize,
+    u: usize,
+    v: usize,
+    side: i32,
+    slice: i32,
+    i: i32,
+    j: i32,
+    w: i32,
+    h: i32,
+    key: FaceKey,
+) {
     let buf = out.parts.entry(key.tex).or_default();
     let mut base = [0.0f32; 3];
     base[d] = (slice + if side > 0 { 1 } else { 0 }) as f32;
@@ -224,7 +252,11 @@ fn emit_quad(out: &mut ChunkMesh, d: usize, u: usize, v: usize, side: i32, slice
     }
     // Flip the diagonal to avoid AO interpolation artifacts.
     let flip = key.ao[0] as u32 + key.ao[2] as u32 > key.ao[1] as u32 + key.ao[3] as u32;
-    let tris: [u32; 6] = if !flip { [0, 1, 2, 0, 2, 3] } else { [1, 2, 3, 1, 3, 0] };
+    let tris: [u32; 6] = if !flip {
+        [0, 1, 2, 0, 2, 3]
+    } else {
+        [1, 2, 3, 1, 3, 0]
+    };
     for t in tris {
         buf.indices.push(start + t);
     }
@@ -247,7 +279,12 @@ fn emit_cross(out: &mut ChunkMesh, p: IVec3, b: BlockId) {
     ];
     for (a, c) in quads {
         let start = buf.positions.len() as u32;
-        let verts = [[a[0], y, a[1]], [c[0], y, c[1]], [c[0], y + h, c[1]], [a[0], y + h, a[1]]];
+        let verts = [
+            [a[0], y, a[1]],
+            [c[0], y, c[1]],
+            [c[0], y + h, c[1]],
+            [a[0], y + h, a[1]],
+        ];
         let uvs = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
         for (vtx, uv) in verts.iter().zip(uvs) {
             buf.positions.push(*vtx);
@@ -280,7 +317,13 @@ mod tests {
 
     #[test]
     fn single_block_has_six_faces() {
-        let data = padded(4, |p| if p == IVec3::new(1, 1, 1) { blocks::STONE } else { blocks::AIR });
+        let data = padded(4, |p| {
+            if p == IVec3::new(1, 1, 1) {
+                blocks::STONE
+            } else {
+                blocks::AIR
+            }
+        });
         let m = mesh_chunk(&Padded { data: &data, n: 4 });
         assert_eq!(m.quad_count(), 6);
         assert_eq!(m.solid_voxels, vec![IVec3::new(1, 1, 1)]);
@@ -290,7 +333,11 @@ mod tests {
     fn hidden_faces_between_neighbours_are_culled() {
         // Two adjacent blocks: 10 visible faces, not 12.
         let data = padded(4, |p| {
-            if p == IVec3::new(1, 1, 1) || p == IVec3::new(2, 1, 1) { blocks::STONE } else { blocks::AIR }
+            if p == IVec3::new(1, 1, 1) || p == IVec3::new(2, 1, 1) {
+                blocks::STONE
+            } else {
+                blocks::AIR
+            }
         });
         let m = mesh_chunk(&Padded { data: &data, n: 4 });
         // Greedy merges the 2×1 sides into single quads: 6 quads total.
@@ -320,9 +367,19 @@ mod tests {
     fn border_face_culled_by_neighbour_chunk_data() {
         // Block at x = n-1 with a solid neighbour in the padding (next chunk).
         let n = 4;
-        let data = padded(n, |p| if p == IVec3::new(n - 1, 1, 1) || p == IVec3::new(n, 1, 1) { blocks::STONE } else { blocks::AIR });
+        let data = padded(n, |p| {
+            if p == IVec3::new(n - 1, 1, 1) || p == IVec3::new(n, 1, 1) {
+                blocks::STONE
+            } else {
+                blocks::AIR
+            }
+        });
         let m = mesh_chunk(&Padded { data: &data, n });
-        assert_eq!(m.quad_count(), 5, "+X face hidden by the neighbouring chunk");
+        assert_eq!(
+            m.quad_count(),
+            5,
+            "+X face hidden by the neighbouring chunk"
+        );
     }
 
     #[test]
@@ -337,7 +394,13 @@ mod tests {
 
     #[test]
     fn quads_face_outwards() {
-        let data = padded(4, |p| if p == IVec3::new(1, 1, 1) { blocks::STONE } else { blocks::AIR });
+        let data = padded(4, |p| {
+            if p == IVec3::new(1, 1, 1) {
+                blocks::STONE
+            } else {
+                blocks::AIR
+            }
+        });
         let m = mesh_chunk(&Padded { data: &data, n: 4 });
         let b = &m.parts[&Tex::Stone];
         for tri in b.indices.chunks(3) {
@@ -345,7 +408,10 @@ mod tests {
             let (a, bb, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
             let geometric = (bb - a).cross(c - a).normalize();
             let declared = bevy::math::Vec3::from(b.normals[tri[0] as usize]);
-            assert!(geometric.dot(declared) > 0.99, "CCW winding must match the normal");
+            assert!(
+                geometric.dot(declared) > 0.99,
+                "CCW winding must match the normal"
+            );
         }
     }
 }

@@ -5,20 +5,21 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::{
+    Ctx, Step, StepFn,
     scenario::{player_pos, step, teleport},
     scenario3::{aim_at, inv, key, mouse, select, with_inv},
     scenario4::pos_of,
     scenario5::field,
-    screenshot, Ctx, Step, StepFn,
+    screenshot,
 };
 use crate::{
     core::resources::SpawnPoint,
-    items::{drops::ItemDrop, ItemId},
+    items::{ItemId, drops::ItemDrop},
     magic::spells::{AetherReserve, Spell, SpellState},
     player::Player,
     survival::{
         combat::WeaponCooldown,
-        creatures::{spawn_hollowling, Creature},
+        creatures::{Creature, spawn_hollowling},
         damage::{Damage, DamageSource, Health},
         needs::Vitals,
     },
@@ -26,7 +27,11 @@ use crate::{
 };
 
 fn player_e(world: &mut World) -> Entity {
-    world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap()
+    world
+        .query_filtered::<Entity, With<Player>>()
+        .iter(world)
+        .next()
+        .unwrap()
 }
 
 fn vitals(world: &mut World) -> Vitals {
@@ -70,7 +75,13 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.t > 2.0 {
             let v = vitals(world);
-            ctx.check("hunger and thirst drop slowly", v.hunger < ctx.vars["h0"] && v.thirst < ctx.vars["t0"] && ctx.vars["h0"] - v.hunger < 1.0, format!("hunger {:.3}→{:.3}", ctx.vars["h0"], v.hunger));
+            ctx.check(
+                "hunger and thirst drop slowly",
+                v.hunger < ctx.vars["h0"]
+                    && v.thirst < ctx.vars["t0"]
+                    && ctx.vars["h0"] - v.hunger < 1.0,
+                format!("hunger {:.3}→{:.3}", ctx.vars["h0"], v.hunger),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -83,7 +94,8 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
                 i.add(ItemId::k("berries"), 2);
             });
             select(world, "berries");
-            ctx.vars.insert("b0".into(), inv(world).count(ItemId::k("berries")) as f32);
+            ctx.vars
+                .insert("b0".into(), inv(world).count(ItemId::k("berries")) as f32);
         }
         if ctx.frames == 5 {
             mouse(world, MouseButton::Right, true);
@@ -94,7 +106,11 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
         if ctx.frames == 10 {
             let v = vitals(world);
             let b = inv(world).count(ItemId::k("berries")) as f32;
-            ctx.check("eating restores hunger and uses the item", v.hunger > 50.0 && b == ctx.vars["b0"] - 1.0, format!("hunger {:.1}, berries {b}", v.hunger));
+            ctx.check(
+                "eating restores hunger and uses the item",
+                v.hunger > 50.0 && b == ctx.vars["b0"] - 1.0,
+                format!("hunger {:.1}, berries {b}", v.hunger),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -130,7 +146,11 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.frames == 20 {
             let v = vitals(world);
-            ctx.check("drinking water restores thirst", v.thirst > 50.0, format!("thirst {:.1}", v.thirst));
+            ctx.check(
+                "drinking water restores thirst",
+                v.thirst > 50.0,
+                format!("thirst {:.1}", v.thirst),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -145,7 +165,11 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
         if ctx.t > 3.0 {
             let e = player_e(world);
             let h = hp(world, e);
-            ctx.check("falling 14 m hurts", h < 95.0 && h > 0.0, format!("hp {h:.1}"));
+            ctx.check(
+                "falling 14 m hurts",
+                h < 95.0 && h > 0.0,
+                format!("hp {h:.1}"),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -187,11 +211,18 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
             let pe = player_e(world);
             let me = pos_of(world, pe);
             let back = (me - p).normalize_or_zero();
-            teleport(world, p + Vec3::new(back.x, 0.0, back.z).normalize_or_zero() * 1.8 + Vec3::Y * 0.5);
+            teleport(
+                world,
+                p + Vec3::new(back.x, 0.0, back.z).normalize_or_zero() * 1.8 + Vec3::Y * 0.5,
+            );
         }
         if aim_and_click(world, ctx, c, MouseButton::Left) {
             let now = hp(world, c);
-            ctx.check("blade damages the creature", now < ctx.vars["ch0"], format!("{:.0} → {now:.0}", ctx.vars["ch0"]));
+            ctx.check(
+                "blade damages the creature",
+                now < ctx.vars["ch0"],
+                format!("{:.0} → {now:.0}", ctx.vars["ch0"]),
+            );
             ctx.vars.remove("clicked");
             return Step::Next;
         }
@@ -209,7 +240,8 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
             with_inv(world, |i| {
                 i.add(ItemId::k("bolt"), 5);
             });
-            ctx.vars.insert("bolts".into(), inv(world).count(ItemId::k("bolt")) as f32);
+            ctx.vars
+                .insert("bolts".into(), inv(world).count(ItemId::k("bolt")) as f32);
             ctx.vars.remove("clicked");
         }
         let c = ctx.entities["c2"];
@@ -221,9 +253,26 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
                 return Step::Wait;
             }
             let now = hp(world, c);
+            if now >= ctx.vars["ch0"] && ctx.t < 10.0 {
+                // Missed a moving target: shoot again.
+                ctx.vars.remove("clicked");
+                world.resource_mut::<WeaponCooldown>().0 = 0.0;
+                with_inv(world, |i| {
+                    i.add(ItemId::k("bolt"), 1);
+                });
+                return Step::Wait;
+            }
             let bolts = inv(world).count(ItemId::k("bolt")) as f32;
-            ctx.check("bolt hits the creature", now < ctx.vars["ch0"], format!("{:.0} → {now:.0}", ctx.vars["ch0"]));
-            ctx.check("shooting uses a bolt", bolts == ctx.vars["bolts"] - 1.0, format!("bolts {bolts}"));
+            ctx.check(
+                "bolt hits the creature",
+                now < ctx.vars["ch0"],
+                format!("{:.0} → {now:.0}", ctx.vars["ch0"]),
+            );
+            ctx.check(
+                "shooting uses a bolt",
+                bolts == ctx.vars["bolts"] - 1.0,
+                format!("bolts {bolts}"),
+            );
             ctx.vars.remove("clicked");
             return Step::Next;
         }
@@ -242,18 +291,34 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
             }
             ctx.vars.remove("clicked");
             let mut q = world.query::<&ItemDrop>();
-            ctx.vars.insert("drops0".into(), q.iter(world).filter(|d| d.stack.item == ItemId::k("agitated_shard")).count() as f32);
+            ctx.vars.insert(
+                "drops0".into(),
+                q.iter(world)
+                    .filter(|d| d.stack.item == ItemId::k("agitated_shard"))
+                    .count() as f32,
+            );
         }
         if world.get_entity(c).is_err() || world.get::<Creature>(c).is_none() {
             let mut q = world.query::<&ItemDrop>();
-            let drops = q.iter(world).filter(|d| d.stack.item == ItemId::k("agitated_shard")).count() as f32;
+            let drops = q
+                .iter(world)
+                .filter(|d| d.stack.item == ItemId::k("agitated_shard"))
+                .count() as f32;
             ctx.check("creature dies from magic", true, "despawned");
-            ctx.check("creature drops loot", drops > ctx.vars["drops0"], format!("{drops} shard drops"));
+            ctx.check(
+                "creature drops loot",
+                drops > ctx.vars["drops0"],
+                format!("{drops} shard drops"),
+            );
             return Step::Next;
         }
         if aim_and_click(world, ctx, c, MouseButton::Left) {
             if ctx.t > 8.0 {
-                ctx.check("creature dies from magic", false, format!("hp {}", hp(world, c)));
+                ctx.check(
+                    "creature dies from magic",
+                    false,
+                    format!("hp {}", hp(world, c)),
+                );
                 return Step::Next;
             }
             // Missed a moving target: try again.
@@ -273,13 +338,21 @@ pub fn stage7(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.frames == 3 {
             let e = player_e(world);
-            world.write_message(Damage { target: e, amount: 500.0, source: DamageSource::Fall });
+            world.write_message(Damage {
+                target: e,
+                amount: 500.0,
+                source: DamageSource::Fall,
+            });
         }
         if ctx.frames == 8 {
             let e = player_e(world);
             let spawn = world.resource::<SpawnPoint>().0;
             let d = player_pos(world).unwrap().distance(spawn);
-            ctx.check("dead player respawns with full health", hp(world, e) == 100.0 && d < 2.0, format!("hp {}, {d:.1} m from spawn", hp(world, e)));
+            ctx.check(
+                "dead player respawns with full health",
+                hp(world, e) == 100.0 && d < 2.0,
+                format!("hp {}, {d:.1} m from spawn", hp(world, e)),
+            );
             let _ = world.query::<&RigidBody>();
             return Step::Next;
         }

@@ -7,14 +7,14 @@ use std::collections::HashMap;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::{block_drop, inventory::Inventory, ItemId, ItemStack};
+use super::{ItemId, ItemStack, block_drop, inventory::Inventory};
 use crate::{
     core::{
         config::GameConfig,
         events::Notify,
         layers::Layer,
         rules::ModeRules,
-        states::{gameplay_active, AppState},
+        states::{AppState, gameplay_active},
     },
     world::{chunks::EditCause, interaction::BlockChanged},
 };
@@ -52,11 +52,20 @@ const DESPAWN_AFTER: f32 = 600.0;
 const PICKUP_DELAY: f32 = 0.6;
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, cfg: Res<GameConfig>) {
-    commands.insert_resource(DropAssets { mesh: meshes.add(Cuboid::new(0.28, 0.28, 0.28)), ..default() });
-    commands.insert_resource(PickupSettings { auto: cfg.player.auto_pickup });
+    commands.insert_resource(DropAssets {
+        mesh: meshes.add(Cuboid::new(0.28, 0.28, 0.28)),
+        ..default()
+    });
+    commands.insert_resource(PickupSettings {
+        auto: cfg.player.auto_pickup,
+    });
 }
 
-fn drops_from_blocks(rules: Res<ModeRules>, mut changed: MessageReader<BlockChanged>, mut spawn: MessageWriter<SpawnDrop>) {
+fn drops_from_blocks(
+    rules: Res<ModeRules>,
+    mut changed: MessageReader<BlockChanged>,
+    mut spawn: MessageWriter<SpawnDrop>,
+) {
     for c in changed.read() {
         if c.cause != EditCause::Mined || !rules.drops {
             continue;
@@ -86,7 +95,11 @@ fn spawn_drops(
                 let glow = matches!(def.category, super::Category::Magic);
                 materials.add(StandardMaterial {
                     base_color: d.stack.item.color(),
-                    emissive: if glow { d.stack.item.color().to_linear() * 2.0 } else { LinearRgba::BLACK },
+                    emissive: if glow {
+                        d.stack.item.color().to_linear() * 2.0
+                    } else {
+                        LinearRgba::BLACK
+                    },
                     perceptual_roughness: 0.6,
                     ..default()
                 })
@@ -94,7 +107,10 @@ fn spawn_drops(
             .clone();
         commands.spawn((
             Name::new(format!("Drop {}", d.stack.item.def().key)),
-            ItemDrop { stack: d.stack, age: 0.0 },
+            ItemDrop {
+                stack: d.stack,
+                age: 0.0,
+            },
             Mesh3d(assets.mesh.clone()),
             MeshMaterial3d(mat),
             Transform::from_translation(d.position),
@@ -102,7 +118,12 @@ fn spawn_drops(
             Collider::cuboid(0.28, 0.28, 0.28),
             LinearVelocity(d.velocity),
             AngularVelocity(Vec3::new(1.0, 2.0, 0.5)),
-            (Mass(d.stack.item.def().mass.max(0.2)), Friction::new(0.8), LinearDamping(0.3), GravityScale(1.0)),
+            (
+                Mass(d.stack.item.def().mass.max(0.2)),
+                Friction::new(0.8),
+                LinearDamping(0.3),
+                GravityScale(1.0),
+            ),
             CollisionLayers::new(Layer::Item, [Layer::Terrain, Layer::Prop, Layer::Item]),
         ));
     }
@@ -117,13 +138,21 @@ fn pickup(
     settings: Res<PickupSettings>,
     focus_ok: Option<Res<State<crate::core::states::InputFocus>>>,
     mut pickers: Query<(&Transform, &mut Inventory), With<Picker>>,
-    mut drops: Query<(Entity, &Transform, &mut ItemDrop, &mut LinearVelocity, &mut GravityScale)>,
+    mut drops: Query<(
+        Entity,
+        &Transform,
+        &mut ItemDrop,
+        &mut LinearVelocity,
+        &mut GravityScale,
+    )>,
     mut notify: MessageWriter<Notify>,
 ) {
     let dt = time.delta_secs();
     let manual = keys.just_pressed(KeyCode::KeyE)
         && focus_ok.is_some_and(|f| *f.get() == crate::core::states::InputFocus::Gameplay);
-    let Ok((ptf, mut inv)) = pickers.single_mut() else { return };
+    let Ok((ptf, mut inv)) = pickers.single_mut() else {
+        return;
+    };
     let center = ptf.translation;
     let mut picked_any = false;
     for (e, tf, mut drop, mut vel, mut gravity) in &mut drops {
@@ -160,10 +189,18 @@ fn pickup(
     let _ = picked_any;
 }
 
-fn toggle_auto(keys: Res<ButtonInput<KeyCode>>, mut s: ResMut<PickupSettings>, mut notify: MessageWriter<Notify>) {
+fn toggle_auto(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut s: ResMut<PickupSettings>,
+    mut notify: MessageWriter<Notify>,
+) {
     if keys.just_pressed(KeyCode::KeyP) {
         s.auto = !s.auto;
-        notify.write(Notify::info(if s.auto { "Автоподбор: вкл" } else { "Автоподбор: выкл" }));
+        notify.write(Notify::info(if s.auto {
+            "Автоподбор: вкл"
+        } else {
+            "Автоподбор: выкл"
+        }));
     }
 }
 
@@ -177,7 +214,9 @@ fn throw_item(
     if !keys.just_pressed(KeyCode::KeyG) {
         return;
     }
-    let Ok(mut inv) = pickers.single_mut() else { return };
+    let Ok(mut inv) = pickers.single_mut() else {
+        return;
+    };
     let slot = inv.selected;
     if let Some(item) = inv.take_one(slot) {
         spawn.write(SpawnDrop {

@@ -7,9 +7,9 @@ use bevy::prelude::*;
 use super::blueprints::{Blueprint, BlueprintJoint, BlueprintPart};
 use crate::{
     core::rules::ModeRules,
-    items::{block_drop, inventory::Inventory, ItemId},
-    machinery::components::{spawn_part, Part, PartAssets},
-    physics::joints::{spawn_connection, Connection},
+    items::{ItemId, block_drop, inventory::Inventory},
+    machinery::components::{Part, PartAssets, spawn_part},
+    physics::joints::{Connection, spawn_connection},
     player::Player,
     world::{
         chunks::{EditCause, VoxelWorld},
@@ -27,7 +27,10 @@ pub struct Area {
 
 impl Area {
     pub fn new(a: IVec3, b: IVec3) -> Self {
-        Self { min: a.min(b), max: a.max(b) }
+        Self {
+            min: a.min(b),
+            max: a.max(b),
+        }
     }
     pub fn size(&self) -> IVec3 {
         self.max - self.min + IVec3::ONE
@@ -41,7 +44,8 @@ impl Area {
     }
     pub fn cells(&self) -> impl Iterator<Item = IVec3> + '_ {
         (self.min.y..=self.max.y).flat_map(move |y| {
-            (self.min.z..=self.max.z).flat_map(move |z| (self.min.x..=self.max.x).map(move |x| IVec3::new(x, y, z)))
+            (self.min.z..=self.max.z)
+                .flat_map(move |z| (self.min.x..=self.max.x).map(move |x| IVec3::new(x, y, z)))
         })
     }
 }
@@ -53,7 +57,13 @@ fn parts_in(world: &mut World, area: Area) -> Vec<(Entity, Part, Transform)> {
     let mut q = world.query::<(Entity, &Part, &Position, &Rotation)>();
     q.iter(world)
         .filter(|(_, _, p, _)| area.contains_point(p.0))
-        .map(|(e, part, p, r)| (e, *part, Transform::from_translation(p.0).with_rotation(r.0)))
+        .map(|(e, part, p, r)| {
+            (
+                e,
+                *part,
+                Transform::from_translation(p.0).with_rotation(r.0),
+            )
+        })
         .collect()
 }
 
@@ -73,7 +83,13 @@ pub fn capture(world: &mut World, area: Area) -> Blueprint {
     let joints = jq
         .iter(world)
         .filter_map(|c| {
-            Some(BlueprintJoint { a: index_of(c.a)?, b: index_of(c.b)?, kind: c.kind, frame_a: c.frame_a, frame_b: c.frame_b })
+            Some(BlueprintJoint {
+                a: index_of(c.a)?,
+                b: index_of(c.b)?,
+                kind: c.kind,
+                frame_a: c.frame_a,
+                frame_b: c.frame_b,
+            })
         })
         .collect();
     Blueprint {
@@ -81,7 +97,11 @@ pub fn capture(world: &mut World, area: Area) -> Blueprint {
         blocks,
         parts: parts
             .iter()
-            .map(|(_, p, t)| BlueprintPart { kind: p.kind, offset: t.translation - area.min.as_vec3(), rotation: t.rotation })
+            .map(|(_, p, t)| BlueprintPart {
+                kind: p.kind,
+                offset: t.translation - area.min.as_vec3(),
+                rotation: t.rotation,
+            })
             .collect(),
         joints,
     }
@@ -102,7 +122,11 @@ pub fn clear_area(world: &mut World, area: Area) -> usize {
         if let Some(i) = block_drop(b) {
             items.push(i);
         }
-        world.write_message(BlockEdit { pos: c, block: blocks::AIR, cause: EditCause::Creative });
+        world.write_message(BlockEdit {
+            pos: c,
+            block: blocks::AIR,
+            cause: EditCause::Creative,
+        });
         removed += 1;
     }
     for (e, part, _) in parts_in(world, area) {
@@ -165,7 +189,11 @@ pub fn paste(world: &mut World, bp: &Blueprint, origin: IVec3) -> Result<usize, 
     for (rel, b) in &bp.blocks {
         let p = origin + *rel;
         if world.resource::<VoxelWorld>().get(p).is_replaceable() {
-            world.write_message(BlockEdit { pos: p, block: *b, cause: EditCause::Creative });
+            world.write_message(BlockEdit {
+                pos: p,
+                block: *b,
+                cause: EditCause::Creative,
+            });
             placed += 1;
         }
     }
@@ -175,12 +203,22 @@ pub fn paste(world: &mut World, bp: &Blueprint, origin: IVec3) -> Result<usize, 
         {
             let mut commands = world.commands();
             for p in &bp.parts {
-                let t = Transform::from_translation(origin.as_vec3() + p.offset).with_rotation(p.rotation);
+                let t = Transform::from_translation(origin.as_vec3() + p.offset)
+                    .with_rotation(p.rotation);
                 spawned.push(spawn_part(&mut commands, &assets, p.kind, t));
                 placed += 1;
             }
             for j in &bp.joints {
-                spawn_connection(&mut commands, Connection { a: spawned[j.a], b: spawned[j.b], kind: j.kind, frame_a: j.frame_a, frame_b: j.frame_b });
+                spawn_connection(
+                    &mut commands,
+                    Connection {
+                        a: spawned[j.a],
+                        b: spawned[j.b],
+                        kind: j.kind,
+                        frame_a: j.frame_a,
+                        frame_b: j.frame_b,
+                    },
+                );
             }
         }
         world.flush();

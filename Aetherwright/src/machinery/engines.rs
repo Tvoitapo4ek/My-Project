@@ -15,7 +15,13 @@ use crate::physics::joints::{Connection, JointKind};
 /// so wheels on both sides must get opposite motor targets to roll together.
 pub fn axis_sign(axis_in_engine_frame: Vec3) -> f32 {
     let a = axis_in_engine_frame;
-    let dominant = if a.z.abs() >= 0.5 { a.z } else if a.x.abs() >= 0.5 { a.x } else { a.y };
+    let dominant = if a.z.abs() >= 0.5 {
+        a.z
+    } else if a.x.abs() >= 0.5 {
+        a.x
+    } else {
+        a.y
+    };
     if dominant < 0.0 { -1.0 } else { 1.0 }
 }
 
@@ -39,7 +45,10 @@ fn drive_hinges(engines: Query<&Engine>, mut joints: Query<(&Connection, &mut Re
                 enabled,
                 target_velocity: target,
                 max_torque: engine.max_torque * engine.throttle.max(0.25),
-                motor_model: MotorModel::ForceBased { stiffness: 0.0, damping: engine.max_torque * 0.5 },
+                motor_model: MotorModel::AccelerationBased {
+                    stiffness: 0.0,
+                    damping: 1.0,
+                },
                 ..AngularMotor::new_disabled(MotorModel::DEFAULT)
             };
         }

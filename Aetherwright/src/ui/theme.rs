@@ -38,8 +38,12 @@ pub struct UiFont {
 }
 
 pub fn load_fonts(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
-    let regular = fonts.add(Font::from_bytes(include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf").to_vec()));
-    let bold = fonts.add(Font::from_bytes(include_bytes!("../../assets/fonts/JetBrainsMono-Bold.ttf").to_vec()));
+    let regular = fonts.add(Font::from_bytes(
+        include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf").to_vec(),
+    ));
+    let bold = fonts.add(Font::from_bytes(
+        include_bytes!("../../assets/fonts/JetBrainsMono-Bold.ttf").to_vec(),
+    ));
     commands.insert_resource(UiFont { regular, bold });
 }
 
@@ -49,6 +53,10 @@ pub fn apply_font(font: Option<Res<UiFont>>, mut q: Query<&mut TextFont, Added<T
     let Some(font) = font else { return };
     for mut t in &mut q {
         let big = matches!(t.font_size, bevy::text::FontSize::Px(px) if px >= 18.0);
-        t.font = bevy::text::FontSource::Handle(if big { font.bold.clone() } else { font.regular.clone() });
+        t.font = bevy::text::FontSource::Handle(if big {
+            font.bold.clone()
+        } else {
+            font.regular.clone()
+        });
     }
 }

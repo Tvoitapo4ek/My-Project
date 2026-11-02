@@ -18,7 +18,7 @@ use crate::core::{
     config::GameConfig,
     layers::Layer,
     resources::EyeRay,
-    states::{gameplay_active, AppState},
+    states::{AppState, gameplay_active},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,9 +51,25 @@ pub fn voxel_raycast(
         return None;
     }
     let mut cell = origin.floor().as_ivec3();
-    let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
-    let next_boundary = |o: f32, c: i32, s: i32| if s > 0 { (c + 1) as f32 - o } else { o - c as f32 };
-    let inv = |d: f32| if d.abs() < 1e-9 { f32::INFINITY } else { 1.0 / d.abs() };
+    let step = IVec3::new(
+        dir.x.signum() as i32,
+        dir.y.signum() as i32,
+        dir.z.signum() as i32,
+    );
+    let next_boundary = |o: f32, c: i32, s: i32| {
+        if s > 0 {
+            (c + 1) as f32 - o
+        } else {
+            o - c as f32
+        }
+    };
+    let inv = |d: f32| {
+        if d.abs() < 1e-9 {
+            f32::INFINITY
+        } else {
+            1.0 / d.abs()
+        }
+    };
     let t_delta = Vec3::new(inv(dir.x), inv(dir.y), inv(dir.z));
     let mut t_max = Vec3::new(
         next_boundary(origin.x, cell.x, step.x) * t_delta.x,
@@ -66,7 +82,12 @@ pub fn voxel_raycast(
     loop {
         let b = world.get(cell);
         if accept(b) && (world.in_bounds(cell) || b.is_solid()) && cell.y >= 0 {
-            return Some(VoxelHit { pos: cell, normal, block: b, distance: t });
+            return Some(VoxelHit {
+                pos: cell,
+                normal,
+                block: b,
+                distance: t,
+            });
         }
         if t_max.x < t_max.y && t_max.x < t_max.z {
             t = t_max.x;
@@ -129,8 +150,15 @@ pub enum RejectReason {
     Unbreakable,
 }
 
-fn update_target(eye: Res<EyeRay>, world: Res<VoxelWorld>, cfg: Res<GameConfig>, mut target: ResMut<BlockTarget>) {
-    target.0 = voxel_raycast(&world, eye.origin, eye.direction, cfg.player.reach, |b| b.is_targetable());
+fn update_target(
+    eye: Res<EyeRay>,
+    world: Res<VoxelWorld>,
+    cfg: Res<GameConfig>,
+    mut target: ResMut<BlockTarget>,
+) {
+    target.0 = voxel_raycast(&world, eye.origin, eye.direction, cfg.player.reach, |b| {
+        b.is_targetable()
+    });
 }
 
 /// Validates and applies edits. Placing a solid block is refused if it
@@ -144,25 +172,49 @@ pub fn apply_block_edits(
 ) {
     for e in edits.read() {
         if !world.in_bounds(e.pos) {
-            rejected.write(BlockEditRejected { pos: e.pos, reason: RejectReason::OutOfWorld });
+            rejected.write(BlockEditRejected {
+                pos: e.pos,
+                reason: RejectReason::OutOfWorld,
+            });
             continue;
         }
         let old = world.get(e.pos);
-        if !old.is_air() && old.def().hardness.is_infinite() && !old.is_liquid() && e.cause != EditCause::Load {
-            rejected.write(BlockEditRejected { pos: e.pos, reason: RejectReason::Unbreakable });
+        if !old.is_air()
+            && old.def().hardness.is_infinite()
+            && !old.is_liquid()
+            && e.cause != EditCause::Load
+        {
+            rejected.write(BlockEditRejected {
+                pos: e.pos,
+                reason: RejectReason::Unbreakable,
+            });
             continue;
         }
         if e.block.is_solid() && !matches!(e.cause, EditCause::Load | EditCause::Script) {
             let center = e.pos.as_vec3() + Vec3::splat(0.5);
-            let filter = SpatialQueryFilter::from_mask([Layer::Player, Layer::Prop, Layer::Creature]);
-            let hits = spatial.shape_intersections(&Collider::cuboid(0.98, 0.98, 0.98), center, Quat::IDENTITY, &filter);
+            let filter =
+                SpatialQueryFilter::from_mask([Layer::Player, Layer::Prop, Layer::Creature]);
+            let hits = spatial.shape_intersections(
+                &Collider::cuboid(0.98, 0.98, 0.98),
+                center,
+                Quat::IDENTITY,
+                &filter,
+            );
             if !hits.is_empty() {
-                rejected.write(BlockEditRejected { pos: e.pos, reason: RejectReason::Occupied });
+                rejected.write(BlockEditRejected {
+                    pos: e.pos,
+                    reason: RejectReason::Occupied,
+                });
                 continue;
             }
         }
         if let Some(old) = world.set(e.pos, e.block) {
-            changed.write(BlockChanged { pos: e.pos, old, new: e.block, cause: e.cause });
+            changed.write(BlockChanged {
+                pos: e.pos,
+                old,
+                new: e.block,
+                cause: e.cause,
+            });
         }
     }
 }
@@ -170,7 +222,10 @@ pub fn apply_block_edits(
 fn draw_target(target: Res<BlockTarget>, mut gizmos: Gizmos) {
     if let Some(hit) = target.0 {
         let center = hit.pos.as_vec3() + Vec3::splat(0.5);
-        gizmos.cube(Transform::from_translation(center).with_scale(Vec3::splat(1.004)), Color::srgba(0.4, 0.95, 1.0, 0.9));
+        gizmos.cube(
+            Transform::from_translation(center).with_scale(Vec3::splat(1.004)),
+            Color::srgba(0.4, 0.95, 1.0, 0.9),
+        );
     }
 }
 
@@ -184,9 +239,15 @@ impl Plugin for InteractionPlugin {
             .add_message::<BlockEditRejected>()
             .add_systems(
                 Update,
-                (update_target, draw_target).chain().in_set(InteractionSet).run_if(gameplay_active),
+                (update_target, draw_target)
+                    .chain()
+                    .in_set(InteractionSet)
+                    .run_if(gameplay_active),
             )
-            .add_systems(PostUpdate, apply_block_edits.run_if(in_state(AppState::InGame)));
+            .add_systems(
+                PostUpdate,
+                apply_block_edits.run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -211,7 +272,10 @@ mod tests {
     fn ray_hits_block_and_reports_face() {
         let mut w = world();
         w.set(IVec3::new(5, 2, 5), blocks::STONE);
-        let hit = voxel_raycast(&w, Vec3::new(5.5, 6.5, 5.5), Vec3::NEG_Y, 10.0, |b| b.is_targetable()).unwrap();
+        let hit = voxel_raycast(&w, Vec3::new(5.5, 6.5, 5.5), Vec3::NEG_Y, 10.0, |b| {
+            b.is_targetable()
+        })
+        .unwrap();
         assert_eq!(hit.pos, IVec3::new(5, 2, 5));
         assert_eq!(hit.normal, IVec3::Y);
         assert_eq!(hit.place_pos(), IVec3::new(5, 3, 5));
@@ -228,7 +292,13 @@ mod tests {
         assert!(voxel_raycast(&w, o, Vec3::X, 4.0, |b| b.is_targetable()).is_none());
         // Diagonal ray from below up into a block.
         w.set(IVec3::new(2, 6, 2), blocks::STONE);
-        let hit = voxel_raycast(&w, Vec3::new(1.5, 4.5, 1.5), Vec3::new(1.0, 2.0, 1.0), 10.0, |b| b.is_targetable());
+        let hit = voxel_raycast(
+            &w,
+            Vec3::new(1.5, 4.5, 1.5),
+            Vec3::new(1.0, 2.0, 1.0),
+            10.0,
+            |b| b.is_targetable(),
+        );
         assert_eq!(hit.map(|h| h.pos), Some(IVec3::new(2, 6, 2)));
     }
 
@@ -237,7 +307,10 @@ mod tests {
         let mut w = world();
         w.set(IVec3::new(1, 1, 1), blocks::WATER);
         w.set(IVec3::new(1, 0, 1), blocks::SAND);
-        let hit = voxel_raycast(&w, Vec3::new(1.5, 3.5, 1.5), Vec3::NEG_Y, 10.0, |b| b.is_targetable()).unwrap();
+        let hit = voxel_raycast(&w, Vec3::new(1.5, 3.5, 1.5), Vec3::NEG_Y, 10.0, |b| {
+            b.is_targetable()
+        })
+        .unwrap();
         assert_eq!(hit.block, blocks::SAND);
     }
 }

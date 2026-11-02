@@ -31,11 +31,35 @@ pub struct Immovable;
 #[derive(Component, Debug)]
 pub struct Frozen;
 
+/// Safety limits for every body: bounded speculative margin and speeds.
+/// Without them a body that gets violently ejected (e.g. snapped into
+/// overlap) expands its AABB across many voxel chunks and stalls the
+/// narrow phase.
+fn add_limits(
+    mut commands: Commands,
+    added: Query<
+        Entity,
+        (
+            Added<avian3d::prelude::RigidBody>,
+            Without<avian3d::prelude::SpeculativeCcd>,
+        ),
+    >,
+) {
+    use avian3d::prelude::*;
+    for e in &added {
+        commands.entity(e).insert((
+            SpeculativeCcd::new(1.0),
+            MaxLinearSpeed(80.0),
+            MaxAngularSpeed(60.0),
+        ));
+    }
+}
+
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
+        app.add_systems(PostUpdate, add_limits).add_plugins((
             rigid_bodies::RigidBodiesPlugin,
             joints::JointsPlugin,
             physics_gun::PhysicsGunPlugin,

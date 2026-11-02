@@ -18,12 +18,18 @@ pub struct ImpactSensor {
     last_velocity: Vec3,
 }
 
-fn detect_impacts(mut q: Query<(Entity, &LinearVelocity, &mut ImpactSensor)>, mut out: MessageWriter<ImpactEvent>) {
+fn detect_impacts(
+    mut q: Query<(Entity, &LinearVelocity, &mut ImpactSensor)>,
+    mut out: MessageWriter<ImpactEvent>,
+) {
     for (e, v, mut s) in &mut q {
         let dv = (v.0 - s.last_velocity).length();
         // Gravity alone changes velocity by ~0.3 m/s per tick.
         if dv > 8.0 {
-            out.write(ImpactEvent { entity: e, delta_v: dv });
+            out.write(ImpactEvent {
+                entity: e,
+                delta_v: dv,
+            });
         }
         s.last_velocity = v.0;
     }
@@ -33,6 +39,9 @@ pub struct CollisionPlugin;
 
 impl Plugin for CollisionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<ImpactEvent>().add_systems(FixedPostUpdate, detect_impacts.after(PhysicsSystems::Writeback));
+        app.add_message::<ImpactEvent>().add_systems(
+            FixedPostUpdate,
+            detect_impacts.after(PhysicsSystems::Writeback),
+        );
     }
 }

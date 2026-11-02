@@ -26,19 +26,14 @@ use bevy::{
     asset::RenderAssetUsages,
     mesh::{Indices, PrimitiveTopology},
     prelude::*,
-    tasks::{futures::check_ready, AsyncComputeTaskPool, Task},
+    tasks::{AsyncComputeTaskPool, Task, futures::check_ready},
 };
 
-use crate::core::{
-    config::GameConfig,
-    layers::Layer,
-    resources::SpawnPoint,
-    states::AppState,
-};
+use crate::core::{config::GameConfig, layers::Layer, resources::SpawnPoint, states::AppState};
 use chunks::{ChunkData, VoxelWorld};
 use generation::GenParams;
 use materials::BlockMaterials;
-use meshing::{mesh_chunk, ChunkMesh, Padded};
+use meshing::{ChunkMesh, Padded, mesh_chunk};
 
 /// Root entity of a chunk (static body + collider); children carry meshes.
 #[derive(Component, Debug)]
@@ -74,6 +69,14 @@ pub struct GenerationFinished(pub bool);
 #[derive(Message, Debug, Clone, Copy)]
 pub struct WorldReady;
 
+/// Meshing of the freshly generated world has been started.
+#[derive(Resource, Default)]
+pub struct MeshingStarted(pub bool);
+
+/// Chunk contents that replace generated ones before meshing (save loading).
+#[derive(Resource, Default)]
+pub struct PendingChunkPatches(pub Vec<(IVec3, ChunkData)>);
+
 pub fn gen_params(world: &VoxelWorld) -> GenParams {
     GenParams {
         seed: world.seed,
@@ -85,21 +88,38 @@ pub fn gen_params(world: &VoxelWorld) -> GenParams {
 
 fn new_world(cfg: &GameConfig) -> VoxelWorld {
     let w = &cfg.world;
-    VoxelWorld::new(w.chunk_size, IVec3::new(w.size_chunks_xz, w.height_chunks, w.size_chunks_xz), w.seed, w.sea_level)
+    VoxelWorld::new(
+        w.chunk_size,
+        IVec3::new(w.size_chunks_xz, w.height_chunks, w.size_chunks_xz),
+        w.seed,
+        w.sea_level,
+    )
 }
 
-fn start_generation(world: Res<VoxelWorld>, mut tasks: ResMut<GenTasks>, mut progress: ResMut<LoadProgress>) {
+fn start_generation(
+    world: Res<VoxelWorld>,
+    mut tasks: ResMut<GenTasks>,
+    mut progress: ResMut<LoadProgress>,
+) {
     let pool = AsyncComputeTaskPool::get();
     let params = gen_params(&world);
     for y in 0..world.size_chunks.y {
         for z in 0..world.size_chunks.z {
             for x in 0..world.size_chunks.x {
                 let c = IVec3::new(x, y, z);
-                tasks.0.push((c, pool.spawn(async move { generation::generate_chunk(&params, c) })));
+                tasks.0.push((
+                    c,
+                    pool.spawn(async move { generation::generate_chunk(&params, c) }),
+                ));
             }
         }
     }
-    *progress = LoadProgress { total: tasks.0.len(), generated: 0, meshed: 0, stage: "Генерация мира" };
+    *progress = LoadProgress {
+        total: tasks.0.len(),
+        generated: 0,
+        meshed: 0,
+        stage: "Генерация мира",
+    };
 }
 
 fn poll_generation(
@@ -130,20 +150,31 @@ fn start_meshing(
     finished: Res<GenerationFinished>,
     mut world: ResMut<VoxelWorld>,
     mut tasks: ResMut<MeshTasks>,
-    mut started: Local<bool>,
+    mut started: ResMut<MeshingStarted>,
+    mut patches: ResMut<PendingChunkPatches>,
     mut progress: ResMut<LoadProgress>,
 ) {
-    if !finished.0 || *started {
+    if !finished.0 || started.0 {
         return;
     }
-    *started = true;
+    started.0 = true;
+    // Saved chunks replace generated ones (and stay "modified" for the next save).
+    for (c, data) in patches.0.drain(..) {
+        if world.chunks.contains_key(&c) {
+            world.chunks.insert(c, data);
+            world.modified.insert(c);
+        }
+    }
     progress.stage = "Построение геометрии";
     let pool = AsyncComputeTaskPool::get();
     let n = world.chunk_size;
     let coords: Vec<IVec3> = world.chunks.keys().copied().collect();
     for c in coords {
         let padded = world.padded(c);
-        tasks.0.push((c, pool.spawn(async move { mesh_chunk(&Padded { data: &padded, n }) })));
+        tasks.0.push((
+            c,
+            pool.spawn(async move { mesh_chunk(&Padded { data: &padded, n }) }),
+        ));
     }
     world.dirty.clear();
 }
@@ -174,7 +205,15 @@ fn poll_meshing(
         None => true,
     });
     for (c, mesh) in done {
-        apply_chunk_mesh(&mut commands, &mut entities, &mut meshes, &mats, &world, c, mesh);
+        apply_chunk_mesh(
+            &mut commands,
+            &mut entities,
+            &mut meshes,
+            &mats,
+            &world,
+            c,
+            mesh,
+        );
         progress.meshed += 1;
     }
     if tasks.0.is_empty() && progress.meshed >= progress.total && progress.total > 0 {
@@ -192,7 +231,8 @@ fn poll_meshing(
 pub fn find_spawn(world: &VoxelWorld) -> Vec3 {
     let size = world.size_blocks();
     let center = IVec2::new(size.x / 2, size.z / 2);
-    let open_column = |x: i32, z: i32, y: i32| (1..=7).all(|h| world.get(IVec3::new(x, y + h, z)).is_air());
+    let open_column =
+        |x: i32, z: i32, y: i32| (1..=7).all(|h| world.get(IVec3::new(x, y + h, z)).is_air());
     let good = |x: i32, z: i32| -> Option<i32> {
         let y = world.surface_y(x, z)?;
         let top = world.get(IVec3::new(x, y, z));
@@ -202,7 +242,9 @@ pub fn find_spawn(world: &VoxelWorld) -> Vec3 {
         for dz in -2..=2 {
             for dx in -2..=2 {
                 let (cx, cz) = (x + dx, z + dz);
-                if world.surface_y(cx, cz) != Some(y) || !world.get(IVec3::new(cx, y, cz)).is_solid() {
+                if world.surface_y(cx, cz) != Some(y)
+                    || !world.get(IVec3::new(cx, y, cz)).is_solid()
+                {
                     return None;
                 }
                 // Plants on the ground are fine, anything else above is not.
@@ -235,12 +277,15 @@ pub fn find_spawn(world: &VoxelWorld) -> Vec3 {
 }
 
 fn to_mesh(buf: meshing::MeshBuffers) -> Mesh {
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, buf.positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, buf.normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, buf.uvs)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, buf.colors)
-        .with_inserted_indices(Indices::U32(buf.indices))
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, buf.positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, buf.normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, buf.uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, buf.colors)
+    .with_inserted_indices(Indices::U32(buf.indices))
 }
 
 /// Replaces the meshes and collider of a chunk (spawning the chunk entity
@@ -279,8 +324,14 @@ pub fn apply_chunk_mesh(
             if buf.indices.is_empty() {
                 continue;
             }
-            let mut child = p.spawn((Mesh3d(meshes.add(to_mesh(buf))), MeshMaterial3d(mats.get(tex))));
-            if matches!(tex, voxel::Tex::Water | voxel::Tex::Glass | voxel::Tex::TallGrass | voxel::Tex::Berry) {
+            let mut child = p.spawn((
+                Mesh3d(meshes.add(to_mesh(buf))),
+                MeshMaterial3d(mats.get(tex)),
+            ));
+            if matches!(
+                tex,
+                voxel::Tex::Water | voxel::Tex::Glass | voxel::Tex::TallGrass | voxel::Tex::Berry
+            ) {
                 child.insert(bevy::light::NotShadowCaster);
             }
         }
@@ -306,8 +357,24 @@ fn remesh_dirty(
         world.dirty.remove(&c);
         let padded = world.padded(c);
         let mesh = mesh_chunk(&Padded { data: &padded, n });
-        apply_chunk_mesh(&mut commands, &mut entities, &mut meshes, &mats, &world, c, mesh);
+        apply_chunk_mesh(
+            &mut commands,
+            &mut entities,
+            &mut meshes,
+            &mats,
+            &world,
+            c,
+            mesh,
+        );
     }
+}
+
+fn pause_physics(mut time: ResMut<Time<Physics>>) {
+    time.pause();
+}
+
+fn resume_physics(mut time: ResMut<Time<Physics>>) {
+    time.unpause();
 }
 
 pub struct WorldPlugin;
@@ -328,8 +395,14 @@ impl Plugin for WorldPlugin {
         .init_resource::<GenTasks>()
         .init_resource::<MeshTasks>()
         .init_resource::<GenerationFinished>()
+        .init_resource::<MeshingStarted>()
+        .init_resource::<PendingChunkPatches>()
         .add_message::<WorldReady>()
-        .add_systems(OnEnter(AppState::Loading), start_generation)
+        .add_systems(
+            OnEnter(AppState::Loading),
+            (start_generation, pause_physics),
+        )
+        .add_systems(OnEnter(AppState::InGame), resume_physics)
         .add_systems(
             Update,
             (poll_generation, start_meshing, poll_meshing)

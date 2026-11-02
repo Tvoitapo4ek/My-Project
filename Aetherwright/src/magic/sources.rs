@@ -12,11 +12,16 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::energy::{sample_field, AetherKind};
+use super::energy::{AetherKind, sample_field};
 use crate::{
     machinery::components::{AetherDynamo, Part, PartKind, PowerCell},
     physics::joints::Connection,
-    world::{chunks::VoxelWorld, interaction::BlockChanged, voxel::{blocks, BlockId}, WorldReady},
+    world::{
+        WorldReady,
+        chunks::VoxelWorld,
+        interaction::BlockChanged,
+        voxel::{BlockId, blocks},
+    },
 };
 
 pub const LINK_RANGE: f32 = 7.0;
@@ -47,7 +52,11 @@ pub struct AetherStore {
     pub kind: AetherKind,
 }
 
-pub fn rebuild_sources(world: Res<VoxelWorld>, mut sources: ResMut<AetherSources>, mut ready: MessageReader<WorldReady>) {
+pub fn rebuild_sources(
+    world: Res<VoxelWorld>,
+    mut sources: ResMut<AetherSources>,
+    mut ready: MessageReader<WorldReady>,
+) {
     if ready.read().count() == 0 {
         return;
     }
@@ -63,7 +72,9 @@ pub fn rebuild_sources(world: Res<VoxelWorld>, mut sources: ResMut<AetherSources
                 let n = world.chunk_size as usize;
                 let (x, z, y) = (i % n, (i / n) % n, i / (n * n));
                 let p = origin + IVec3::new(x as i32, y as i32, z as i32);
-                sources.0.push((p.as_vec3() + Vec3::splat(0.5), kind_of(*b), a));
+                sources
+                    .0
+                    .push((p.as_vec3() + Vec3::splat(0.5), kind_of(*b), a));
             }
         }
     }
@@ -74,7 +85,9 @@ fn track_changes(mut changed: MessageReader<BlockChanged>, mut sources: ResMut<A
     for c in changed.read() {
         let center = c.pos.as_vec3() + Vec3::splat(0.5);
         if c.old.def().aether > 0.0 {
-            sources.0.retain(|(p, _, _)| p.distance_squared(center) > 0.01);
+            sources
+                .0
+                .retain(|(p, _, _)| p.distance_squared(center) > 0.01);
         }
         if c.new.def().aether > 0.0 {
             sources.0.push((center, kind_of(c.new), c.new.def().aether));
@@ -85,13 +98,21 @@ fn track_changes(mut changed: MessageReader<BlockChanged>, mut sources: ResMut<A
 fn add_stores(mut commands: Commands, parts: Query<(Entity, &Part), Added<Part>>) {
     for (e, p) in &parts {
         if p.kind == PartKind::AetherJar {
-            commands.entity(e).insert(AetherStore { amount: 0.0, capacity: 100.0, kind: AetherKind::Calm });
+            commands.entity(e).insert(AetherStore {
+                amount: 0.0,
+                capacity: 100.0,
+                kind: AetherKind::Calm,
+            });
         }
     }
 }
 
 /// Jars collect from the field.
-fn charge_jars(time: Res<Time>, sources: Res<AetherSources>, mut jars: Query<(&Position, &mut AetherStore)>) {
+fn charge_jars(
+    time: Res<Time>,
+    sources: Res<AetherSources>,
+    mut jars: Query<(&Position, &mut AetherStore)>,
+) {
     let dt = time.delta_secs();
     for (p, mut s) in &mut jars {
         let f = sources.sample(p.0);
@@ -117,7 +138,10 @@ fn transfer(
 ) {
     let dt = time.delta_secs();
     links.0.clear();
-    let list: Vec<(Entity, Vec3, f32)> = jars.iter().map(|(e, p, s)| (e, p.0, s.amount / s.capacity)).collect();
+    let list: Vec<(Entity, Vec3, f32)> = jars
+        .iter()
+        .map(|(e, p, s)| (e, p.0, s.amount / s.capacity))
+        .collect();
     // Jar ↔ jar balancing.
     for i in 0..list.len() {
         for j in i + 1..list.len() {
@@ -159,9 +183,16 @@ fn transfer(
         if produced <= 0.0 {
             continue;
         }
-        let Some(di) = all_parts.iter().position(|e| *e == d) else { continue };
+        let Some(di) = all_parts.iter().position(|e| *e == d) else {
+            continue;
+        };
         let my_net = nets[di];
-        let mut targets: Vec<Entity> = all_parts.iter().zip(&nets).filter(|(_, n)| **n == my_net).map(|(e, _)| *e).collect();
+        let mut targets: Vec<Entity> = all_parts
+            .iter()
+            .zip(&nets)
+            .filter(|(_, n)| **n == my_net)
+            .map(|(e, _)| *e)
+            .collect();
         targets.retain(|e| cells.get(*e).is_ok_and(|c| c.energy < c.capacity));
         let share = produced / targets.len().max(1) as f32;
         for e in targets {
@@ -172,10 +203,17 @@ fn transfer(
     }
 }
 
-fn draw_links(links: Res<AetherLinks>, q: Query<(&Position, Option<&AetherStore>)>, time: Res<Time>, mut gizmos: Gizmos) {
+fn draw_links(
+    links: Res<AetherLinks>,
+    q: Query<(&Position, Option<&AetherStore>)>,
+    time: Res<Time>,
+    mut gizmos: Gizmos,
+) {
     let t = time.elapsed_secs();
     for (a, b) in &links.0 {
-        let (Ok((pa, sa)), Ok((pb, _))) = (q.get(*a), q.get(*b)) else { continue };
+        let (Ok((pa, sa)), Ok((pb, _))) = (q.get(*a), q.get(*b)) else {
+            continue;
+        };
         let kind = sa.map(|s| s.kind).unwrap_or_default();
         let c = kind.color().with_alpha(0.5 + 0.3 * (t * 6.0).sin());
         let mid = (pa.0 + pb.0) * 0.5 + Vec3::Y * 0.4;
@@ -190,7 +228,15 @@ impl Plugin for SourcesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AetherSources>()
             .init_resource::<AetherLinks>()
-            .add_systems(Update, (rebuild_sources, track_changes, add_stores, draw_links))
-            .add_systems(FixedUpdate, (charge_jars, transfer).chain().before(crate::machinery::MachinerySet::Power));
+            .add_systems(
+                Update,
+                (rebuild_sources, track_changes, add_stores, draw_links),
+            )
+            .add_systems(
+                FixedUpdate,
+                (charge_jars, transfer)
+                    .chain()
+                    .before(crate::machinery::MachinerySet::Power),
+            );
     }
 }

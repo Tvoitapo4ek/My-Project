@@ -28,12 +28,12 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
-                input::InputPlugin,
-                movement::MovementPlugin,
-                camera::CameraPlugin,
-                model::ModelPlugin,
-            ))
-            .add_systems(OnEnter(AppState::InGame), spawn_player);
+            input::InputPlugin,
+            movement::MovementPlugin,
+            camera::CameraPlugin,
+            model::ModelPlugin,
+        ))
+        .add_systems(OnEnter(AppState::InGame), spawn_player);
     }
 }
 

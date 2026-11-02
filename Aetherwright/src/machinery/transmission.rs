@@ -27,7 +27,15 @@ pub fn gears_mesh(p1: Vec3, a1: Vec3, r1: f32, p2: Vec3, a2: Vec3, r2: f32) -> b
 
 #[allow(clippy::type_complexity)]
 fn couple_gears(
-    mut gears: Query<(Entity, &Gear, &Position, &Rotation, &mut AngularVelocity, &ComputedMass, &RigidBody)>,
+    mut gears: Query<(
+        Entity,
+        &Gear,
+        &Position,
+        &Rotation,
+        &mut AngularVelocity,
+        &ComputedMass,
+        &RigidBody,
+    )>,
     mut meshes: ResMut<GearMeshes>,
 ) {
     meshes.0.clear();
@@ -44,10 +52,11 @@ fn couple_gears(
             }
             meshes.0.push((e1, e2));
             let a2s = if a1.dot(a2) < 0.0 { -a2 } else { a2 };
-            let [(_, _, _, _, mut w1, ..), (_, _, _, _, mut w2, ..)] = match gears.get_many_mut([e1, e2]) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
+            let [(_, _, _, _, mut w1, ..), (_, _, _, _, mut w2, ..)] =
+                match gears.get_many_mut([e1, e2]) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
             // Disc inertia about the axis; static gears have infinite inertia.
             let inv1 = if d1 { 1.0 / (0.5 * m1 * r1 * r1) } else { 0.0 };
             let inv2 = if d2 { 1.0 / (0.5 * m2 * r2 * r2) } else { 0.0 };
@@ -67,7 +76,8 @@ pub struct TransmissionPlugin;
 
 impl Plugin for TransmissionPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<GearMeshes>().add_systems(FixedUpdate, couple_gears.in_set(super::MachinerySet::Drive));
+        app.init_resource::<GearMeshes>()
+            .add_systems(FixedUpdate, couple_gears.in_set(super::MachinerySet::Drive));
     }
 }
 
@@ -77,10 +87,54 @@ mod tests {
 
     #[test]
     fn meshing_geometry() {
-        assert!(gears_mesh(Vec3::ZERO, Vec3::Y, 0.5, Vec3::new(1.0, 0.0, 0.0), Vec3::Y, 0.5));
-        assert!(gears_mesh(Vec3::ZERO, Vec3::Y, 0.5, Vec3::new(0.0, 0.0, 1.05), Vec3::NEG_Y, 0.5));
-        assert!(!gears_mesh(Vec3::ZERO, Vec3::Y, 0.5, Vec3::new(2.0, 0.0, 0.0), Vec3::Y, 0.5), "too far");
-        assert!(!gears_mesh(Vec3::ZERO, Vec3::Y, 0.5, Vec3::new(1.0, 0.0, 0.0), Vec3::X, 0.5), "not parallel");
-        assert!(!gears_mesh(Vec3::ZERO, Vec3::Y, 0.5, Vec3::new(1.0, 0.8, 0.0), Vec3::Y, 0.5), "offset along axis");
+        assert!(gears_mesh(
+            Vec3::ZERO,
+            Vec3::Y,
+            0.5,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::Y,
+            0.5
+        ));
+        assert!(gears_mesh(
+            Vec3::ZERO,
+            Vec3::Y,
+            0.5,
+            Vec3::new(0.0, 0.0, 1.05),
+            Vec3::NEG_Y,
+            0.5
+        ));
+        assert!(
+            !gears_mesh(
+                Vec3::ZERO,
+                Vec3::Y,
+                0.5,
+                Vec3::new(2.0, 0.0, 0.0),
+                Vec3::Y,
+                0.5
+            ),
+            "too far"
+        );
+        assert!(
+            !gears_mesh(
+                Vec3::ZERO,
+                Vec3::Y,
+                0.5,
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::X,
+                0.5
+            ),
+            "not parallel"
+        );
+        assert!(
+            !gears_mesh(
+                Vec3::ZERO,
+                Vec3::Y,
+                0.5,
+                Vec3::new(1.0, 0.8, 0.0),
+                Vec3::Y,
+                0.5
+            ),
+            "offset along axis"
+        );
     }
 }

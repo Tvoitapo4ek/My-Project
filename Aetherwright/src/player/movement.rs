@@ -314,13 +314,20 @@ fn apply_movement(
 }
 
 /// Fraction of the body inside liquid blocks (samples feet, waist, head).
-fn update_submersion(world: Res<VoxelWorld>, mut q: Query<(&Position, &mut CharacterState), With<Player>>) {
+fn update_submersion(
+    world: Res<VoxelWorld>,
+    mut q: Query<(&Position, &mut CharacterState), With<Player>>,
+) {
     for (pos, mut state) in &mut q {
         let feet = pos.0.y - state.height * 0.5;
         let samples = [0.15, state.height * 0.5, state.height - 0.2];
         let wet = samples
             .iter()
-            .filter(|&&h| world.get(Vec3::new(pos.x, feet + h, pos.z).floor().as_ivec3()).is_liquid())
+            .filter(|&&h| {
+                world
+                    .get(Vec3::new(pos.x, feet + h, pos.z).floor().as_ivec3())
+                    .is_liquid()
+            })
             .count();
         state.submerged = wet as f32 / samples.len() as f32;
     }

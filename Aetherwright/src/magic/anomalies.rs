@@ -28,7 +28,10 @@ struct Mote {
 pub fn clusters(sources: &[(Vec3, AetherKind, f32)], join: f32) -> Vec<(Vec3, AetherKind, f32)> {
     let mut out: Vec<(Vec3, AetherKind, f32, f32)> = Vec::new(); // centre sum, kind, strength, count
     for (p, k, s) in sources {
-        if let Some(c) = out.iter_mut().find(|c| c.1 == *k && (c.0 / c.3).distance(*p) < join) {
+        if let Some(c) = out
+            .iter_mut()
+            .find(|c| c.1 == *k && (c.0 / c.3).distance(*p) < join)
+        {
             c.0 += *p;
             c.2 += s;
             c.3 += 1.0;
@@ -36,7 +39,9 @@ pub fn clusters(sources: &[(Vec3, AetherKind, f32)], join: f32) -> Vec<(Vec3, Ae
             out.push((*p, *k, *s, 1.0));
         }
     }
-    out.into_iter().map(|(sum, k, s, n)| (sum / n, k, s)).collect()
+    out.into_iter()
+        .map(|(sum, k, s, n)| (sum / n, k, s))
+        .collect()
 }
 
 fn spawn_site_effects(
@@ -54,7 +59,10 @@ fn spawn_site_effects(
     let mote_mesh = meshes.add(Sphere::new(0.06).mesh().ico(1).unwrap());
     // Only strong clusters near the surface get lights/motes (deep ore
     // deposits of ancient stone would otherwise add hundreds of lights).
-    let mut list: Vec<_> = clusters(&sources.0, 10.0).into_iter().filter(|(c, _, s)| *s >= 8.0 && c.y > 12.0).collect();
+    let mut list: Vec<_> = clusters(&sources.0, 10.0)
+        .into_iter()
+        .filter(|(c, _, s)| *s >= 8.0 && c.y > 12.0)
+        .collect();
     list.sort_by(|a, b| b.2.total_cmp(&a.2));
     list.truncate(8);
     info!("Aether sites: {}", list.len());
@@ -62,19 +70,42 @@ fn spawn_site_effects(
         let color = kind.color();
         commands.spawn((
             Name::new(format!("Aether light {kind:?}")),
-            PointLight { color, intensity: 6_000.0 + 150.0 * strength.min(60.0), range: 18.0, shadow_maps_enabled: false, ..default() },
+            PointLight {
+                color,
+                intensity: 6_000.0 + 150.0 * strength.min(60.0),
+                range: 18.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
             Transform::from_translation(center + Vec3::Y * 2.0),
         ));
         if kind == AetherKind::Agitated {
-            commands.spawn((Name::new("Agitated anomaly"), Anomaly { kind, radius: 9.0, timer: 3.0 }, Transform::from_translation(center)));
+            commands.spawn((
+                Name::new("Agitated anomaly"),
+                Anomaly {
+                    kind,
+                    radius: 9.0,
+                    timer: 3.0,
+                },
+                Transform::from_translation(center),
+            ));
         }
-        let mat = materials.add(StandardMaterial { base_color: color, emissive: color.to_linear() * 8.0, unlit: true, ..default() });
+        let mat = materials.add(StandardMaterial {
+            base_color: color,
+            emissive: color.to_linear() * 8.0,
+            unlit: true,
+            ..default()
+        });
         for i in 0..18 {
             commands.spawn((
                 Mesh3d(mote_mesh.clone()),
                 MeshMaterial3d(mat.clone()),
                 Transform::from_translation(center),
-                Mote { center, phase: i as f32 * 0.37, radius: 2.0 + (i % 5) as f32 * 0.9 },
+                Mote {
+                    center,
+                    phase: i as f32 * 0.37,
+                    radius: 2.0 + (i % 5) as f32 * 0.9,
+                },
                 bevy::light::NotShadowCaster,
             ));
         }
@@ -85,7 +116,12 @@ fn animate_motes(time: Res<Time>, mut q: Query<(&mut Transform, &Mote)>) {
     let t = time.elapsed_secs();
     for (mut tr, m) in &mut q {
         let a = t * (0.25 + m.phase * 0.1) + m.phase * 5.0;
-        tr.translation = m.center + Vec3::new(a.cos() * m.radius, 1.0 + (a * 0.7 + m.phase).sin() * 1.5 + m.phase % 2.0, a.sin() * m.radius);
+        tr.translation = m.center
+            + Vec3::new(
+                a.cos() * m.radius,
+                1.0 + (a * 0.7 + m.phase).sin() * 1.5 + m.phase % 2.0,
+                a.sin() * m.radius,
+            );
     }
 }
 
@@ -93,19 +129,24 @@ fn animate_motes(time: Res<Time>, mut q: Query<(&mut Transform, &Mote)>) {
 fn pulse(
     time: Res<Time>,
     mut anomalies: Query<(&Transform, &mut Anomaly)>,
-    bodies: Query<(Entity, &RigidBody, &Position)>,
+    bodies: Query<(Entity, &RigidBody, &Position, Option<&Name>)>,
     mut impulses: ResMut<crate::physics::impulses::ImpulseQueue>,
     mut gizmos: Gizmos,
 ) {
     for (t, mut a) in &mut anomalies {
         a.timer -= time.delta_secs();
         let phase = (a.timer / 3.0).clamp(0.0, 1.0);
-        gizmos.sphere(Isometry3d::from_translation(t.translation + Vec3::Y), a.radius * (1.0 - phase), a.kind.color().with_alpha(0.3 * (1.0 - phase)));
+        gizmos.sphere(
+            Isometry3d::from_translation(t.translation + Vec3::Y),
+            a.radius * (1.0 - phase),
+            a.kind.color().with_alpha(0.3 * (1.0 - phase)),
+        );
         if a.timer > 0.0 {
             continue;
         }
         a.timer = 3.0 + (time.elapsed_secs() * 7.13).sin().abs() * 2.0;
-        for (e, rb, p) in &bodies {
+        let mut n = 0;
+        for (e, rb, p, name) in &bodies {
             if !rb.is_dynamic() {
                 continue;
             }
@@ -117,7 +158,14 @@ fn pulse(
             let swirl = Vec3::new(-d.z, 0.0, d.x).normalize_or_zero();
             let dv = (d.normalize() * 6.0 + swirl * 5.0 + Vec3::Y * 7.0) * (1.0 - dist / a.radius);
             impulses.push(e, dv);
+            debug!(
+                "anomaly pushes {e:?} {:?} at {dist:.1} m by {:.1} m/s",
+                name.map(|n| n.as_str()),
+                dv.length()
+            );
+            n += 1;
         }
+        debug!("anomaly pulse at {:.1}: {n} bodies pushed", t.translation);
     }
 }
 

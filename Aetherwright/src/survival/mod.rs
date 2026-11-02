@@ -11,6 +11,11 @@ pub struct SurvivalPlugin;
 
 impl Plugin for SurvivalPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((damage::DamagePlugin, needs::NeedsPlugin, creatures::CreaturesPlugin, combat::CombatPlugin));
+        app.add_plugins((
+            damage::DamagePlugin,
+            needs::NeedsPlugin,
+            creatures::CreaturesPlugin,
+            combat::CombatPlugin,
+        ));
     }
 }

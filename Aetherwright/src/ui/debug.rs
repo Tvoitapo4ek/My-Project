@@ -111,6 +111,29 @@ fn update_debug(
     }
 }
 
+/// Logs bodies moving suspiciously fast (helps spot physics blow-ups).
+fn watch_fast_bodies(
+    time: Res<Time>,
+    mut timer: Local<f32>,
+    q: Query<(Entity, Option<&Name>, &LinearVelocity, &AngularVelocity)>,
+) {
+    *timer -= time.delta_secs();
+    if *timer > 0.0 {
+        return;
+    }
+    *timer = 1.0;
+    for (e, n, v, w) in &q {
+        if v.0.length() > 40.0 || w.0.length() > 50.0 {
+            warn!(
+                "fast body {e:?} {:?}: v {:.1} m/s, ω {:.1} rad/s",
+                n.map(|n| n.as_str()),
+                v.0.length(),
+                w.0.length()
+            );
+        }
+    }
+}
+
 pub struct DebugUiPlugin;
 
 impl Plugin for DebugUiPlugin {
@@ -118,6 +141,6 @@ impl Plugin for DebugUiPlugin {
         app.add_plugins(FrameTimeDiagnosticsPlugin::default())
             .init_resource::<DebugOverlay>()
             .add_systems(Startup, (spawn_debug, disable_physics_gizmos_by_default))
-            .add_systems(Update, (toggle_debug, update_debug));
+            .add_systems(Update, (toggle_debug, update_debug, watch_fast_bodies));
     }
 }

@@ -6,8 +6,8 @@ use bevy::{picking::pointer::PointerButton, prelude::*};
 
 use super::theme;
 use crate::{
-    core::states::{gameplay_active, GameMode, InputFocus},
-    items::{inventory::Inventory, Category, ItemId, ItemStack, ITEMS},
+    core::states::{GameMode, InputFocus, gameplay_active},
+    items::{Category, ITEMS, ItemId, ItemStack, inventory::Inventory},
     player::Player,
 };
 
@@ -21,7 +21,10 @@ struct BuildEntry(ItemId);
 struct BuildEntryText(ItemId);
 
 fn buildable(item: ItemId) -> bool {
-    matches!(item.def().category, Category::Block | Category::Part | Category::Station)
+    matches!(
+        item.def().category,
+        Category::Block | Category::Part | Category::Station
+    )
 }
 
 fn open(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<InputFocus>>) {
@@ -101,28 +104,47 @@ fn on_click(
     if ev.button != PointerButton::Primary {
         return;
     }
-    let Ok(BuildEntry(item)) = entries.get(ev.event_target()) else { return };
-    let Ok(mut inv) = player.single_mut() else { return };
+    let Ok(BuildEntry(item)) = entries.get(ev.event_target()) else {
+        return;
+    };
+    let Ok(mut inv) = player.single_mut() else {
+        return;
+    };
     let sel = inv.selected;
     if *mode.get() == GameMode::Creative {
         let old = inv.slots[sel].replace(ItemStack::new(*item, item.def().max_stack));
         if let Some(old) = old {
             inv.add(old.item, old.count);
         }
-    } else if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| s.item == *item)) {
+    } else if let Some(i) = inv
+        .slots
+        .iter()
+        .position(|s| s.is_some_and(|s| s.item == *item))
+    {
         inv.slots.swap(i, sel);
     } else {
-        notify.write(crate::core::events::Notify::warn(format!("Нет в инвентаре: {} — создайте на верстаке", item.def().name)));
+        notify.write(crate::core::events::Notify::warn(format!(
+            "Нет в инвентаре: {} — создайте на верстаке",
+            item.def().name
+        )));
         return;
     }
     next.set(InputFocus::Gameplay);
 }
 
-fn refresh(player: Query<&Inventory, With<Player>>, mode: Res<State<GameMode>>, mut q: Query<(&BuildEntryText, &mut Text)>) {
+fn refresh(
+    player: Query<&Inventory, With<Player>>,
+    mode: Res<State<GameMode>>,
+    mut q: Query<(&BuildEntryText, &mut Text)>,
+) {
     let Ok(inv) = player.single() else { return };
     let creative = *mode.get() == GameMode::Creative;
     for (BuildEntryText(item), mut t) in &mut q {
-        let s = if creative { format!("{} ∞", item.def().name) } else { format!("{} ×{}", item.def().name, inv.count(*item)) };
+        let s = if creative {
+            format!("{} ∞", item.def().name)
+        } else {
+            format!("{} ×{}", item.def().name, inv.count(*item))
+        };
         if t.0 != s {
             t.0 = s;
         }
@@ -140,7 +162,10 @@ pub struct BuildMenuPlugin;
 impl Plugin for BuildMenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, open.run_if(gameplay_active))
-            .add_systems(Update, (close, refresh).run_if(in_state(InputFocus::BuildMenu)))
+            .add_systems(
+                Update,
+                (close, refresh).run_if(in_state(InputFocus::BuildMenu)),
+            )
             .add_systems(OnEnter(InputFocus::BuildMenu), spawn)
             .add_systems(OnExit(InputFocus::BuildMenu), despawn);
     }

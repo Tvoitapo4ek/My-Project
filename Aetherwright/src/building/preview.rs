@@ -61,19 +61,34 @@ fn draw(mut ghosts: ResMut<Ghosts>, mut last: ResMut<LastGhosts>, mut gizmos: Gi
                 if v != Validity::Ok {
                     let h = size * 0.5;
                     gizmos.line(t * Vec3::new(-h.x, -h.y, -h.z), t * h, color);
-                    gizmos.line(t * Vec3::new(h.x, -h.y, -h.z), t * Vec3::new(-h.x, h.y, h.z), color);
+                    gizmos.line(
+                        t * Vec3::new(h.x, -h.y, -h.z),
+                        t * Vec3::new(-h.x, h.y, h.z),
+                        color,
+                    );
                 }
             }
             GhostShape::Cylinder(r, h) => {
                 let up = t.rotation * Vec3::Y;
                 for y in [-h * 0.5, h * 0.5] {
                     let c = t.translation + up * y;
-                    gizmos.circle(Isometry3d::new(c, t.rotation * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), r, color);
+                    gizmos.circle(
+                        Isometry3d::new(
+                            c,
+                            t.rotation * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                        ),
+                        r,
+                        color,
+                    );
                 }
                 for i in 0..6 {
                     let a = i as f32 / 6.0 * std::f32::consts::TAU;
                     let off = t.rotation * Vec3::new(a.cos() * r, 0.0, a.sin() * r);
-                    gizmos.line(t.translation + off - up * h * 0.5, t.translation + off + up * h * 0.5, color);
+                    gizmos.line(
+                        t.translation + off - up * h * 0.5,
+                        t.translation + off + up * h * 0.5,
+                        color,
+                    );
                 }
             }
         }
@@ -84,6 +99,8 @@ pub struct PreviewPlugin;
 
 impl Plugin for PreviewPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Ghosts>().init_resource::<LastGhosts>().add_systems(PostUpdate, draw);
+        app.init_resource::<Ghosts>()
+            .init_resource::<LastGhosts>()
+            .add_systems(PostUpdate, draw);
     }
 }

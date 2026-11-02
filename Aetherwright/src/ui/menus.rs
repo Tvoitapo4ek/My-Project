@@ -35,10 +35,21 @@ fn fullscreen(bg: Color) -> impl Bundle {
 }
 
 fn spawn_loading(mut commands: Commands) {
-    commands.spawn((LoadingScreen, fullscreen(Color::srgb(0.02, 0.04, 0.06)))).with_children(|p| {
-        p.spawn((Text::new("AETHERWRIGHT"), theme::font(48.0), TextColor(theme::ACCENT)));
-        p.spawn((LoadingText, Text::new("…"), theme::font(18.0), TextColor(theme::TEXT)));
-    });
+    commands
+        .spawn((LoadingScreen, fullscreen(Color::srgb(0.02, 0.04, 0.06))))
+        .with_children(|p| {
+            p.spawn((
+                Text::new("AETHERWRIGHT"),
+                theme::font(48.0),
+                TextColor(theme::ACCENT),
+            ));
+            p.spawn((
+                LoadingText,
+                Text::new("…"),
+                theme::font(18.0),
+                TextColor(theme::TEXT),
+            ));
+        });
 }
 
 fn update_loading(progress: Res<LoadProgress>, mut q: Query<&mut Text, With<LoadingText>>) {
@@ -57,14 +68,20 @@ fn despawn_loading(mut commands: Commands, q: Query<Entity, With<LoadingScreen>>
 }
 
 fn spawn_pause(mut commands: Commands) {
-    commands.spawn((PauseScreen, fullscreen(Color::srgba(0.0, 0.02, 0.04, 0.55)))).with_children(|p| {
-        p.spawn((Text::new("ПАУЗА"), theme::font(40.0), TextColor(theme::ACCENT)));
-        p.spawn((
-            Text::new("Esc — продолжить   ·   F5 — сохранить   ·   F9 — загрузить"),
-            theme::font(18.0),
-            TextColor(theme::TEXT),
-        ));
-    });
+    commands
+        .spawn((PauseScreen, fullscreen(Color::srgba(0.0, 0.02, 0.04, 0.55))))
+        .with_children(|p| {
+            p.spawn((
+                Text::new("ПАУЗА"),
+                theme::font(40.0),
+                TextColor(theme::ACCENT),
+            ));
+            p.spawn((
+                Text::new("Esc — продолжить   ·   F5 — сохранить   ·   F9 — загрузить"),
+                theme::font(18.0),
+                TextColor(theme::TEXT),
+            ));
+        });
 }
 
 fn despawn_pause(mut commands: Commands, q: Query<Entity, With<PauseScreen>>) {

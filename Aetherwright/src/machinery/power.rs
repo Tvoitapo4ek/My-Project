@@ -53,9 +53,22 @@ fn update_power(
     ids.sort_unstable();
     ids.dedup();
     for id in ids {
-        let members: Vec<Entity> = list.iter().zip(&net).filter(|(_, n)| **n == id).map(|(e, _)| *e).collect();
-        let stored: f32 = members.iter().filter_map(|e| cells.get(*e).ok()).map(|c| c.energy).sum();
-        let capacity: f32 = members.iter().filter_map(|e| cells.get(*e).ok()).map(|c| c.capacity).sum();
+        let members: Vec<Entity> = list
+            .iter()
+            .zip(&net)
+            .filter(|(_, n)| **n == id)
+            .map(|(e, _)| *e)
+            .collect();
+        let stored: f32 = members
+            .iter()
+            .filter_map(|e| cells.get(*e).ok())
+            .map(|c| c.energy)
+            .sum();
+        let capacity: f32 = members
+            .iter()
+            .filter_map(|e| cells.get(*e).ok())
+            .map(|c| c.capacity)
+            .sum();
         let demand: f32 = members
             .iter()
             .filter_map(|e| engines.get(*e).ok())
@@ -77,7 +90,9 @@ fn update_power(
             if let Ok(mut en) = engines.get_mut(*e) {
                 en.powered = powered && en.on;
             }
-            stats.by_entity.insert(*e, (stored - if powered { demand } else { 0.0 }, capacity));
+            stats
+                .by_entity
+                .insert(*e, (stored - if powered { demand } else { 0.0 }, capacity));
         }
     }
 }
@@ -86,7 +101,8 @@ pub struct PowerPlugin;
 
 impl Plugin for PowerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PowerStats>().add_systems(FixedUpdate, update_power.in_set(super::MachinerySet::Power));
+        app.init_resource::<PowerStats>()
+            .add_systems(FixedUpdate, update_power.in_set(super::MachinerySet::Power));
     }
 }
 

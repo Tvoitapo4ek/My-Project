@@ -5,26 +5,40 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::{
+    Ctx, Step, StepFn,
     scenario::{player_pos, step, teleport},
     scenario3::{aim_at, mouse, select},
-    screenshot, Ctx, Step, StepFn,
+    screenshot,
 };
 use crate::{
     core::resources::SpawnPoint,
     physics::{
+        Frozen,
         joints::{Connection, JointKind},
         physics_gun::{GunMode, Held, PhysGun},
-        rigid_bodies::{loose_block_mesh, spawn_loose_block, LooseBlock},
-        Frozen,
+        rigid_bodies::{LooseBlock, loose_block_mesh, spawn_loose_block},
     },
-    world::{materials::BlockMaterials, voxel::{blocks, BlockId}},
+    world::{
+        materials::BlockMaterials,
+        voxel::{BlockId, blocks},
+    },
 };
 
 fn spawn_block(world: &mut World, block: BlockId, at: Vec3) -> Entity {
     let mesh = loose_block_mesh(world);
-    let mats = BlockMaterials { by_tex: world.resource::<BlockMaterials>().by_tex.clone(), images: Vec::new() };
+    let mats = BlockMaterials {
+        by_tex: world.resource::<BlockMaterials>().by_tex.clone(),
+        images: Vec::new(),
+    };
     let mut commands = world.commands();
-    let e = spawn_loose_block(&mut commands, mesh, &mats, block, Transform::from_translation(at), false);
+    let e = spawn_loose_block(
+        &mut commands,
+        mesh,
+        &mats,
+        block,
+        Transform::from_translation(at),
+        false,
+    );
     world.flush();
     e
 }
@@ -67,7 +81,11 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
     steps.push(step("cut block became a rigid body", |world, ctx| {
         let mut q = world.query::<(&LooseBlock, &RigidBody)>();
         let n = q.iter(world).filter(|(_, rb)| rb.is_dynamic()).count();
-        ctx.check("cut block is a dynamic body", n >= 1, format!("{n} loose blocks"));
+        ctx.check(
+            "cut block is a dynamic body",
+            n >= 1,
+            format!("{n} loose blocks"),
+        );
         Step::Next
     }));
     steps.push(step("spawn test bodies", |world, ctx| {
@@ -82,7 +100,12 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
                     for x in -6..=5 {
                         let p = base + IVec3::new(x, y, z);
                         if !super::scenario::block_at(world, p).is_air() {
-                            super::scenario::edit(world, p, blocks::AIR, crate::world::chunks::EditCause::Script);
+                            super::scenario::edit(
+                                world,
+                                p,
+                                blocks::AIR,
+                                crate::world::chunks::EditCause::Script,
+                            );
                         }
                     }
                 }
@@ -102,17 +125,26 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
             ctx.vars.insert("ly0".into(), pos_of(world, light).y);
         }
         if ctx.frames < 4 {
-            { let target = pos_of(world, light); aim_at(world, target); }
+            {
+                let target = pos_of(world, light);
+                aim_at(world, target);
+            }
         }
         if ctx.frames == 4 {
             mouse(world, MouseButton::Left, true);
         }
         if ctx.frames == 8 {
-            ctx.check("object is held", world.get::<Held>(light).is_some(), "Held marker");
+            ctx.check(
+                "object is held",
+                world.get::<Held>(light).is_some(),
+                "Held marker",
+            );
         }
         if ctx.frames > 8 {
             // Look up: the object should follow.
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = 0.3;
+            world
+                .resource_mut::<crate::player::camera::CameraRig>()
+                .pitch = 0.3;
         }
         if ctx.t > 2.5 {
             let dy = pos_of(world, light).y - ctx.vars["ly0"];
@@ -137,7 +169,13 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
         if ctx.t > 1.5 && ctx.vars.contains_key("fy") {
             let rb = world.get::<RigidBody>(light).copied();
             let drift = (pos_of(world, light).y - ctx.vars["fy"]).abs();
-            ctx.check("frozen body is static and hangs in the air", rb == Some(RigidBody::Static) && world.get::<Frozen>(light).is_some() && drift < 0.01, format!("{rb:?}, drift {drift:.3}"));
+            ctx.check(
+                "frozen body is static and hangs in the air",
+                rb == Some(RigidBody::Static)
+                    && world.get::<Frozen>(light).is_some()
+                    && drift < 0.01,
+                format!("{rb:?}, drift {drift:.3}"),
+            );
             return Step::Next;
         }
         Step::Wait
@@ -145,54 +183,80 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
     steps.push(step("heavy object cannot be lifted", |world, ctx| {
         let heavy = ent(ctx, "heavy");
         if ctx.frames == 1 {
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = -0.3;
+            world
+                .resource_mut::<crate::player::camera::CameraRig>()
+                .pitch = -0.3;
             ctx.vars.insert("hy0".into(), pos_of(world, heavy).y);
         }
         if ctx.frames < 5 {
-            { let target = pos_of(world, heavy); aim_at(world, target); }
+            {
+                let target = pos_of(world, heavy);
+                aim_at(world, target);
+            }
         }
         if ctx.frames == 5 {
             mouse(world, MouseButton::Left, true);
         }
         if ctx.frames > 8 {
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = 0.3;
+            world
+                .resource_mut::<crate::player::camera::CameraRig>()
+                .pitch = 0.3;
         }
         if ctx.t > 2.5 {
             mouse(world, MouseButton::Left, false);
-            let mass = world.get::<ComputedMass>(heavy).map(|m| m.value()).unwrap_or(0.0);
+            let mass = world
+                .get::<ComputedMass>(heavy)
+                .map(|m| m.value())
+                .unwrap_or(0.0);
             let dy = pos_of(world, heavy).y - ctx.vars["hy0"];
-            ctx.check("mass limits the gun (heavy stays down)", dy < 0.5, format!("{mass:.0} kg rose {dy:.2} m"));
+            ctx.check(
+                "mass limits the gun (heavy stays down)",
+                dy < 0.5,
+                format!("{mass:.0} kg rose {dy:.2} m"),
+            );
             return Step::Next;
         }
         Step::Wait
     }));
-    steps.push(step("held object still collides with terrain", |world, ctx| {
-        let light = ent(ctx, "light");
-        if ctx.frames == 1 {
-            // Unfreeze by grabbing; aim into the ground.
-            mouse(world, MouseButton::Left, false);
-        }
-        if ctx.frames < 6 {
-            { let target = pos_of(world, light); aim_at(world, target); }
-        }
-        if ctx.frames == 6 {
-            mouse(world, MouseButton::Left, true);
-        }
-        if ctx.frames > 10 {
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = -1.2;
-            if let Some(h) = world.resource_mut::<PhysGun>().held.as_mut() {
-                h.distance = 5.0;
+    steps.push(step(
+        "held object still collides with terrain",
+        |world, ctx| {
+            let light = ent(ctx, "light");
+            if ctx.frames == 1 {
+                // Unfreeze by grabbing; aim into the ground.
+                mouse(world, MouseButton::Left, false);
             }
-        }
-        if ctx.t > 2.5 {
-            let ground = world.resource::<SpawnPoint>().0.y - 1.0;
-            let y = pos_of(world, light).y;
-            ctx.check("body is not pushed through the ground", y > ground - 0.6, format!("y {y:.2}, ground top {ground:.2}"));
-            mouse(world, MouseButton::Left, false);
-            return Step::Next;
-        }
-        Step::Wait
-    }));
+            if ctx.frames < 6 {
+                {
+                    let target = pos_of(world, light);
+                    aim_at(world, target);
+                }
+            }
+            if ctx.frames == 6 {
+                mouse(world, MouseButton::Left, true);
+            }
+            if ctx.frames > 10 {
+                world
+                    .resource_mut::<crate::player::camera::CameraRig>()
+                    .pitch = -1.2;
+                if let Some(h) = world.resource_mut::<PhysGun>().held.as_mut() {
+                    h.distance = 5.0;
+                }
+            }
+            if ctx.t > 2.5 {
+                let ground = world.resource::<SpawnPoint>().0.y - 1.0;
+                let y = pos_of(world, light).y;
+                ctx.check(
+                    "body is not pushed through the ground",
+                    y > ground - 0.6,
+                    format!("y {y:.2}, ground top {ground:.2}"),
+                );
+                mouse(world, MouseButton::Left, false);
+                return Step::Next;
+            }
+            Step::Wait
+        },
+    ));
     steps.push(step("weld two bodies", |world, ctx| {
         if ctx.frames == 1 {
             let a = arena(world);
@@ -206,13 +270,22 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
             return Step::Wait;
         }
         let (w1, w2) = (ent(ctx, "w1"), ent(ctx, "w2"));
-        { let target = pos_of(world, w1) + Vec3::Y * 0.3; click_at(world, ctx, 40, target); }
-        { let target = pos_of(world, w2) + Vec3::Y * 0.3; click_at(world, ctx, 50, target); }
+        {
+            let target = pos_of(world, w1) + Vec3::Y * 0.3;
+            click_at(world, ctx, 40, target);
+        }
+        {
+            let target = pos_of(world, w2) + Vec3::Y * 0.3;
+            click_at(world, ctx, 50, target);
+        }
         if ctx.frames == 60 {
             let mut q = world.query::<&Connection>();
-            let ok = q.iter(world).any(|c| c.kind == JointKind::Weld && ((c.a == w1 && c.b == w2) || (c.a == w2 && c.b == w1)));
+            let ok = q.iter(world).any(|c| {
+                c.kind == JointKind::Weld && ((c.a == w1 && c.b == w2) || (c.a == w2 && c.b == w1))
+            });
             ctx.check("weld joint created", ok, "Connection(Weld)");
-            ctx.vars.insert("wd".into(), pos_of(world, w1).distance(pos_of(world, w2)));
+            ctx.vars
+                .insert("wd".into(), pos_of(world, w1).distance(pos_of(world, w2)));
             return Step::Next;
         }
         Step::Wait
@@ -231,13 +304,23 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
             mouse(world, MouseButton::Left, true);
         }
         if ctx.frames > 6 && ctx.t > 0.5 {
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = 0.3;
+            world
+                .resource_mut::<crate::player::camera::CameraRig>()
+                .pitch = 0.3;
         }
         if ctx.t > 3.5 {
             let d = pos_of(world, w1).distance(pos_of(world, w2));
             let rise = pos_of(world, w2).y - ctx.vars["w2y"];
-            ctx.check("partner lifted through the weld", rise > 0.8, format!("rose {rise:.2}"));
-            ctx.check("weld keeps the distance", (d - ctx.vars["wd"]).abs() < 0.15, format!("{:.2} → {d:.2}", ctx.vars["wd"]));
+            ctx.check(
+                "partner lifted through the weld",
+                rise > 0.8,
+                format!("rose {rise:.2}"),
+            );
+            ctx.check(
+                "weld keeps the distance",
+                (d - ctx.vars["wd"]).abs() < 0.15,
+                format!("{:.2} → {d:.2}", ctx.vars["wd"]),
+            );
             screenshot(world, "08_weld");
             mouse(world, MouseButton::Left, false);
             return Step::Next;
@@ -254,51 +337,89 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
             ctx.entities.insert("base".into(), base);
             ctx.entities.insert("part".into(), part);
             gun(world, GunMode::Hinge);
-            world.resource_mut::<crate::player::camera::CameraRig>().pitch = -0.3;
+            world
+                .resource_mut::<crate::player::camera::CameraRig>()
+                .pitch = -0.3;
         }
         if ctx.frames < 40 {
             return Step::Wait;
         }
         let (base, part) = (ent(ctx, "base"), ent(ctx, "part"));
         // Part: its top face. Base: its south (+Z) side face.
-        { let target = pos_of(world, part) + Vec3::Y * 0.49; click_at(world, ctx, 40, target); }
-        { let target = pos_of(world, base) + Vec3::new(0.0, 0.0, 0.49); click_at(world, ctx, 50, target); }
+        {
+            let target = pos_of(world, part) + Vec3::Y * 0.49;
+            click_at(world, ctx, 40, target);
+        }
+        {
+            let target = pos_of(world, base) + Vec3::new(0.0, 0.0, 0.49);
+            click_at(world, ctx, 50, target);
+        }
         if ctx.frames == 56 {
             let mut q = world.query::<&Connection>();
-            let c = q.iter(world).find(|c| c.kind == JointKind::Hinge && c.a == base && c.b == part).cloned();
-            ctx.check("hinge joint created (part → base)", c.is_some(), "Connection(Hinge)");
+            let c = q
+                .iter(world)
+                .find(|c| c.kind == JointKind::Hinge && c.a == base && c.b == part)
+                .cloned();
+            ctx.check(
+                "hinge joint created (part → base)",
+                c.is_some(),
+                "Connection(Hinge)",
+            );
         }
         if ctx.t > 3.5 && ctx.frames > 56 {
             let pb = pos_of(world, base);
             let pp = pos_of(world, part);
             let off = pp - pb;
-            ctx.check("part snapped against the base face", off.z > 0.8 && off.z < 1.3 && off.y.abs() < 0.6, format!("offset {off:.2}"));
+            ctx.check(
+                "part snapped against the base face",
+                off.z > 0.8 && off.z < 1.3 && off.y.abs() < 0.6,
+                format!("offset {off:.2}"),
+            );
             // Spin about the hinge axis (+Z): it must keep rotating.
             return Step::Next;
         }
         Step::Wait
     }));
-    steps.push(step("hinge rotates freely about its axis only", |world, ctx| {
-        let part = ent(ctx, "part");
-        if ctx.frames == 1 {
-            world.entity_mut(part).insert(AngularVelocity(Vec3::new(4.0, 4.0, 6.0)));
-        }
-        if ctx.frames == 20 {
-            let w = world.get::<AngularVelocity>(part).map(|a| a.0).unwrap_or_default();
-            ctx.check("spin survives about the hinge axis", w.z.abs() > 1.0, format!("ω {w:.2}"));
-            ctx.check("no spin across the axis", Vec2::new(w.x, w.y).length() < 0.6, format!("ω {w:.2}"));
-            screenshot(world, "09_hinge");
-            return Step::Next;
-        }
-        Step::Wait
-    }));
+    steps.push(step(
+        "hinge rotates freely about its axis only",
+        |world, ctx| {
+            let part = ent(ctx, "part");
+            if ctx.frames == 1 {
+                world
+                    .entity_mut(part)
+                    .insert(AngularVelocity(Vec3::new(4.0, 4.0, 6.0)));
+            }
+            if ctx.frames == 20 {
+                let w = world
+                    .get::<AngularVelocity>(part)
+                    .map(|a| a.0)
+                    .unwrap_or_default();
+                ctx.check(
+                    "spin survives about the hinge axis",
+                    w.z.abs() > 1.0,
+                    format!("ω {w:.2}"),
+                );
+                ctx.check(
+                    "no spin across the axis",
+                    Vec2::new(w.x, w.y).length() < 0.6,
+                    format!("ω {w:.2}"),
+                );
+                screenshot(world, "09_hinge");
+                return Step::Next;
+            }
+            Step::Wait
+        },
+    ));
     steps.push(step("unlink", |world, ctx| {
         if ctx.frames == 1 {
             gun(world, GunMode::Unlink);
         }
         let part = ent(ctx, "part");
         if ctx.frames >= 5 && ctx.frames < 8 {
-            { let target = pos_of(world, part); aim_at(world, target); }
+            {
+                let target = pos_of(world, part);
+                aim_at(world, target);
+            }
         }
         if ctx.frames == 7 {
             mouse(world, MouseButton::Left, true);
@@ -309,10 +430,18 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
         if ctx.t > 1.5 && ctx.frames > 12 {
             let mut q = world.query::<&Connection>();
             let left = q.iter(world).filter(|c| c.a == part || c.b == part).count();
-            ctx.check("unlink removes the joints", left == 0, format!("{left} joints left"));
+            ctx.check(
+                "unlink removes the joints",
+                left == 0,
+                format!("{left} joints left"),
+            );
             let y = pos_of(world, part).y;
             let by = pos_of(world, ent(ctx, "base")).y;
-            ctx.check("released part falls", y < by - 0.5, format!("part y {y:.2} base y {by:.2}"));
+            ctx.check(
+                "released part falls",
+                y < by - 0.5,
+                format!("part y {y:.2} base y {by:.2}"),
+            );
             let _ = player_pos(world);
             return Step::Next;
         }
