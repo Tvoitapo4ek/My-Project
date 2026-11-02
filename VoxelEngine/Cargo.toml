@@ -6,6 +6,7 @@ default-members = ["crates/vx_game"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"   # let-chains
 
 [workspace.dependencies]
 vx_core = { path = "crates/vx_core" }
@@ -13,6 +14,7 @@ vx_gen = { path = "crates/vx_gen" }
 vx_mesh = { path = "crates/vx_mesh" }
 vx_physics = { path = "crates/vx_physics" }
 vx_render = { path = "crates/vx_render" }
+vx_ui = { path = "crates/vx_ui" }
 
 glam = "0.33"            # та же версия, что и внутри rapier — типы совместимы без конвертаций
 serde = { version = "1", features = ["derive"] }

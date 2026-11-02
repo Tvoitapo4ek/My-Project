@@ -2,6 +2,7 @@
 name = "vx_gen"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Генерация мира: рельеф по чанкам + структуры из файлов."
 
 [dependencies]

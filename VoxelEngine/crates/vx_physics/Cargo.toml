@@ -2,6 +2,7 @@
 name = "vx_physics"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Физика сеток-тел (как Sable / Create Aeronautics) на rapier3d."
 
 [dependencies]

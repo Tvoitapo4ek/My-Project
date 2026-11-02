@@ -2,6 +2,7 @@
 name = "vx_mesh"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Построение мешей чанков (отсечение граней + ambient occlusion). Без GPU."
 
 [dependencies]

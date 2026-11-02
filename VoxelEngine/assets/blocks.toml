@@ -1,6 +1,7 @@
 # Реестр блоков. Порядок = номер блока (0 — воздух, добавляется сам).
 #
 # Поля (все, кроме name, необязательны):
+#   title = "Камень"      — имя в интерфейсе (по умолчанию = name)
 #   texture = "имя"       — текстура всех граней (по умолчанию = name), файл textures/<имя>.png
 #   top / bottom / side   — переопределить текстуру граней
 #   solid = true          — участвует в столкновениях
@@ -12,20 +13,24 @@
 
 [[block]]
 name = "bedrock"
+title = "Коренная порода"
 terrain = true
 [block.props]
 unbreakable = true
 
 [[block]]
 name = "stone"
+title = "Камень"
 terrain = true
 
 [[block]]
 name = "dirt"
+title = "Земля"
 terrain = true
 
 [[block]]
 name = "grass"
+title = "Трава"
 top = "grass_top"
 side = "grass_side"
 bottom = "dirt"
@@ -33,33 +38,40 @@ terrain = true
 
 [[block]]
 name = "cobblestone"
+title = "Булыжник"
 density = 2.0
 
 [[block]]
 name = "planks"
+title = "Доски"
 density = 0.5
 
 [[block]]
 name = "log"
+title = "Бревно"
 top = "log_top"
 bottom = "log_top"
 density = 0.7
 
 [[block]]
 name = "leaves"
+title = "Листва"
 opaque = false
 density = 0.2
 
 [[block]]
 name = "glass"
+title = "Стекло"
 opaque = false
 density = 0.5
 
 [[block]]
 name = "balloon"
+title = "Воздушный шар"
 density = 0.1
 lift = 19.0
 
 [[block]]
 name = "iron_block"
+title = "Железный блок"
 density = 4.0

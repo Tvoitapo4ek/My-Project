@@ -2,6 +2,7 @@
 name = "vx_core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Ядро: блоки, чанки 16³, сетки (Grid) и уровень (Level). Без графики и физики."
 
 [dependencies]

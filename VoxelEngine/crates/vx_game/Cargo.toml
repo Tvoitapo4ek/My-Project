@@ -2,6 +2,7 @@
 name = "vx_game"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Игра: окно, ввод, игрок, связывание модулей."
 
 [[bin]]
@@ -14,6 +15,7 @@ vx_gen.workspace = true
 vx_mesh.workspace = true
 vx_physics.workspace = true
 vx_render.workspace = true
+vx_ui.workspace = true
 glam.workspace = true
 winit.workspace = true
 pollster.workspace = true

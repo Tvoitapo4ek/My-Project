@@ -9,11 +9,15 @@ use std::{
 use anyhow::{Context, Result};
 use glam::{IVec3, Mat4, Vec3};
 use serde::Deserialize;
-use vx_core::{AIR, BlockId, CHUNK, GridId, GridKind, Level, Registry, WORLD, assembly};
+use vx_core::{
+    AIR, BlockId, CHUNK, GridId, GridKind, Level, Registry, WORLD, assembly,
+    inventory::{HOTBAR, Inventory, MAX_STACK},
+};
 use vx_gen::WorldGen;
 use vx_mesh::{Mesh, mesh_chunk};
 use vx_physics::{Character, Hit, Physics, PhysicsConfig};
 use vx_render::LineVertex;
+use vx_ui::{HudInfo, Settings};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::input::Input;
@@ -48,12 +52,14 @@ pub struct Game {
     yaw: f32,
     pitch: f32,
     fly: bool,
-    hotbar: Vec<BlockId>,
-    selected: usize,
+    pub inventory: Inventory,
+    /// Блоки, доступные в творческой палитре.
+    pub palette: Vec<BlockId>,
+    pub settings: Settings,
     target: Option<Hit>,
     accumulator: f32,
     known: HashSet<GridId>,
-    message: Option<(String, Instant)>,
+    messages: Vec<(String, Instant)>,
 }
 
 fn section<T: for<'de> Deserialize<'de> + Default>(extra: &toml::Table, name: &str) -> Result<T> {
@@ -82,7 +88,12 @@ impl Game {
         };
         let mut phys = Physics::new(physics);
         let player_body = Character::spawn(&mut phys, spawn, 0.3, 0.6, 1.5);
-        let hotbar = reg.iter().filter(|(_, b)| !b.props.contains_key("unbreakable")).map(|(id, _)| id).collect();
+        let palette: Vec<_> =
+            reg.iter().filter(|(_, b)| !b.props.contains_key("unbreakable")).map(|(id, _)| id).collect();
+        let mut inventory = Inventory::new(HOTBAR * 4);
+        for &block in palette.iter().take(HOTBAR) {
+            inventory.add(block, MAX_STACK);
+        }
         log::info!("мир {}×{}×{} блоков, сеток: {}", bounds.max.x, bounds.max.y, bounds.max.z, level.ids().len());
 
         Ok(Game {
@@ -94,19 +105,23 @@ impl Game {
             yaw: player.yaw.to_radians(),
             pitch: player.pitch.to_radians(),
             fly: false,
-            hotbar,
-            selected: 0,
+            inventory,
+            palette,
+            settings: Settings::default(),
             target: None,
             accumulator: 0.0,
             known: HashSet::new(),
-            message: None,
+            messages: vec![],
         })
     }
 
     fn say(&mut self, text: impl Into<String>) {
         let text = text.into();
         log::info!("{text}");
-        self.message = Some((text, Instant::now()));
+        self.messages.push((text, Instant::now()));
+        if self.messages.len() > 5 {
+            self.messages.remove(0);
+        }
     }
 
     pub fn look_dir(&self) -> Vec3 {
@@ -122,7 +137,7 @@ impl Game {
     /// Один кадр игры.
     pub fn update(&mut self, input: &Input, dt: f32) {
         // --- камера ---
-        let sensitivity = 0.0025;
+        let sensitivity = 0.0025 * self.settings.sensitivity;
         self.yaw -= input.mouse_delta.x * sensitivity;
         self.pitch = (self.pitch - input.mouse_delta.y * sensitivity).clamp(-1.55, 1.55);
 
@@ -158,16 +173,13 @@ impl Game {
         let dir = self.look_dir();
         self.target = self.phys.raycast(eye, dir, REACH, Some(self.player.body));
 
-        if !self.hotbar.is_empty() {
-            for (i, key) in DIGITS.iter().enumerate() {
-                if input.pressed(*key) && i < self.hotbar.len() {
-                    self.selected = i;
-                }
+        for (i, key) in DIGITS.iter().enumerate() {
+            if input.pressed(*key) {
+                self.inventory.select(i);
             }
-            if input.scroll != 0.0 {
-                let n = self.hotbar.len() as i32;
-                self.selected = (self.selected as i32 - input.scroll.signum() as i32).rem_euclid(n) as usize;
-            }
+        }
+        if input.scroll != 0.0 {
+            self.inventory.scroll(-input.scroll.signum() as i32);
         }
 
         let Some(hit) = self.target else { return };
@@ -189,14 +201,19 @@ impl Game {
 
     fn break_block(&mut self, hit: Hit) {
         let Some(grid) = self.level.get_mut(hit.grid) else { return };
-        if self.reg.get(grid.get(hit.block)).props.contains_key("unbreakable") {
+        let block = grid.get(hit.block);
+        if self.reg.get(block).props.contains_key("unbreakable") {
             return;
         }
         grid.set(hit.block, AIR);
+        if !self.settings.creative {
+            self.inventory.add(block, 1);
+        }
     }
 
     fn place_block(&mut self, hit: Hit) {
-        let Some(&block) = self.hotbar.get(self.selected) else { return };
+        let Some(stack) = self.inventory.selected_stack() else { return };
+        let block = stack.block;
         let pos = hit.block + hit.normal;
         let player = self.player.position(&self.phys);
         let Some(grid) = self.level.get_mut(hit.grid) else { return };
@@ -205,8 +222,13 @@ impl Game {
         if self.reg.solid(block) && d.x < 0.8 && d.z < 0.8 && d.y < 1.4 {
             return;
         }
-        if grid.get(pos) == AIR && !grid.set(pos, block) {
+        if grid.get(pos) != AIR {
+            return;
+        }
+        if !grid.set(pos, block) {
             self.say("за границей мира");
+        } else if !self.settings.creative {
+            self.inventory.take_selected(1);
         }
     }
 
@@ -266,15 +288,26 @@ impl Game {
 
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         use glam::camera::rh::{proj::directx::perspective, view::look_to_mat4};
-        perspective(70f32.to_radians(), aspect, 0.05, 1000.0) * look_to_mat4(self.eye(), self.look_dir(), Vec3::Y)
+        perspective(self.settings.fov.to_radians(), aspect, 0.05, 1000.0)
+            * look_to_mat4(self.eye(), self.look_dir(), Vec3::Y)
     }
 
     pub fn grid_poses(&self) -> Vec<(GridId, Mat4)> {
         self.level.iter().map(|(id, g)| (id, g.pose.matrix())).collect()
     }
 
-    /// Рамка вокруг блока под прицелом + прицел.
-    pub fn lines(&self, aspect: f32) -> Vec<LineVertex> {
+    /// Камера для фона главного меню: медленный облёт мира.
+    pub fn menu_view_proj(&self, aspect: f32, time: f32) -> (Mat4, Vec3) {
+        use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
+        let b = self.level.world().bounds.map_or(IVec3::splat(128), |b| b.max);
+        let centre = Vec3::new(b.x as f32 / 2.0, 14.0, b.z as f32 / 2.0);
+        let angle = time * 0.05;
+        let eye = centre + Vec3::new(angle.cos() * 70.0, 34.0, angle.sin() * 70.0);
+        (perspective(self.settings.fov.to_radians(), aspect, 0.05, 1000.0) * look_at_mat4(eye, centre, Vec3::Y), eye)
+    }
+
+    /// Рамка вокруг блока под прицелом.
+    pub fn lines(&self) -> Vec<LineVertex> {
         let mut out = vec![];
         let world = |p: Vec3| LineVertex { pos: p.extend(1.0).to_array(), color: [0.05, 0.05, 0.05, 0.9] };
         if let Some(hit) = self.target
@@ -288,30 +321,34 @@ impl Game {
                 out.extend([world(corner(a)), world(corner(b))]);
             }
         }
-        let screen = |x: f32, y: f32| LineVertex { pos: [x / aspect, y, 0.0, 0.0], color: [1.0, 1.0, 1.0, 0.9] };
-        out.extend([screen(-0.03, 0.0), screen(0.03, 0.0), screen(0.0, -0.03), screen(0.0, 0.03)]);
         out
     }
 
-    pub fn status(&self) -> String {
-        let block = self.hotbar.get(self.selected).map_or("—", |&b| self.reg.get(b).name.as_str());
-        let mut s = format!("блок: {block} [{}/{}]", self.selected + 1, self.hotbar.len());
-        if self.fly {
-            s += " | полёт";
-        }
+    /// Данные для HUD: сообщения и отладочный экран (F3).
+    pub fn hud(&self, fps: f32) -> HudInfo {
+        let messages = self
+            .messages
+            .iter()
+            .filter(|(_, at)| at.elapsed() < Duration::from_secs(5))
+            .map(|(t, _)| t.clone())
+            .collect();
+        let p = self.player.position(&self.phys);
+        let mut debug = vec![
+            format!("{fps:.0} FPS"),
+            format!("XYZ: {:.1} {:.1} {:.1}", p.x, p.y, p.z),
+            format!("сеток: {}, полёт: {}", self.level.ids().len(), if self.fly { "да" } else { "нет" }),
+        ];
         if let Some(hit) = self.target
-            && hit.grid != WORLD
             && let Some(g) = self.level.get(hit.grid)
         {
-            let kind = if g.kind == GridKind::Dynamic { "корабль" } else { "сетка" };
-            s += &format!(" | {kind} #{}: масса {:.1}", hit.grid.0, self.phys.mass(hit.grid));
+            let name = self.reg.get(g.get(hit.block)).title();
+            let kind = if g.kind == GridKind::Dynamic { "корабль" } else { "мир" };
+            debug.push(format!("блок: {name} {} ({kind} #{})", hit.block, hit.grid.0));
+            if g.kind == GridKind::Dynamic {
+                debug.push(format!("масса корабля: {:.1}", self.phys.mass(hit.grid)));
+            }
         }
-        if let Some((text, at)) = &self.message
-            && at.elapsed() < Duration::from_secs(4)
-        {
-            s += &format!(" | {text}");
-        }
-        s
+        HudInfo { fps, messages, debug }
     }
 
     /// Дальность тумана — по размеру мира.
@@ -365,7 +402,7 @@ mod tests {
         g.update(&input, TICK);
         g.sync();
         let ship = *g.level.ids().last().unwrap();
-        assert_eq!(g.level.get(ship).unwrap().blocks().count(), 29, "{}", g.status());
+        assert_eq!(g.level.get(ship).unwrap().blocks().count(), 29, "{:?}", g.hud(0.0).messages);
         let start = g.level.get(ship).unwrap().pose.pos.y;
         run(&mut g, 5.0, |_| {});
         let y = g.level.get(ship).unwrap().pose.pos.y;

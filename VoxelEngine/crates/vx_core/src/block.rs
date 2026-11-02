@@ -38,7 +38,11 @@ impl Face {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlockDef {
+    /// Внутреннее имя (используется в файлах мира и структур).
     pub name: String,
+    /// Имя для интерфейса. По умолчанию — `name`.
+    #[serde(default)]
+    title: Option<String>,
     /// Текстура для всех граней (имя файла в `assets/textures` без `.png`).
     #[serde(default)]
     texture: Option<String>,
@@ -83,6 +87,7 @@ impl BlockDef {
     fn air() -> Self {
         BlockDef {
             name: "air".into(),
+            title: None,
             texture: None,
             top: None,
             bottom: None,
@@ -95,6 +100,11 @@ impl BlockDef {
             props: Default::default(),
             faces: [0; 6],
         }
+    }
+
+    /// Имя для показа игроку.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or(&self.name)
     }
 
     /// Имена текстур граней в порядке [`Face::ALL`].

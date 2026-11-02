@@ -2,11 +2,13 @@
 name = "vx_render"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Рендер на wgpu: чанки, массив текстур, линии/прицел."
 
 [dependencies]
 vx_core.workspace = true
 vx_mesh.workspace = true
+vx_ui.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
 wgpu.workspace = true

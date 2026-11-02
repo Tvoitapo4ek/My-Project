@@ -4,12 +4,14 @@
 //! * [`Chunk`] — куб 16×16×16 блоков;
 //! * [`Grid`] — разреженная сетка чанков со своей позой в мире (статичный мир или корабль);
 //! * [`Level`] — набор сеток. Сетка [`WORLD`] — основной мир.
+//! * [`inventory`] — инвентарь (модель данных, без интерфейса).
 //! * [`assembly`] — сборка/разборка конструкций (мир ⇄ отдельная сетка-тело).
 
 pub mod assembly;
 mod block;
 mod chunk;
 mod grid;
+pub mod inventory;
 
 pub use block::{AIR, BlockDef, BlockId, Face, Registry};
 pub use chunk::{CHUNK, CHUNK_VOLUME, Chunk, split};

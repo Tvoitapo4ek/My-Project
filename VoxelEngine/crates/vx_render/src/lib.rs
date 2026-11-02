@@ -1,10 +1,11 @@
 //! Рендер на wgpu.
 //!
 //! Рисует чанки всех сеток (каждая сетка — своя матрица позы), линии
-//! (рамка выделения, прицел) и туман. Текстуры — массив слоёв, номер слоя
+//! (рамка выделения) и интерфейс (`vx_ui`). Текстуры — массив слоёв, номер слоя
 //! хранится в вершине, поэтому новая текстура = новый PNG без правки кода.
 
 mod textures;
+mod ui;
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
@@ -33,6 +34,8 @@ pub struct Frame<'a> {
     pub lines: &'a [LineVertex],
     pub sky: [f32; 3],
     pub fog_distance: f32,
+    /// Интерфейс поверх мира (уже триангулированный `vx_ui::tessellate`).
+    pub ui: Option<&'a vx_ui::UiMesh>,
 }
 
 #[repr(C)]
@@ -67,6 +70,7 @@ pub struct Renderer {
     texture_bind: wgpu::BindGroup,
     block_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
+    ui: ui::UiPass,
     grids: HashMap<GridId, GridGpu>,
 }
 
@@ -276,6 +280,8 @@ impl Renderer {
             false,
         );
 
+        let ui = ui::UiPass::new(&device, config.format, DEPTH, &texture_layout);
+
         Ok(Renderer {
             surface,
             device,
@@ -288,6 +294,7 @@ impl Renderer {
             texture_bind,
             block_pipeline,
             line_pipeline,
+            ui,
             grids: HashMap::new(),
         })
     }
@@ -300,6 +307,16 @@ impl Renderer {
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
         self.depth = create_depth(&self.device, width, height);
+    }
+
+    /// Загрузить атлас интерфейса (`vx_ui::FontAtlas::pixels`).
+    pub fn set_ui_atlas(&mut self, width: u32, height: u32, rgba: &[u8]) {
+        self.ui.set_atlas(&self.device, &self.queue, width, height, rgba);
+    }
+
+    /// Размер области рисования в физических пикселях.
+    pub fn size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
     }
 
     pub fn aspect(&self) -> f32 {
@@ -425,6 +442,10 @@ impl Renderer {
             })
         });
 
+        let ui = frame
+            .ui
+            .and_then(|m| self.ui.prepare(&self.device, &self.queue, m, self.size(), self.config.format.is_srgb()));
+
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let [r, g, b] = frame.sky.map(|c| c as f64);
@@ -461,6 +482,9 @@ impl Renderer {
                 pass.set_pipeline(&self.line_pipeline);
                 pass.set_vertex_buffer(0, lines.slice(..));
                 pass.draw(0..frame.lines.len() as u32, 0..1);
+            }
+            if let Some(ui) = &ui {
+                self.ui.draw(&mut pass, &self.texture_bind, ui);
             }
         }
         self.queue.submit([encoder.finish()]);

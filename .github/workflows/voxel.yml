@@ -1,0 +1,57 @@
+# Сборка и тесты воксельного движка на Windows, macOS и Linux.
+# Готовые сборки (программа + assets) — во вкладке Actions → артефакты запуска.
+name: VoxelEngine
+
+on:
+  push:
+    paths: ["VoxelEngine/**", ".github/workflows/voxel.yml"]
+  pull_request:
+    paths: ["VoxelEngine/**", ".github/workflows/voxel.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+            exe: voxel
+          - os: windows-latest
+            name: windows
+            exe: voxel.exe
+          - os: macos-latest
+            name: macos
+            exe: voxel
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: VoxelEngine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: VoxelEngine
+      - name: Форматирование и clippy
+        if: matrix.name == 'linux'
+        run: |
+          cargo fmt --all --check
+          cargo clippy --release --workspace --all-targets -- -D warnings
+      - name: Тесты
+        run: cargo test --release --workspace
+      - name: Сборка
+        run: cargo build --release
+      - name: Упаковка
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/release/${{ matrix.exe }} dist/
+          cp -r assets dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxel-${{ matrix.name }}
+          path: VoxelEngine/dist
