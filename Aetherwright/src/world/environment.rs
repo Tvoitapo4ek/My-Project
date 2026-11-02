@@ -3,9 +3,9 @@
 
 use bevy::{light::CascadeShadowConfigBuilder, prelude::*};
 
-use crate::{
-    core::{config::GameConfig, resources::WorldClock},
-    player::camera::MainCamera,
+use crate::core::{
+    config::GameConfig,
+    resources::{MainCamera, WorldClock},
 };
 
 #[derive(Component)]

@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod events;
+pub mod layers;
 pub mod resources;
 pub mod states;
 

@@ -12,10 +12,13 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::{
-    Layer, PLAYER_CROUCH_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS, Player, input::PlayerIntent,
+    PLAYER_CROUCH_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS, Player, input::PlayerIntent,
     player_collider,
 };
-use crate::core::{config::GameConfig, states::GameMode};
+use crate::{
+    core::{config::GameConfig, layers::Layer, resources::SpawnPoint, states::GameMode},
+    world::chunks::VoxelWorld,
+};
 
 /// Runtime state of the character controller.
 #[derive(Component, Debug, Clone)]
@@ -310,6 +313,19 @@ fn apply_movement(
     }
 }
 
+/// Fraction of the body inside liquid blocks (samples feet, waist, head).
+fn update_submersion(world: Res<VoxelWorld>, mut q: Query<(&Position, &mut CharacterState), With<Player>>) {
+    for (pos, mut state) in &mut q {
+        let feet = pos.0.y - state.height * 0.5;
+        let samples = [0.15, state.height * 0.5, state.height - 0.2];
+        let wet = samples
+            .iter()
+            .filter(|&&h| world.get(Vec3::new(pos.x, feet + h, pos.z).floor().as_ivec3()).is_liquid())
+            .count();
+        state.submerged = wet as f32 / samples.len() as f32;
+    }
+}
+
 /// Creative flight toggle (double-tap is unreliable on trackpads → key F).
 fn toggle_fly(
     keys: Res<ButtonInput<KeyCode>>,
@@ -336,7 +352,7 @@ fn disable_fly_outside_creative(mut q: Query<&mut CharacterState, With<Player>>)
 
 /// Safety net: if the player falls out of the world, put them back.
 fn respawn_if_fallen(
-    spawn: Res<super::SpawnPoint>,
+    spawn: Res<SpawnPoint>,
     mut q: Query<(&mut Position, &mut LinearVelocity), With<Player>>,
 ) {
     for (mut pos, mut vel) in &mut q {
@@ -354,6 +370,7 @@ impl Plugin for MovementPlugin {
         app.add_systems(
             FixedUpdate,
             (
+                update_submersion,
                 update_ground,
                 update_crouch,
                 apply_movement,

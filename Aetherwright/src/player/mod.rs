@@ -2,43 +2,18 @@
 
 pub mod camera;
 pub mod input;
+pub mod interaction;
 pub mod model;
 pub mod movement;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::core::states::AppState;
+use crate::core::{layers::Layer, resources::SpawnPoint, states::AppState};
 
 /// Marker for the player's physical body (root entity).
 #[derive(Component, Debug)]
 pub struct Player;
-
-/// Where the player (re)spawns. Set by the world once terrain exists.
-#[derive(Resource, Debug, Clone, Copy)]
-pub struct SpawnPoint(pub Vec3);
-
-impl Default for SpawnPoint {
-    fn default() -> Self {
-        Self(Vec3::new(0.0, 4.0, 0.0))
-    }
-}
-
-/// Physics layers used across the game.
-#[derive(PhysicsLayer, Default, Clone, Copy, Debug)]
-pub enum Layer {
-    #[default]
-    Default,
-    /// Static voxel terrain.
-    Terrain,
-    Player,
-    /// Free dynamic props, parts and machines.
-    Prop,
-    /// Dropped items (collide with terrain/props, not with the player).
-    Item,
-    Creature,
-    Projectile,
-}
 
 pub const PLAYER_RADIUS: f32 = 0.35;
 pub const PLAYER_HEIGHT: f32 = 1.8;
@@ -53,12 +28,12 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SpawnPoint>()
-            .add_plugins((
+        app.add_plugins((
                 input::InputPlugin,
                 movement::MovementPlugin,
                 camera::CameraPlugin,
                 model::ModelPlugin,
+                interaction::HandsPlugin,
             ))
             .add_systems(OnEnter(AppState::InGame), spawn_player);
     }

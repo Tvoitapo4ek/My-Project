@@ -9,8 +9,10 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions},
 };
 
-use super::{Layer, Player, movement::CharacterState};
+use super::{Player, movement::CharacterState};
 use crate::core::{
+    layers::Layer,
+    resources::{EyeRay, MainCamera},
     config::GameConfig,
     states::{InputFocus, gameplay_active},
 };
@@ -46,17 +48,6 @@ impl Default for CameraRig {
             eye_offset: 0.74,
         }
     }
-}
-
-/// The main gameplay camera.
-#[derive(Component)]
-pub struct MainCamera;
-
-/// The player's eye ray this frame, shared by every tool/interaction system.
-#[derive(Resource, Debug, Clone, Copy, Default)]
-pub struct EyeRay {
-    pub origin: Vec3,
-    pub direction: Vec3,
 }
 
 fn spawn_camera(mut commands: Commands, cfg: Res<GameConfig>, mut rig: ResMut<CameraRig>) {
@@ -244,7 +235,6 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraRig>()
-            .init_resource::<EyeRay>()
             .add_systems(Startup, spawn_camera)
             .add_systems(
                 Update,

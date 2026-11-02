@@ -84,6 +84,9 @@ fn run_scenario(world: &mut World) {
             scenario.ctx.t = 0.0;
             scenario.ctx.frames = 0;
         }
+    } else if scenario.ctx.t < 1.5 {
+        // Let pending screenshots reach the disk before exiting.
+        scenario.ctx.t += dt;
     } else {
         let failed = scenario.ctx.failed.len();
         info!(

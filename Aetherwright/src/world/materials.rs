@@ -119,9 +119,16 @@ fn pixel(t: Tex, x: u32, y: u32) -> [f32; 4] {
             opaque(if moss { vary(rgb(84, 120, 64), 0.25) } else { stone() })
         }
         Tex::TallGrass => {
-            // A few blades growing from the bottom.
-            let blade = (x % 4 == 1 || x % 5 == 3) && (y as f32) > 3.0 + n(s ^ 71, x, 0) * 6.0;
-            if blade { [0.38, 0.6, 0.28, 1.0] } else { [0.0, 0.0, 0.0, 0.0] }
+            // Thin tapering blades of varying height.
+            let blade = x % 3 == 1;
+            let top = 2.0 + n(s ^ 71, x, 0) * 9.0;
+            let width_ok = (y as f32) > top + (x % 2) as f32 * 2.0;
+            if blade && width_ok {
+                let k = y as f32 / 16.0;
+                [0.30 + 0.12 * (1.0 - k), 0.52 + 0.15 * (1.0 - k), 0.22, 1.0]
+            } else {
+                [0.0, 0.0, 0.0, 0.0]
+            }
         }
         Tex::Berry => {
             let d = ((x as f32 - 7.5).powi(2) + (y as f32 - 9.0).powi(2) * 1.4).sqrt();

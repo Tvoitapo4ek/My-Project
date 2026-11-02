@@ -108,7 +108,9 @@ pub fn height_at(p: &GenParams, x: i32, z: i32) -> i32 {
     let hills = fbm2(p.seed ^ 0xA5A5, fx / 23.0, fz / 23.0, 3);
     let mountains = (1.0 - fbm2(p.seed ^ 0x5151, fx / 70.0, fz / 70.0, 3).abs()).powi(3);
     let mask = smooth(((fbm2(p.seed ^ 0x77, fx / 90.0, fz / 90.0, 2) + 0.15) * 1.6).clamp(0.0, 1.0));
-    let mut h = p.sea_level as f32 + 5.0 + base * 9.0 + hills * 2.5 + mountains * mask * 20.0;
+    // Lake basins: smooth depressions that dip below sea level.
+    let lake = smooth(((-fbm2(p.seed ^ 0x1A4E, fx / 42.0, fz / 42.0, 2) - 0.1) * 3.0).clamp(0.0, 1.0));
+    let mut h = p.sea_level as f32 + 5.0 + base * 9.0 + hills * 2.5 + mountains * mask * 20.0 - lake * 11.0;
 
     // Flatten a clearing around the spire and anomaly so they read clearly.
     let s = sites(p);
@@ -318,7 +320,7 @@ pub fn generate_chunk(p: &GenParams, cc: IVec3) -> ChunkData {
                 }
             };
             for dy in -2..=1i32 {
-                let radius = if dy >= 0 { 1 } else { 2 };
+                let radius: i32 = if dy >= 0 { 1 } else { 2 };
                 for dz in -radius..=radius {
                     for dx in -radius..=radius {
                         let corner = dx.abs() == radius && dz.abs() == radius;
@@ -349,6 +351,22 @@ mod tests {
     fn deterministic() {
         let p = params();
         assert_eq!(generate_chunk(&p, IVec3::new(2, 1, 3)), generate_chunk(&p, IVec3::new(2, 1, 3)));
+    }
+
+    #[test]
+    fn has_lakes() {
+        for seed in [42, 1337, 7] {
+        let p = GenParams { seed, ..params() };
+        let mut deep = 0;
+        for z in 0..p.size.z {
+            for x in 0..p.size.x {
+                if height_at(&p, x, z) <= p.sea_level - 2 {
+                    deep += 1;
+                }
+            }
+        }
+        assert!(deep > 150, "seed {seed}: only {deep} columns with ≥ 3 m of water");
+        }
     }
 
     #[test]
