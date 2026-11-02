@@ -259,6 +259,8 @@ fn spawn_panels(
         Camera {
             order: 1,
             clear_color: ClearColorConfig::None,
+            // Drawn only while the projection is visible.
+            is_active: false,
             ..default()
         },
         Tonemapping::None,
@@ -297,7 +299,8 @@ pub fn place_root(
     cam: Query<&Transform, (With<MainCamera>, Without<HoloRoot>)>,
     mut root: Query<(&mut Transform, &mut Visibility), With<HoloRoot>>,
     panels: Query<&HoloPanel>,
-    mut ui_cams: Query<&mut Camera, Without<MainCamera>>,
+    mut ui_cams: Query<&mut Camera, (Without<MainCamera>, Without<OverlayCamera>)>,
+    mut overlays: Query<(&mut Camera, &OverlayCamera), Without<MainCamera>>,
 ) {
     let Ok((mut t, mut vis)) = root.single_mut() else {
         return;
@@ -306,6 +309,11 @@ pub fn place_root(
     let want = if shown { Visibility::Visible } else { Visibility::Hidden };
     if *vis != want {
         *vis = want;
+    }
+    for (mut c, _) in &mut overlays {
+        if c.is_active != shown {
+            c.is_active = shown;
+        }
     }
     for panel in &panels {
         if let Ok(mut c) = ui_cams.get_mut(panel.camera)

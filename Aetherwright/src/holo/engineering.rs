@@ -56,6 +56,17 @@ pub struct EngineeringTarget {
     refresh: f32,
 }
 
+impl EngineeringTarget {
+    /// Shows the panel for `e` for `secs` seconds even if not aimed at
+    /// (tutorials, tests, a future «pin panel» action).
+    pub fn pin(&mut self, e: Entity, secs: f32) {
+        self.entity = Some(e);
+        self.fade = 1.0;
+        self.linger = secs;
+        self.refresh = 0.0;
+    }
+}
+
 fn spawn_panel(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,

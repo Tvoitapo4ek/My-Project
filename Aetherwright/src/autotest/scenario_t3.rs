@@ -166,13 +166,13 @@ pub fn stage_t3(steps: &mut Vec<(String, StepFn)>) {
             let has = saved.extensions.get("map").is_some_and(|v| v.to_string().contains("Тест"));
             ctx.check("markers and explored map go into the save", has, "");
             screenshot(world, "27_holo_map");
-            world.resource_mut::<MapMarkers>().0.clear();
             return Step::Next;
         }
         Step::Wait
     }));
     steps.push(step("journal entry opens by scanning", |world, ctx| {
         if ctx.frames == 1 {
+            world.resource_mut::<MapMarkers>().0.clear();
             world.resource_mut::<JournalState>().unlocked.remove("iron_ore");
             world.write_message(Scanned { block: Some("iron_ore".into()), title: "Железная руда".into() });
             *world.resource_mut::<JournalUi>() = JournalUi { category: crate::content::JournalCategory::Materials, selected: Some("iron_ore".into()) };
@@ -261,9 +261,7 @@ pub fn stage_t3(steps: &mut Vec<(String, StepFn)>) {
         }
         let e = ctx.entities["eng_engine"];
         if ctx.frames == 6 {
-            let mut t = world.resource_mut::<EngineeringTarget>();
-            t.entity = Some(e);
-            t.fade = 1.0;
+            world.resource_mut::<EngineeringTarget>().pin(e, 10.0);
         }
         if ctx.t > 2.0 {
             let text = describe(world, e);
@@ -271,6 +269,8 @@ pub fn stage_t3(steps: &mut Vec<(String, StepFn)>) {
                 title == "Двигатель" && body.contains("об/мин") && body.contains("Соединения") && diag.contains("выключен")
             });
             ctx.check("engine data and diagnostics", ok, format!("{text:?}"));
+            let shown = world.query::<(&Name, &Visibility)>().iter(world).any(|(n, v)| n.as_str() == "Engineering Panel" && *v == Visibility::Visible);
+            ctx.check("panel visible above the machine", shown, "");
             screenshot(world, "31_engineering_panel");
             return Step::Next;
         }

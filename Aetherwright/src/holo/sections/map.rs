@@ -246,8 +246,14 @@ fn landmarks(w: &mut World) -> Vec<(Vec3, String, u8)> {
     }
     if let Some(src) = w.get_resource::<AetherSources>() {
         let mut seen = HashSet::new();
+        let surface = |p: Vec3| w.get_resource::<VoxelWorld>().and_then(|v| v.surface_y(p.x as i32, p.z as i32));
         for (p, kind, _) in &src.0 {
-            let key = (p.as_ivec3() / 10).xz();
+            // Only sources visible from the surface; buried ones are found
+            // by scanning (and will show on underground levels later).
+            if surface(*p).is_none_or(|y| (p.y as i32) < y - 2) {
+                continue;
+            }
+            let key = (p.as_ivec3() / 16).xz();
             if seen.insert(key) {
                 out.push((*p, format!("Источник: {}", kind.label()), 1));
             }
@@ -316,7 +322,7 @@ fn build(world: &mut World) {
     let mats = world.resource::<HoloMats>().clone();
     let explored = world.resource::<ExploredMap>().clone();
     let inside = |p: Vec3| (Vec2::new(p.x, p.z) - center).abs().max_element() < radius;
-    let local = |p: Vec3| Vec3::new((p.x - center.x) * scale, base_h(p.y), (p.z - center.y) * scale);
+    let local = |p: Vec3| Vec3::new((p.x - center.x) * scale, base_h(p.y).max(0.0), (p.z - center.y) * scale);
 
     let (pin, beacon, arrow) = {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
