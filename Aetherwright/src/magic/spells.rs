@@ -96,18 +96,14 @@ pub struct Vfx {
 #[derive(Resource)]
 struct VfxAssets {
     mesh: Handle<Mesh>,
-    calm: Handle<StandardMaterial>,
-    agitated: Handle<StandardMaterial>,
-    ancient: Handle<StandardMaterial>,
+    /// One glow material per kind of magic (`AetherKind::ALL` order).
+    by_kind: Vec<Handle<StandardMaterial>>,
 }
 
 impl VfxAssets {
     fn mat(&self, k: AetherKind) -> Handle<StandardMaterial> {
-        match k {
-            AetherKind::Calm => self.calm.clone(),
-            AetherKind::Agitated => self.agitated.clone(),
-            AetherKind::Ancient => self.ancient.clone(),
-        }
+        let i = AetherKind::ALL.iter().position(|x| *x == k).unwrap_or(0);
+        self.by_kind[i].clone()
     }
 }
 
@@ -128,9 +124,7 @@ fn setup(
     };
     commands.insert_resource(VfxAssets {
         mesh: meshes.add(Sphere::new(0.12).mesh().ico(1).unwrap()),
-        calm: glow(AetherKind::Calm),
-        agitated: glow(AetherKind::Agitated),
-        ancient: glow(AetherKind::Ancient),
+        by_kind: AetherKind::ALL.into_iter().map(&mut glow).collect(),
     });
 }
 

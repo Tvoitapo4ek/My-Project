@@ -304,7 +304,7 @@ pub fn stage9(steps: &mut Vec<(String, StepFn)>) {
             ctx.check(
                 "voxel edit restored",
                 block_at(world, mark) == blocks::BRICKS,
-                block_at(world, mark).def().key,
+                block_at(world, mark).def().key.as_str(),
             );
             let mut q = world.query::<&Prop>();
             let props = q.iter(world).count() as f32;
@@ -383,7 +383,11 @@ pub fn stage9(steps: &mut Vec<(String, StepFn)>) {
             let newer = save_path("autotest_newer.json");
             let text = std::fs::read_to_string(save_path("autotest_save.json"))
                 .unwrap_or_default()
-                .replacen("\"version\":1", "\"version\":99", 1);
+                .replacen(
+                    &format!("\"version\":{}", crate::save::serialization::SAVE_VERSION),
+                    "\"version\":99",
+                    1,
+                );
             let _ = std::fs::write(&newer, text);
             let r2 = start_load(world, &newer);
             ctx.check(

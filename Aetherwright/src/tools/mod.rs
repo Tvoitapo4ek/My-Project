@@ -71,7 +71,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
     let Ok(inv) = player.single() else { return };
     let new = match inv.selected_item() {
         None => ActiveTool::Hand,
-        Some(item) => match item.def().use_ {
+        Some(item) => match &item.def().use_ {
             Use::Manipulator => ActiveTool::Manipulator,
             Use::Block(_) => item
                 .block()
@@ -81,7 +81,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,
             Use::Focus => ActiveTool::Focus,
-            Use::Eat(..) => ActiveTool::Consume(item),
+            Use::Eat { .. } => ActiveTool::Consume(item),
             Use::Module(_) => ActiveTool::Module(item),
             Use::None => ActiveTool::Inert(item),
         },

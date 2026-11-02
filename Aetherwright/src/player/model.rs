@@ -52,38 +52,49 @@ fn attach_model(
                 PlayerModel,
                 Transform::default(),
                 Visibility::Hidden,
+                crate::models::ModelSlot {
+                    category: "characters",
+                    key: "explorer".into(),
+                },
+                crate::models::AnimationRequest("idle".into()),
             ))
             .with_children(|m| {
                 m.spawn((
                     Mesh3d(torso),
                     MeshMaterial3d(suit.clone()),
                     Transform::from_xyz(0.0, 0.05, 0.0),
+                    crate::models::PrimitiveVisual,
                 ));
                 m.spawn((
                     Mesh3d(head),
                     MeshMaterial3d(skin),
                     Transform::from_xyz(0.0, 0.66, 0.0),
+                    crate::models::PrimitiveVisual,
                 ));
                 m.spawn((
                     Mesh3d(visor),
                     MeshMaterial3d(glow.clone()),
                     Transform::from_xyz(0.0, 0.7, -0.19),
+                    crate::models::PrimitiveVisual,
                 ));
                 m.spawn((
                     Mesh3d(pack),
                     MeshMaterial3d(leather),
                     Transform::from_xyz(0.0, 0.18, 0.27),
+                    crate::models::PrimitiveVisual,
                 ));
                 m.spawn((
                     Mesh3d(core),
                     MeshMaterial3d(glow),
                     Transform::from_xyz(0.0, 0.2, 0.39),
+                    crate::models::PrimitiveVisual,
                 ));
                 for x in [-0.13, 0.13] {
                     m.spawn((
                         Mesh3d(leg.clone()),
                         MeshMaterial3d(suit.clone()),
                         Transform::from_xyz(x, -0.6, 0.0),
+                        crate::models::PrimitiveVisual,
                     ));
                 }
             })
@@ -94,11 +105,33 @@ fn attach_model(
 
 fn update_model(
     rig: Res<CameraRig>,
-    player: Query<&CharacterState, With<Player>>,
-    mut model: Query<(&mut Transform, &mut Visibility), With<PlayerModel>>,
+    player: Query<(&CharacterState, &avian3d::prelude::LinearVelocity), With<Player>>,
+    mut model: Query<
+        (
+            &mut Transform,
+            &mut Visibility,
+            &mut crate::models::AnimationRequest,
+        ),
+        With<PlayerModel>,
+    >,
 ) {
-    let Ok(state) = player.single() else { return };
-    for (mut t, mut vis) in &mut model {
+    let Ok((state, vel)) = player.single() else {
+        return;
+    };
+    let speed = Vec2::new(vel.x, vel.z).length();
+    let clip = if speed > 6.5 {
+        "run"
+    } else if speed > 0.6 {
+        "walk"
+    } else {
+        "idle"
+    };
+    for (_, _, mut a) in &mut model {
+        if a.0 != clip {
+            a.0 = clip.to_string();
+        }
+    }
+    for (mut t, mut vis, _) in &mut model {
         *vis = if rig.mode == CameraMode::ThirdPerson {
             Visibility::Inherited
         } else {

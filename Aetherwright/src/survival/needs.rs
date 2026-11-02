@@ -157,7 +157,7 @@ fn eat(
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let Use::Eat(food, water) = item.def().use_ else {
+    let Use::Eat { food, water } = item.def().use_ else {
         return;
     };
     let Ok((mut inv, mut v, mut h)) = q.single_mut() else {

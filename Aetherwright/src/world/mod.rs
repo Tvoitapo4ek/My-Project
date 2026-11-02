@@ -328,10 +328,11 @@ pub fn apply_chunk_mesh(
                 Mesh3d(meshes.add(to_mesh(buf))),
                 MeshMaterial3d(mats.get(tex)),
             ));
-            if matches!(
-                tex,
-                voxel::Tex::Water | voxel::Tex::Glass | voxel::Tex::TallGrass | voxel::Tex::Berry
-            ) {
+            if !crate::content::registry()
+                .textures
+                .get(tex.0 as usize)
+                .is_some_and(|t| t.shadows)
+            {
                 child.insert(bevy::light::NotShadowCaster);
             }
         }

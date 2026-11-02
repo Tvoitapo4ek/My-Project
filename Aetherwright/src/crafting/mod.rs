@@ -16,7 +16,7 @@ use crate::{
     tools::manipulator::MechanicsUse,
     ui::{inventory::CraftingDock, theme},
 };
-use recipes::{RECIPES, Station, machine_recipe};
+use recipes::{Station, machine_recipe, recipes};
 use stations::{CrateStorage, Machine};
 
 pub const WORKBENCH_RANGE: f32 = 4.0;
@@ -159,7 +159,7 @@ fn fill_dock(
             theme::font(11.0),
             TextColor(theme::TEXT_DIM),
         ));
-        for (i, r) in RECIPES.iter().enumerate() {
+        for (i, r) in recipes().iter().enumerate() {
             if !matches!(r.station, Station::Hand | Station::Workbench) {
                 continue;
             }
@@ -224,7 +224,7 @@ fn on_recipe_click(
     let Ok(RecipeRow(i)) = rows.get(ev.event_target()) else {
         return;
     };
-    let r = &RECIPES[*i];
+    let r = &recipes()[*i];
     let Ok((pt, mut inv)) = player.single_mut() else {
         return;
     };

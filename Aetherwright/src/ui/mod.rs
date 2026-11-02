@@ -6,6 +6,7 @@ pub mod hud;
 pub mod inventory;
 pub mod menus;
 pub mod slots;
+pub mod texture_editor;
 pub mod theme;
 
 use bevy::prelude::*;
@@ -23,6 +24,7 @@ impl Plugin for UiPlugin {
                 slots::SlotsPlugin,
                 inventory::InventoryUiPlugin,
                 build_menu::BuildMenuPlugin,
+                texture_editor::TextureEditorPlugin,
             ));
     }
 }

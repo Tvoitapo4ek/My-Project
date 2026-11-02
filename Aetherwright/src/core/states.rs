@@ -32,6 +32,8 @@ pub enum InputFocus {
     Inventory,
     BuildMenu,
     Paused,
+    /// In-game texture editor (F7).
+    TextureEditor,
 }
 
 /// Convenience run condition: in game and nothing overlays the gameplay.

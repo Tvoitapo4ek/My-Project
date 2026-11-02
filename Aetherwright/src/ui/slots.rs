@@ -8,7 +8,7 @@ use bevy::{picking::pointer::PointerButton, prelude::*};
 use super::theme;
 use crate::{
     core::states::InputFocus,
-    items::{ITEMS, ItemId, ItemStack, inventory::Inventory},
+    items::{ItemId, ItemStack, all_items, inventory::Inventory},
     player::Player,
 };
 
@@ -40,7 +40,7 @@ struct SlotCount;
 pub struct CursorStack(pub Option<ItemStack>);
 
 fn short_name(item: ItemId) -> String {
-    let name = item.def().name;
+    let name = item.def().name.as_str();
     let first = name.split_whitespace().next().unwrap_or(name);
     first.chars().take(7).collect()
 }
@@ -167,7 +167,7 @@ fn refresh_slots(
         let stack = match view.source {
             SlotSource::Player(i) => inv.slots.get(i).copied().flatten(),
             SlotSource::Catalog(k) => {
-                (k < ITEMS.len()).then(|| ItemStack::new(ItemId(k as u16), 0))
+                (k < all_items().len()).then(|| ItemStack::new(ItemId(k as u16), 0))
             }
         };
         let selected =

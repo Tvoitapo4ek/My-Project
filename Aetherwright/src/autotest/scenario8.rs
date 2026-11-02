@@ -13,7 +13,7 @@ use super::{
 use crate::{
     core::states::InputFocus,
     crafting::{
-        recipes::RECIPES,
+        recipes::recipes,
         stations::{CrateStorage, Machine},
     },
     items::{ItemId, ItemStack, drops::SpawnDrop},
@@ -57,7 +57,7 @@ pub fn stage8(steps: &mut Vec<(String, StepFn)>) {
             });
             let p0 = inv(world).count(ItemId::k("planks"));
             let mut q = world.query_filtered::<&mut crate::items::inventory::Inventory, With<crate::player::Player>>();
-            let ok = q.iter_mut(world).next().map(|mut i| RECIPES[0].craft(&mut i)).unwrap_or(false);
+            let ok = q.iter_mut(world).next().map(|mut i| recipes()[0].craft(&mut i)).unwrap_or(false);
             let p1 = inv(world).count(ItemId::k("planks"));
             ctx.check("wood → planks by hand", ok && p1 == p0 + 4, format!("{p0} → {p1}"));
             world.resource_mut::<NextState<InputFocus>>().set(InputFocus::Inventory);

@@ -161,7 +161,7 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
             ctx.vars.insert("cy".into(), c.y as f32);
             ctx.vars.insert("cz".into(), c.z as f32);
             let drop = crate::items::block_drop(block_at(world, c))
-                .map(|i| i.def().key)
+                .map(|i| i.def().key.as_str())
                 .unwrap_or("dirt");
             ctx.vars.insert("before".into(), count(world, drop) as f32);
             ctx.vars.insert("drop".into(), ItemId::k(drop).0 as f32);
@@ -296,7 +296,7 @@ pub fn stage3(steps: &mut Vec<(String, StepFn)>) {
                 ctx.check(
                     "tier-2 block resists the base drill",
                     !gone,
-                    block_at(world, c).def().key,
+                    block_at(world, c).def().key.clone(),
                 );
                 Step::Next
             }

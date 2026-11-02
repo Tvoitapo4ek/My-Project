@@ -61,8 +61,10 @@ impl ChunkData {
     }
 
     /// Run-length encoding used by saves: (count, block) pairs.
-    pub fn to_rle(&self) -> Vec<(u16, u8)> {
-        let mut out: Vec<(u16, u8)> = Vec::new();
+    /// Run-length encoding: (count, block id) pairs. Ids are runtime ids;
+    /// saves pair them with a key palette (see `save`).
+    pub fn to_rle(&self) -> Vec<(u16, u16)> {
+        let mut out: Vec<(u16, u16)> = Vec::new();
         for b in &self.blocks {
             match out.last_mut() {
                 Some((n, id)) if *id == b.0 && *n < u16::MAX => *n += 1,
@@ -72,15 +74,21 @@ impl ChunkData {
         out
     }
 
-    pub fn from_rle(size: i32, rle: &[(u16, u8)]) -> Option<Self> {
+    /// Decodes RLE; `map` translates stored ids (e.g. through a save's key
+    /// palette). Returns None for truncated data or unknown ids.
+    pub fn from_rle(
+        size: i32,
+        rle: &[(u16, u16)],
+        map: impl Fn(u16) -> Option<BlockId>,
+    ) -> Option<Self> {
         let mut c = Self::new(size);
         let mut i = 0usize;
         for &(n, id) in rle {
             let end = i + n as usize;
-            if end > c.blocks.len() || id as usize >= super::voxel::BLOCKS.len() {
+            if end > c.blocks.len() {
                 return None;
             }
-            c.blocks[i..end].fill(BlockId(id));
+            c.blocks[i..end].fill(map(id)?);
             i = end;
         }
         if i != c.blocks.len() {
@@ -294,10 +302,10 @@ mod tests {
         c.set(IVec3::new(7, 7, 7), blocks::WATER);
         let rle = c.to_rle();
         assert!(rle.len() < 10);
-        let back = ChunkData::from_rle(8, &rle).unwrap();
+        let back = ChunkData::from_rle(8, &rle, |i| Some(BlockId(i))).unwrap();
         assert_eq!(back, c);
         assert!(
-            ChunkData::from_rle(8, &[(3, 1)]).is_none(),
+            ChunkData::from_rle(8, &[(3, 1)], |i| Some(BlockId(i))).is_none(),
             "truncated data is rejected"
         );
     }

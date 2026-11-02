@@ -11,7 +11,7 @@ use super::{
 use crate::{
     core::states::{GameMode, InputFocus, gameplay_active},
     items::{
-        ITEMS, ItemStack,
+        ItemStack, all_items,
         inventory::{HOTBAR, Inventory, SLOTS},
     },
     player::Player,
@@ -92,7 +92,7 @@ fn spawn_screen(mut commands: Commands, mode: Res<State<GameMode>>) {
                 root.spawn(theme::panel(Node { flex_direction: FlexDirection::Column, row_gap: px(4), max_width: px(310), ..default() })).with_children(|p| {
                     p.spawn((Text::new("КАТАЛОГ (креатив)"), theme::font(16.0), TextColor(theme::MAGIC)));
                     p.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: px(4), row_gap: px(4), ..default() }).with_children(|g| {
-                        for k in 0..ITEMS.len() {
+                        for k in 0..all_items().len() {
                             spawn_slot(g, SlotSource::Catalog(k), false);
                         }
                     });

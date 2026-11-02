@@ -507,8 +507,14 @@ fn setup_assets(
 pub fn describe(kind: PartKind) -> Scannable {
     let item = crate::items::ItemId::from_key(kind.key());
     Scannable {
-        title: item.map(|i| i.def().name).unwrap_or("Деталь").to_string(),
-        info: item.map(|i| i.def().info).unwrap_or("").to_string(),
+        title: item
+            .map(|i| i.def().name.as_str())
+            .unwrap_or("Деталь")
+            .to_string(),
+        info: item
+            .map(|i| i.def().info.as_str())
+            .unwrap_or("")
+            .to_string(),
     }
 }
 
@@ -566,9 +572,21 @@ pub fn spawn_part(
         }
         _ => {}
     }
+    e.insert((
+        crate::models::ModelSlot {
+            category: "parts",
+            key: kind.key().to_string(),
+        },
+        crate::models::AnimationRequest("idle".into()),
+    ));
     e.with_children(|p| {
         for (mesh, material, t) in assets.visuals(kind) {
-            p.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), *t));
+            p.spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material.clone()),
+                *t,
+                crate::models::PrimitiveVisual,
+            ));
         }
     });
     e.id()
@@ -591,7 +609,10 @@ mod tests {
         for p in PartKind::ALL {
             let item = crate::items::ItemId::from_key(p.key())
                 .unwrap_or_else(|| panic!("no item for {}", p.key()));
-            assert_eq!(item.def().use_, crate::items::Use::Part(p.key()));
+            assert_eq!(
+                item.def().use_,
+                crate::items::Use::Part(p.key().to_string())
+            );
             assert_eq!(PartKind::from_key(p.key()), Some(p));
         }
     }

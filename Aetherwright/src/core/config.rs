@@ -250,6 +250,7 @@ impl LaunchOptions {
                 "--autotest" => opts.autotest = true,
                 "--creative" => opts.creative = true,
                 "--screenshots" => opts.screenshot_dir = args.next(),
+                "--export-textures" => {}
                 other => eprintln!("unknown argument: {other}"),
             }
         }

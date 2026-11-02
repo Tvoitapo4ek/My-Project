@@ -7,7 +7,7 @@ use bevy::{picking::pointer::PointerButton, prelude::*};
 use super::theme;
 use crate::{
     core::states::{GameMode, InputFocus, gameplay_active},
-    items::{Category, ITEMS, ItemId, ItemStack, inventory::Inventory},
+    items::{Category, ItemId, ItemStack, all_items, inventory::Inventory},
     player::Player,
 };
 
@@ -70,7 +70,7 @@ fn spawn(mut commands: Commands) {
                     ] {
                         p.spawn((Text::new(title), theme::font(15.0), TextColor(theme::MAGIC)));
                         p.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), ..default() }).with_children(|g| {
-                            for (k, def) in ITEMS.iter().enumerate() {
+                            for (k, def) in all_items().iter().enumerate() {
                                 let item = ItemId(k as u16);
                                 if !cats.contains(&def.category) || !buildable(item) {
                                     continue;
@@ -84,7 +84,7 @@ fn spawn(mut commands: Commands) {
                                 .observe(on_click)
                                 .with_children(|e| {
                                     e.spawn((Node { width: px(14), height: px(14), ..default() }, BackgroundColor(item.color()), Pickable::IGNORE));
-                                    e.spawn((BuildEntryText(item), Text::new(def.name), theme::font(12.0), TextColor(theme::TEXT), Pickable::IGNORE));
+                                    e.spawn((BuildEntryText(item), Text::new(def.name.clone()), theme::font(12.0), TextColor(theme::TEXT), Pickable::IGNORE));
                                 });
                             }
                         });

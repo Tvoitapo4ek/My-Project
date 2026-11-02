@@ -15,6 +15,10 @@ avian3d = { version = "=0.8.0", features = ["serialize"] }
 # Save files (versioned JSON envelope + data). Same versions Bevy already pulls in.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Human-editable content files with comments (blocks, items, recipes, mods). Same version Bevy uses.
+ron = "=0.12.3"
+# Reading/writing PNG textures for the texture editor and hot reload. Same version Bevy uses.
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [features]
 default = []
@@ -23,10 +27,13 @@ dev = ["bevy/dynamic_linking"]
 
 [profile.dev]
 opt-level = 1
+# Line tables are enough for backtraces and keep binaries/target small.
+debug = "line-tables-only"
 
 # Dependencies are optimized even in debug builds — Bevy/Avian are unusably slow at opt-level 0.
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.release]
 codegen-units = 1

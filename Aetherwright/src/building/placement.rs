@@ -108,7 +108,7 @@ fn place_parts(
         return;
     };
     let Some(assets) = assets else { return };
-    let crate::items::Use::Part(key) = item.def().use_ else {
+    let crate::items::Use::Part(key) = &item.def().use_ else {
         return;
     };
     let Some(kind) = PartKind::from_key(key) else {

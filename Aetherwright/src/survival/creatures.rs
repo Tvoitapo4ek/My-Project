@@ -11,6 +11,7 @@ use crate::{
     core::{layers::Layer, resources::WorldClock, states::AppState},
     items::{ItemId, ItemStack, drops::SpawnDrop},
     magic::{anomalies::Anomaly, spells::MagicHit},
+    models::{AnimationRequest, ModelSlot, PrimitiveVisual},
     physics::collision::{ImpactEvent, ImpactSensor},
     player::Player,
     tools::scanning::Scannable,
@@ -119,28 +120,40 @@ fn attach_visuals(
     added: Query<Entity, Added<Creature>>,
 ) {
     for e in &added {
-        commands.entity(e).with_children(|p| {
-            p.spawn((
-                Mesh3d(assets.body.clone()),
-                MeshMaterial3d(assets.shell.clone()),
-                Transform::default(),
-            ));
-            for (i, a) in [-0.5f32, 0.0, 0.5].iter().enumerate() {
+        commands
+            .entity(e)
+            .insert((
+                ModelSlot {
+                    category: "creatures",
+                    key: "hollowling".into(),
+                },
+                AnimationRequest("idle".into()),
+            ))
+            .with_children(|p| {
                 p.spawn((
-                    Mesh3d(assets.spike.clone()),
-                    MeshMaterial3d(assets.crystal.clone()),
-                    Transform::from_xyz(*a * 0.4, 0.42, 0.1 * i as f32)
-                        .with_rotation(Quat::from_rotation_z(-a * 0.6)),
+                    Mesh3d(assets.body.clone()),
+                    MeshMaterial3d(assets.shell.clone()),
+                    Transform::default(),
+                    PrimitiveVisual,
                 ));
-            }
-            for x in [-0.15, 0.15] {
-                p.spawn((
-                    Mesh3d(assets.eye.clone()),
-                    MeshMaterial3d(assets.glow.clone()),
-                    Transform::from_xyz(x, 0.12, -0.42),
-                ));
-            }
-        });
+                for (i, a) in [-0.5f32, 0.0, 0.5].iter().enumerate() {
+                    p.spawn((
+                        Mesh3d(assets.spike.clone()),
+                        MeshMaterial3d(assets.crystal.clone()),
+                        Transform::from_xyz(*a * 0.4, 0.42, 0.1 * i as f32)
+                            .with_rotation(Quat::from_rotation_z(-a * 0.6)),
+                        PrimitiveVisual,
+                    ));
+                }
+                for x in [-0.15, 0.15] {
+                    p.spawn((
+                        Mesh3d(assets.eye.clone()),
+                        MeshMaterial3d(assets.glow.clone()),
+                        Transform::from_xyz(x, 0.12, -0.42),
+                        PrimitiveVisual,
+                    ));
+                }
+            });
     }
 }
 
@@ -204,6 +217,7 @@ fn think(
             &mut LinearVelocity,
             &mut Creature,
             &mut Transform,
+            &mut AnimationRequest,
         ),
         Without<Player>,
     >,
@@ -213,7 +227,7 @@ fn think(
     let Ok((pe, pp)) = player.single() else {
         return;
     };
-    for (e, pos, mut vel, mut c, mut t) in &mut q {
+    for (e, pos, mut vel, mut c, mut t, mut anim) in &mut q {
         c.attack_cooldown = (c.attack_cooldown - dt).max(0.0);
         let to_player = pp.0 - pos.0;
         let dist = to_player.length();
@@ -253,6 +267,15 @@ fn think(
         }
         if wish.length_squared() > 0.01 {
             t.rotation = Quat::from_rotation_y((-wish.x).atan2(-wish.y));
+        }
+        let clip = match c.mind {
+            Mind::Chase if c.attack_cooldown > 0.8 => "attack",
+            Mind::Chase => "run",
+            Mind::Wander { .. } => "walk",
+            Mind::Recover(_) => "hit",
+        };
+        if anim.0 != clip {
+            anim.0 = clip.to_string();
         }
         if matches!(c.mind, Mind::Chase) && dist < BITE_RANGE && c.attack_cooldown <= 0.0 {
             c.attack_cooldown = 1.2;

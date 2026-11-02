@@ -55,11 +55,24 @@ fn drive_hinges(engines: Query<&Engine>, mut joints: Query<(&Connection, &mut Re
     }
 }
 
+/// Engines ask their model (if any) for the `work` clip while powered.
+fn engine_animation(
+    mut q: Query<(&Engine, &mut crate::models::AnimationRequest), Changed<Engine>>,
+) {
+    for (e, mut a) in &mut q {
+        let clip = if e.powered { "work" } else { "idle" };
+        if a.0 != clip {
+            a.0 = clip.to_string();
+        }
+    }
+}
+
 pub struct EnginesPlugin;
 
 impl Plugin for EnginesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, drive_hinges.in_set(super::MachinerySet::Drive));
+        app.add_systems(FixedUpdate, drive_hinges.in_set(super::MachinerySet::Drive))
+            .add_systems(Update, engine_animation);
     }
 }
 

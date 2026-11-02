@@ -16,12 +16,7 @@ use super::energy::{AetherKind, sample_field};
 use crate::{
     machinery::components::{AetherDynamo, Part, PartKind, PowerCell},
     physics::joints::Connection,
-    world::{
-        WorldReady,
-        chunks::VoxelWorld,
-        interaction::BlockChanged,
-        voxel::{BlockId, blocks},
-    },
+    world::{WorldReady, chunks::VoxelWorld, interaction::BlockChanged, voxel::BlockId},
 };
 
 pub const LINK_RANGE: f32 = 7.0;
@@ -35,14 +30,9 @@ impl AetherSources {
     }
 }
 
+/// Kind of magic a block emits (`aether_kind` in blocks.ron; default calm).
 pub fn kind_of(b: BlockId) -> AetherKind {
-    if b == blocks::AGITATED_CRYSTAL {
-        AetherKind::Agitated
-    } else if b == blocks::ANCIENT_STONE {
-        AetherKind::Ancient
-    } else {
-        AetherKind::Calm
-    }
+    b.def().aether_kind.unwrap_or_default()
 }
 
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]

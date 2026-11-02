@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use bevy::math::IVec3;
 
-use super::voxel::{BlockId, RenderKind, Tex, blocks};
+use super::voxel::{BlockId, RenderKind, TexId, blocks};
 
 #[derive(Default, Debug, Clone)]
 pub struct MeshBuffers {
@@ -34,7 +34,7 @@ impl MeshBuffers {
 #[derive(Default, Debug)]
 pub struct ChunkMesh {
     /// One sub-mesh per texture/material.
-    pub parts: BTreeMap<Tex, MeshBuffers>,
+    pub parts: BTreeMap<TexId, MeshBuffers>,
     /// Local grid coordinates of every solid voxel (collider input).
     pub solid_voxels: Vec<IVec3>,
 }
@@ -50,7 +50,7 @@ const WATER_DROP: f32 = 0.12;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FaceKey {
-    tex: Tex,
+    tex: TexId,
     ao: [u8; 4],
     lowered: bool,
 }
@@ -82,7 +82,7 @@ fn face_visible(b: BlockId, neighbour: BlockId) -> bool {
     }
 }
 
-fn face_tex(b: BlockId, d: usize, side: i32) -> Tex {
+fn face_tex(b: BlockId, d: usize, side: i32) -> TexId {
     let t = b.def().tex;
     match (d, side) {
         (1, 1) => t[0],
@@ -315,6 +315,10 @@ mod tests {
         v
     }
 
+    fn tex(name: &str) -> TexId {
+        TexId(crate::content::registry().texture_id(name).unwrap())
+    }
+
     #[test]
     fn single_block_has_six_faces() {
         let data = padded(4, |p| {
@@ -387,7 +391,7 @@ mod tests {
         let data = padded(4, |p| if p.y <= 1 { blocks::WATER } else { blocks::AIR });
         let m = mesh_chunk(&Padded { data: &data, n: 4 });
         assert_eq!(m.quad_count(), 1);
-        let water = &m.parts[&Tex::Water];
+        let water = &m.parts[&tex("water")];
         assert!((water.positions[0][1] - (2.0 - WATER_DROP)).abs() < 1e-5);
         assert!(m.solid_voxels.is_empty());
     }
@@ -402,7 +406,7 @@ mod tests {
             }
         });
         let m = mesh_chunk(&Padded { data: &data, n: 4 });
-        let b = &m.parts[&Tex::Stone];
+        let b = &m.parts[&tex("stone")];
         for tri in b.indices.chunks(3) {
             let p = |i: u32| bevy::math::Vec3::from(b.positions[i as usize]);
             let (a, bb, c) = (p(tri[0]), p(tri[1]), p(tri[2]));

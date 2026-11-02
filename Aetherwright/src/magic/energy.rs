@@ -6,41 +6,20 @@
 //! resonates with machines (dynamo bonus) — deeper properties come later.
 
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-pub enum AetherKind {
-    /// Ordinary, calm magic.
-    #[default]
-    Calm,
-    /// Irritated / agitated: unstable, pushes things around.
-    Agitated,
-    /// Ancient: dense, slow, resonates with old structures.
-    Ancient,
-}
+pub use crate::content::AetherKind;
 
 impl AetherKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            AetherKind::Calm => "спокойная",
-            AetherKind::Agitated => "раздражённая",
-            AetherKind::Ancient => "древняя",
-        }
-    }
+    pub const ALL: [AetherKind; 5] = [
+        AetherKind::Calm,
+        AetherKind::Agitated,
+        AetherKind::Condensed,
+        AetherKind::Ancient,
+        AetherKind::Unique,
+    ];
     pub fn color(self) -> Color {
-        match self {
-            AetherKind::Calm => Color::srgb(0.35, 0.9, 1.0),
-            AetherKind::Agitated => Color::srgb(1.0, 0.35, 0.75),
-            AetherKind::Ancient => Color::srgb(0.4, 1.0, 0.8),
-        }
-    }
-    /// Multiplier when converting to mechanical energy.
-    pub fn potency(self) -> f32 {
-        match self {
-            AetherKind::Calm => 1.0,
-            AetherKind::Agitated => 1.6,
-            AetherKind::Ancient => 2.2,
-        }
+        let [r, g, b] = self.rgb();
+        Color::srgb(r, g, b)
     }
 }
 
@@ -58,7 +37,7 @@ pub struct FieldSample {
 /// Field at a point from a list of sources (pos, kind, strength).
 pub fn sample_field(sources: &[(Vec3, AetherKind, f32)], p: Vec3) -> FieldSample {
     let mut total = BACKGROUND;
-    let mut by_kind = [0.0f32; 3];
+    let mut by_kind = [0.0f32; 5];
     for (sp, kind, s) in sources {
         let d2 = sp.distance_squared(p);
         if d2 > SOURCE_RADIUS * SOURCE_RADIUS {
@@ -68,7 +47,7 @@ pub fn sample_field(sources: &[(Vec3, AetherKind, f32)], p: Vec3) -> FieldSample
         total += c;
         by_kind[*kind as usize] += c;
     }
-    let kind = [AetherKind::Calm, AetherKind::Agitated, AetherKind::Ancient]
+    let kind = AetherKind::ALL
         .into_iter()
         .max_by(|a, b| by_kind[*a as usize].total_cmp(&by_kind[*b as usize]))
         .filter(|k| by_kind[*k as usize] > 0.0)

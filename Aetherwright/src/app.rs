@@ -5,7 +5,7 @@ use bevy::{prelude::*, window::PresentMode};
 
 use crate::core::config::LaunchOptions;
 
-pub fn build_app(options: LaunchOptions) -> App {
+pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
     let mut app = App::new();
 
     let mut config = crate::core::config::GameConfig::load_or_default();
@@ -15,6 +15,13 @@ pub fn build_app(options: LaunchOptions) -> App {
         config.video.height = 720;
     }
 
+    // Mods can ship models/sounds: `mods://<mod>/models/...` (registered
+    // before AssetPlugin as required by Bevy).
+    let mods_dir = root.join("mods").to_string_lossy().to_string();
+    app.register_asset_source(
+        "mods",
+        bevy::asset::io::AssetSourceBuilder::platform_default(&mods_dir, None),
+    );
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
@@ -30,7 +37,11 @@ pub fn build_app(options: LaunchOptions) -> App {
                 }),
                 ..default()
             })
-            .set(ImagePlugin::default_nearest()),
+            .set(ImagePlugin::default_nearest())
+            .set(bevy::asset::AssetPlugin {
+                file_path: root.join("assets").to_string_lossy().to_string(),
+                ..default()
+            }),
     )
     // Physics runs in Bevy's fixed timestep (FixedPostUpdate) and rendered
     // transforms of every rigid body are interpolated between ticks.
@@ -58,6 +69,7 @@ pub fn build_app(options: LaunchOptions) -> App {
         crate::ui::UiPlugin,
         crate::autotest::AutotestPlugin,
     ));
+    app.add_plugins(crate::models::ModelsPlugin);
 
     app
 }

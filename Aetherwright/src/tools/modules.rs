@@ -40,7 +40,7 @@ fn install_module(
     let Ok((mut inv, mut m)) = player.single_mut() else {
         return;
     };
-    let Use::Module(key) = item.def().use_ else {
+    let Use::Module(key) = &item.def().use_ else {
         return;
     };
     if install(&mut m, key) {

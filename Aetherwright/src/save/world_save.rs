@@ -69,6 +69,12 @@ pub fn capture(world: &mut World) -> SaveFile {
         size_chunks: voxels.size_chunks.to_array(),
         sea_level: voxels.sea_level,
     };
+    // Palette = registry order, so runtime ids are palette indices.
+    let block_palette: Vec<String> = crate::content::registry()
+        .blocks
+        .iter()
+        .map(|b| b.key.clone())
+        .collect();
     let mut modified: Vec<IVec3> = voxels.modified.iter().copied().collect();
     modified.sort_by_key(|c| (c.x, c.y, c.z));
     let chunks = modified
@@ -195,6 +201,7 @@ pub fn capture(world: &mut World) -> SaveFile {
         format: FORMAT.into(),
         version: SAVE_VERSION,
         world: meta,
+        block_palette,
         game_mode: *world.resource::<State<GameMode>>().get(),
         time_of_day: world.resource::<WorldClock>().time_of_day,
         gravity: world.resource::<Gravity>().0.length(),
@@ -238,9 +245,20 @@ pub fn start_load(world: &mut World, path: &Path) -> Result<(), LoadError> {
     let save = read_save(path)?;
     // Decode chunk patches up front so a bad chunk aborts before anything changes.
     let size = save.world.chunk_size;
+    // Palette index → current block id; blocks of removed mods become air.
+    let map: Vec<BlockId> = save
+        .block_palette
+        .iter()
+        .map(|k| {
+            BlockId::from_key(k).unwrap_or_else(|| {
+                warn!("save: unknown block {k} replaced with air");
+                BlockId(0)
+            })
+        })
+        .collect();
     let mut patches = Vec::new();
     for c in &save.chunks {
-        let data = ChunkData::from_rle(size, &c.rle)
+        let data = ChunkData::from_rle(size, &c.rle, |i| map.get(i as usize).copied())
             .ok_or_else(|| LoadError::Invalid(format!("чанк {:?}", c.coord)))?;
         patches.push((IVec3::from_array(c.coord), data));
     }

@@ -20,7 +20,8 @@ use crate::{
 };
 
 pub const FORMAT: &str = "aetherwright-save";
-pub const SAVE_VERSION: u32 = 1;
+/// v1: block ids were the built-in order (u8). v2: key palette (`block_palette`).
+pub const SAVE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldMeta {
@@ -49,7 +50,8 @@ pub struct PlayerSave {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkSave {
     pub coord: [i32; 3],
-    pub rle: Vec<(u16, u8)>,
+    /// (count, palette index)
+    pub rle: Vec<(u16, u16)>,
 }
 
 /// Behaviour state of a part (only fields that change at runtime).
@@ -105,6 +107,9 @@ pub struct SaveFile {
     pub format: String,
     pub version: u32,
     pub world: WorldMeta,
+    /// Block keys; chunk RLE stores indices into this list (v2+).
+    #[serde(default)]
+    pub block_palette: Vec<String>,
     pub game_mode: GameMode,
     pub time_of_day: f32,
     pub gravity: f32,
@@ -156,13 +161,33 @@ pub fn parse(text: &str) -> Result<SaveFile, LoadError> {
     if header.version > SAVE_VERSION {
         return Err(LoadError::TooNew(header.version));
     }
-    let save: SaveFile =
+    let mut save: SaveFile =
         serde_json::from_str(text).map_err(|e| LoadError::Corrupt(e.to_string()))?;
+    migrate(&mut save);
     validate(&save)?;
     Ok(save)
 }
 
+/// Upgrades older saves in place.
+fn migrate(s: &mut SaveFile) {
+    if s.version < 2 {
+        // v1 chunk ids were indices of the built-in block table.
+        s.block_palette = crate::content::CORE_BLOCK_KEYS
+            .iter()
+            .map(|k| k.to_string())
+            .collect();
+        s.version = 2;
+    }
+}
+
 fn validate(s: &SaveFile) -> Result<(), LoadError> {
+    if s.chunks
+        .iter()
+        .flat_map(|c| &c.rle)
+        .any(|(_, i)| *i as usize >= s.block_palette.len())
+    {
+        return Err(LoadError::Invalid("номер блока вне палитры".into()));
+    }
     let w = &s.world;
     if !(8..=32).contains(&w.chunk_size) || w.size_chunks.iter().any(|c| !(1..=64).contains(c)) {
         return Err(LoadError::Invalid("размеры мира".into()));
@@ -229,6 +254,10 @@ pub mod tests {
                 manipulator: Manipulator::default(),
                 flying: false,
             },
+            block_palette: crate::content::CORE_BLOCK_KEYS
+                .iter()
+                .map(|k| k.to_string())
+                .collect(),
             chunks: vec![ChunkSave {
                 coord: [0, 0, 0],
                 rle: vec![(4096, 3)],
@@ -271,6 +300,16 @@ pub mod tests {
         assert_eq!(back.player.inventory, s.player.inventory);
         assert_eq!(back.props[0].state, s.props[0].state);
         assert_eq!(back.joints[0].b, BodyRef::Prop(0));
+    }
+
+    #[test]
+    fn v1_saves_are_migrated() {
+        let mut s = sample();
+        s.version = 1;
+        s.block_palette.clear();
+        let back = parse(&to_json(&s)).unwrap();
+        assert_eq!(back.version, 2);
+        assert_eq!(back.block_palette[3], "stone");
     }
 
     #[test]
