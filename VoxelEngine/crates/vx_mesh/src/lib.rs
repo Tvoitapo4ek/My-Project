@@ -121,8 +121,8 @@ mod tests {
         let mut g = Grid::new(GridKind::Static);
         g.set(IVec3::ZERO, 1);
         let m = mesh_chunk(&g, IVec3::ZERO, &reg);
-        for tri in m.indices.chunks_exact(3) {
-            let p = [tri[0], tri[1], tri[2]].map(|i| glam::Vec3::from(m.vertices[i as usize].pos));
+        for tri in m.indices.as_chunks::<3>().0 {
+            let p = tri.map(|i| glam::Vec3::from(m.vertices[i as usize].pos));
             let normal = (p[1] - p[0]).cross(p[2] - p[0]);
             let centre = (p[0] + p[1] + p[2]) / 3.0 - glam::Vec3::splat(0.5);
             assert!(normal.dot(centre) > 0.0, "треугольник смотрит внутрь");
