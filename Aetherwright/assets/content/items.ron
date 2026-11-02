@@ -29,7 +29,7 @@
     (key: "copper", name: "Медь", category: Resource, max_stack: 64, use: None, mass: 2.0,
      color: (0.86, 0.52, 0.3), info: "Медный слиток — проводники и катушки."),
     (key: "aether_shard", name: "Осколок эфира", category: Magic, max_stack: 64, use: None, mass: 0.3,
-     color: (0.35, 0.9, 1.0), info: "Кристаллизованная спокойная магия."),
+     color: (0.35, 0.9, 1.0), info: "Кристаллизованная естественная магия."),
     (key: "agitated_shard", name: "Раздражённый осколок", category: Magic, max_stack: 64, use: None, mass: 0.3,
      color: (1.0, 0.35, 0.7), info: "Нестабильная магия. Опасна, но мощна."),
     (key: "ancient_stone", name: "Древний камень", category: Block, max_stack: 64, use: Block("ancient_stone"), mass: 8.0,

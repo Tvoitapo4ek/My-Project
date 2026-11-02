@@ -36,7 +36,7 @@ pub enum AetherKind {
 impl AetherKind {
     pub fn label(self) -> &'static str {
         match self {
-            AetherKind::Calm => "спокойная",
+            AetherKind::Calm => "естественная",
             AetherKind::Agitated => "раздражённая",
             AetherKind::Condensed => "конденсированная",
             AetherKind::Ancient => "древняя",

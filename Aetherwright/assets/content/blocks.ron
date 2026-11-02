@@ -40,7 +40,7 @@
      info: "Ископаемое топливо."),
     (key: "aether_crystal", name: "Кристалл эфира", render: Cube, solid: true, hardness: Some(1.6), tier: 1,
      textures: ("aether", "aether", "aether"), drop: "aether_shard", glow: 3.0, aether: 1.5, aether_kind: Some(Calm),
-     info: "Кристаллизованная спокойная магия. Излучает эфир."),
+     info: "Кристаллизованная естественная магия. Излучает эфир."),
     (key: "ancient_stone", name: "Древний камень", render: Cube, solid: true, hardness: Some(3.0), tier: 2,
      textures: ("ancient", "ancient", "ancient"), drop: "ancient_stone", glow: 0.6, aether: 0.4, aether_kind: Some(Ancient),
      info: "Камень, пропитанный древней магией. Нужен модуль бурения II."),
