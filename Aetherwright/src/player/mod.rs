@@ -49,6 +49,8 @@ fn spawn_player(mut commands: Commands, spawn: Res<SpawnPoint>, existing: Query<
             crate::tools::manipulator::Manipulator::default(),
             crate::items::drops::Picker,
             crate::magic::spells::AetherReserve::default(),
+            crate::survival::damage::Health::new(100.0),
+            crate::survival::needs::Vitals::default(),
         ),
         movement::CharacterState::default(),
         Transform::from_translation(spawn.0),

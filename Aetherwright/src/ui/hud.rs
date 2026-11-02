@@ -54,6 +54,18 @@ struct ProgressFill;
 #[derive(Component)]
 struct ScanText;
 
+#[derive(Component, Clone, Copy)]
+enum VitalBar {
+    Health,
+    Hunger,
+    Thirst,
+    Temperature,
+    Aether,
+}
+
+#[derive(Component)]
+struct VitalLabel(VitalBar);
+
 fn root(panel: HudPanel, node: Node) -> impl Bundle {
     (panel, Node { position_type: PositionType::Absolute, ..node }, Pickable::IGNORE)
 }
@@ -123,6 +135,31 @@ fn spawn_hud(mut commands: Commands) {
         .insert((BackgroundColor(theme::PANEL_BG), BorderColor::all(theme::PANEL_BORDER), Visibility::Hidden))
         .with_children(|p| {
             p.spawn((ScanText, Text::new(""), theme::font(14.0), TextColor(theme::TEXT), Node { margin: UiRect::all(px(8)), ..default() }));
+        });
+
+    // Vitals (bottom left): bars for health and needs + aether.
+    commands
+        .spawn(root(HudPanel::Vitals, Node { left: px(16), bottom: px(16), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() }))
+        .with_children(|p| {
+            for (bar, label, color) in [
+                (VitalBar::Health, "Здоровье", Color::srgb(0.95, 0.35, 0.35)),
+                (VitalBar::Hunger, "Сытость", Color::srgb(0.95, 0.7, 0.3)),
+                (VitalBar::Thirst, "Вода", Color::srgb(0.35, 0.65, 1.0)),
+                (VitalBar::Temperature, "Темп.", Color::srgb(0.5, 0.95, 0.6)),
+                (VitalBar::Aether, "Эфир", theme::MAGIC),
+            ] {
+                p.spawn(Node { align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|row| {
+                    row.spawn((VitalLabel(bar), Text::new(label), theme::font(12.0), TextColor(theme::TEXT), Node { width: px(150), ..default() }));
+                    row.spawn((
+                        Node { width: px(140), height: px(8), border: UiRect::all(px(1)), ..default() },
+                        BorderColor::all(theme::PANEL_BORDER),
+                        BackgroundColor(theme::PANEL_BG),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((bar, Node { width: percent(100), height: percent(100), ..default() }, BackgroundColor(color)));
+                    });
+                });
+            }
         });
 
     commands.spawn(root(HudPanel::Notifications, Node {
@@ -252,6 +289,7 @@ fn show_notifications(
 ) {
     let Some((feed, _)) = feed.iter().find(|(_, p)| **p == HudPanel::Notifications) else { return };
     for n in reader.read() {
+        info!("[notify] {}", n.text);
         let color = match n.kind {
             NotifyKind::Info => theme::TEXT,
             NotifyKind::Success => theme::OK,
@@ -276,6 +314,35 @@ fn expire_notifications(mut commands: Commands, time: Res<Time>, mut lines: Quer
     }
 }
 
+fn update_vitals(
+    mode: Res<State<crate::core::states::GameMode>>,
+    player: Query<(&crate::survival::damage::Health, &crate::survival::needs::Vitals, &crate::magic::spells::AetherReserve), With<Player>>,
+    mut bars: Query<(&VitalBar, &mut Node)>,
+    mut labels: Query<(&VitalLabel, &mut Text)>,
+) {
+    let Ok((h, v, a)) = player.single() else { return };
+    let creative = *mode.get() == crate::core::states::GameMode::Creative;
+    let value = |b: VitalBar| match b {
+        VitalBar::Health => (h.hp / h.max, format!("Здоровье {:.0}", h.hp)),
+        VitalBar::Hunger => (v.hunger / 100.0, format!("Сытость {:.0}%", v.hunger)),
+        VitalBar::Thirst => (v.thirst / 100.0, format!("Вода {:.0}%", v.thirst)),
+        VitalBar::Temperature => (((v.body_temp - 33.0) / 6.0).clamp(0.0, 1.0), format!("Тело {:.1}°C", v.body_temp)),
+        VitalBar::Aether => (a.amount / a.max, format!("Эфир {:.0}", a.amount)),
+    };
+    for (b, mut n) in &mut bars {
+        n.width = percent(value(*b).0.clamp(0.0, 1.0) * 100.0);
+    }
+    for (l, mut t) in &mut labels {
+        let mut s = value(l.0).1;
+        if creative && !matches!(l.0, VitalBar::Aether) {
+            s += " (креатив)";
+        }
+        if t.0 != s {
+            t.0 = s;
+        }
+    }
+}
+
 pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
@@ -287,6 +354,7 @@ impl Plugin for HudPlugin {
                 (
                     apply_panel_visibility,
                     update_hud_text.run_if(in_state(AppState::InGame)),
+                    update_vitals.run_if(in_state(AppState::InGame)),
                     show_notifications,
                     expire_notifications,
                 ),

@@ -221,6 +221,14 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
         let f = field(world);
         place(world, ctx, "wheel", f + Vec3::new(-2.5, 1.0, 1.5), "wheel2")
     }));
+    steps.push(step("place wheel 3", |world, ctx| {
+        let f = field(world);
+        place(world, ctx, "wheel", f + Vec3::new(5.0, 1.0, 4.5), "wheel3")
+    }));
+    steps.push(step("place wheel 4", |world, ctx| {
+        let f = field(world);
+        place(world, ctx, "wheel", f + Vec3::new(3.5, 1.0, -3.0), "wheel4")
+    }));
     steps.push(step("place power cell on top of the engine", |world, ctx| {
         let e = ctx.entities["engine"];
         let top = pos_of(world, e) + Vec3::Y * 0.5;
@@ -292,6 +300,47 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+    for (wheel, side) in [("wheel3", 1.0f32), ("wheel4", -1.0f32)] {
+        steps.push(step(&format!("free {wheel} on the frame"), move |world, ctx| {
+            let (s3, w) = (ctx.entities["skid"], ctx.entities[wheel]);
+            if ctx.frames == 1 {
+                select(world, "physgun");
+                gun(world, GunMode::Hinge);
+            }
+            // Click 1: from above the wheel, on its top face.
+            if ctx.frames == 2 {
+                let p = pos_of(world, w);
+                teleport(world, p + Vec3::new(0.0, 2.5, 1.2));
+            }
+            if ctx.frames >= 12 && ctx.frames < 16 {
+                let t = pos_of(world, w) + Vec3::Y * 0.17;
+                click_at(world, ctx, 12, t);
+            }
+            // Click 2: facing the frame's ±Z face along its normal.
+            if ctx.frames == 18 {
+                let p = pos_of(world, s3);
+                teleport(world, p + Vec3::new(0.0, 0.6, side * 3.5));
+            }
+            if ctx.frames >= 28 && ctx.frames < 32 {
+                let t = pos_of(world, s3) + Vec3::new(0.0, 0.0, side * 0.49);
+                click_at(world, ctx, 28, t);
+            }
+            if ctx.frames == 36 {
+                let mut q = world.query::<&Connection>();
+                let ok = q.iter(world).any(|c| c.kind == JointKind::Hinge && c.a == s3 && c.b == w);
+                ctx.check(&format!("{wheel} hinged to the frame (free wheel)"), ok, "");
+                return Step::Next;
+            }
+            Step::Wait
+        }));
+    }
+    steps.push(step("go to the engine", |world, ctx| {
+        if ctx.frames == 1 {
+            let p = pos_of(world, ctx.entities["engine"]);
+            teleport(world, p + Vec3::new(-3.5, 1.5, 0.8));
+        }
+        if ctx.frames > 5 { Step::Next } else { Step::Wait }
+    }));
     steps.push(step("switch the engine on", |world, ctx| {
         let e = ctx.entities["engine"];
         if ctx.frames == 1 {
@@ -301,12 +350,13 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
             ctx.vars.insert("ez".into(), pos_of(world, e).z);
             ctx.vars.insert("sim0".into(), world.resource::<Time<Virtual>>().elapsed_secs());
         }
-        if ctx.frames < 4 {
+        if ctx.frames < 10 {
             return Step::Wait;
         }
-        let et = pos_of(world, e) + Vec3::new(0.49, 0.0, 0.0);
-        click_at(world, ctx, 4, et);
-        if ctx.frames == 10 {
+        // The −X face is the only one not covered by wheels, cell or frame.
+        let et = pos_of(world, e) + Vec3::new(-0.49, 0.0, 0.0);
+        click_at(world, ctx, 10, et);
+        if ctx.frames == 16 {
             let on = world.get::<Engine>(e).is_some_and(|en| en.on && en.powered);
             ctx.check("engine on and powered", on, format!("{:?}", world.get::<Engine>(e).map(|e| (e.on, e.powered))));
             return Step::Next;
@@ -324,7 +374,7 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
             ctx.check("wheel spins relative to the engine", rel > 2.0, format!("{rel:.1} rad/s"));
             let sim = world.resource::<Time<Virtual>>().elapsed_secs() - ctx.vars["sim0"];
             let speed = moved / sim.max(0.01);
-            ctx.check("self-built cart moves under its own power", moved > 0.8 && speed > 0.1, format!("moved {moved:.2} m in {sim:.1} s of simulation ({speed:.2} m/s)"));
+            ctx.check("self-built cart moves under its own power", moved > 2.0 && speed > 0.3, format!("moved {moved:.2} m in {sim:.1} s of simulation ({speed:.2} m/s)"));
             let upright = (rot * Vec3::Y).y;
             info!("[AUTOTEST] cart upright factor {upright:.2}");
             for wk in ["wheel1", "wheel2"] {

@@ -33,7 +33,7 @@ fn handle_scans(world: &mut World) {
     let requests: Vec<ScanRequest> = world.resource_mut::<Messages<ScanRequest>>().drain().collect();
     for r in requests {
         let mut result = ScanResult { ttl: 8.0, ..default() };
-        let mut probe_point = None;
+        let probe_point;
         match r {
             ScanRequest::Block(pos) => {
                 let b = world.resource::<VoxelWorld>().get(pos);

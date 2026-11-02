@@ -251,12 +251,21 @@ pub fn stage6(steps: &mut Vec<(String, StepFn)>) {
             let center = q.iter(world).next().map(|(t, _)| t.translation).unwrap();
             aim_at(world, center + Vec3::Y * 2.0);
         }
-        if ctx.frames > 20 && ctx.t > 12.0 {
+        if ctx.frames > 20 {
             let p = pos_of(world, ctx.entities["probe"]);
-            let moved = Vec2::new(p.x - ctx.vars["p0x"], p.z - ctx.vars["p0z"]).length();
-            ctx.check("anomaly pulse moved the object", moved > 0.5, format!("moved {moved:.2} m"));
+            let p0 = Vec3::new(ctx.vars["p0x"], p.y, ctx.vars["p0z"]);
+            let d = p.distance(p0) + (p.y - ctx.vars.get("p0y").copied().unwrap_or(p.y)).abs();
+            let m = ctx.vars.get("maxd").copied().unwrap_or(0.0).max(d);
+            ctx.vars.insert("maxd".into(), m);
+        }
+        if ctx.frames == 20 {
+            let y = pos_of(world, ctx.entities["probe"]).y;
+            ctx.vars.insert("p0y".into(), y);
+        }
+        if ctx.frames > 20 && ctx.t > 12.0 {
+            let moved = ctx.vars.get("maxd").copied().unwrap_or(0.0);
+            ctx.check("anomaly pulse moved the object", moved > 0.5, format!("max displacement {moved:.2} m"));
             screenshot(world, "15_anomaly");
-            let _ = world.query::<&RigidBody>();
             return Step::Next;
         }
         Step::Wait

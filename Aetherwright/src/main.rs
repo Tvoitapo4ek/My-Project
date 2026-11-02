@@ -13,6 +13,7 @@ mod machinery;
 mod magic;
 mod physics;
 mod player;
+mod survival;
 mod tools;
 mod ui;
 mod world;

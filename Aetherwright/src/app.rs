@@ -46,6 +46,7 @@ pub fn build_app(options: LaunchOptions) -> App {
         crate::machinery::MachineryPlugin,
         crate::building::BuildingPlugin,
         crate::magic::MagicPlugin,
+        crate::survival::SurvivalPlugin,
         crate::ui::UiPlugin,
         crate::autotest::AutotestPlugin,
     ));

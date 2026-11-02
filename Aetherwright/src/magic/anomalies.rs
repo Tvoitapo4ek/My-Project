@@ -9,7 +9,6 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::{energy::AetherKind, sources::AetherSources};
-use crate::world::WorldReady;
 
 #[derive(Component, Debug)]
 pub struct Anomaly {
@@ -42,14 +41,16 @@ pub fn clusters(sources: &[(Vec3, AetherKind, f32)], join: f32) -> Vec<(Vec3, Ae
 
 fn spawn_site_effects(
     mut commands: Commands,
-    mut ready: MessageReader<WorldReady>,
+    mut done: Local<bool>,
     sources: Res<AetherSources>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if ready.read().count() == 0 {
+    // Runs once, as soon as the source index has been built.
+    if *done || sources.0.is_empty() {
         return;
     }
+    *done = true;
     let mote_mesh = meshes.add(Sphere::new(0.06).mesh().ico(1).unwrap());
     // Only strong clusters near the surface get lights/motes (deep ore
     // deposits of ancient stone would otherwise add hundreds of lights).
@@ -124,6 +125,6 @@ pub struct AnomaliesPlugin;
 
 impl Plugin for AnomaliesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (spawn_site_effects.after(super::sources::rebuild_sources), animate_motes, pulse));
+        app.add_systems(Update, (spawn_site_effects, animate_motes, pulse));
     }
 }
