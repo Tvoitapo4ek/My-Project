@@ -37,6 +37,44 @@ pub enum HudPanel {
     Energy,
 }
 
+impl HudPanel {
+    pub const ALL: [HudPanel; 8] = [
+        HudPanel::Crosshair,
+        HudPanel::Hotbar,
+        HudPanel::ToolLine,
+        HudPanel::TargetInfo,
+        HudPanel::ScanPanel,
+        HudPanel::Notifications,
+        HudPanel::Vitals,
+        HudPanel::Energy,
+    ];
+    /// Stable key in `HudConfig::layout`.
+    pub fn key(self) -> &'static str {
+        match self {
+            HudPanel::Crosshair => "crosshair",
+            HudPanel::Hotbar => "hotbar",
+            HudPanel::ToolLine => "tool_line",
+            HudPanel::TargetInfo => "target_info",
+            HudPanel::ScanPanel => "scan_panel",
+            HudPanel::Notifications => "notifications",
+            HudPanel::Vitals => "vitals",
+            HudPanel::Energy => "energy",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            HudPanel::Crosshair => "Прицел",
+            HudPanel::Hotbar => "Быстрые слоты",
+            HudPanel::ToolLine => "Строка инструмента",
+            HudPanel::TargetInfo => "Цель",
+            HudPanel::ScanPanel => "Сканер",
+            HudPanel::Notifications => "Уведомления",
+            HudPanel::Vitals => "Показатели",
+            HudPanel::Energy => "Энергия",
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct HudVisible(pub bool);
 
@@ -305,12 +343,10 @@ fn apply_panel_visibility(
     scan: Res<ScanResult>,
     state: Res<State<AppState>>,
     mut panels: Query<(&HudPanel, &mut Visibility)>,
-    mut ui_scale: ResMut<UiScale>,
 ) {
     if keys.just_pressed(KeyCode::F1) {
         visible.0 = !visible.0;
     }
-    ui_scale.0 = cfg.hud.scale.clamp(0.5, 3.0);
     let in_game = *state.get() == AppState::InGame;
     for (panel, mut vis) in &mut panels {
         let mut on = visible.0 && in_game && panel_enabled(&cfg, *panel);
@@ -507,6 +543,96 @@ fn update_vitals(
     }
 }
 
+/// Applies per-panel offset / size (the pivot is kept at the panel's
+/// anchored edge so a scaled panel does not slide off the screen).
+fn apply_layout(cfg: Res<GameConfig>, mut q: Query<(&HudPanel, &Node, &ComputedNode, &mut UiTransform)>) {
+    for (panel, node, computed, mut t) in &mut q {
+        let l = cfg.hud.layout.get(panel.key()).copied().unwrap_or_default();
+        let s = (l.scale * cfg.hud.scale).clamp(0.3, 3.0);
+        let size = computed.size() * computed.inverse_scale_factor();
+        let sx = if node.left != Val::Auto { 1.0 } else if node.right != Val::Auto { -1.0 } else { 0.0 };
+        let sy = if node.top != Val::Auto { 1.0 } else if node.bottom != Val::Auto { -1.0 } else { 0.0 };
+        let pivot = (s - 1.0) / 2.0 * size * Vec2::new(sx, sy);
+        let want = UiTransform {
+            translation: Val2::px(l.dx + pivot.x, l.dy + pivot.y),
+            scale: Vec2::splat(s),
+            ..default()
+        };
+        if *t != want {
+            *t = want;
+        }
+    }
+}
+
+/// Original alpha of a HUD colour and the value last written, so
+/// opacity can be changed back and dynamic colours are respected.
+#[derive(Component, Clone, Copy)]
+struct HudAlpha {
+    base: [f32; 3],
+    applied: [f32; 3],
+}
+
+/// Multiplies HUD colours by the panel / global opacity.
+#[allow(clippy::type_complexity)]
+fn apply_opacity(
+    mut commands: Commands,
+    cfg: Res<GameConfig>,
+    panels: Query<(Entity, &HudPanel)>,
+    children: Query<&Children>,
+    mut nodes: Query<(Option<&mut BackgroundColor>, Option<&mut BorderColor>, Option<&mut TextColor>, Option<&mut HudAlpha>)>,
+) {
+    for (root, panel) in &panels {
+        let l = cfg.hud.layout.get(panel.key()).copied().unwrap_or_default();
+        let k = (l.opacity * cfg.hud.opacity).clamp(0.05, 1.0);
+        for e in std::iter::once(root).chain(children.iter_descendants(root)) {
+            let Ok((bg, border, text, alpha)) = nodes.get_mut(e) else { continue };
+            let cur = [
+                bg.as_ref().map(|c| c.0.alpha()).unwrap_or(0.0),
+                border.as_ref().map(|c| c.top.alpha()).unwrap_or(0.0),
+                text.as_ref().map(|c| c.0.alpha()).unwrap_or(0.0),
+            ];
+            let had = alpha.is_some();
+            let mut a = match alpha.as_deref() {
+                Some(a) => *a,
+                None => {
+                    if k >= 0.999 {
+                        continue;
+                    }
+                    HudAlpha { base: cur, applied: cur }
+                }
+            };
+            for i in 0..3 {
+                if (cur[i] - a.applied[i]).abs() > 1e-4 {
+                    a.base[i] = cur[i]; // someone else changed the colour
+                }
+                a.applied[i] = a.base[i] * k;
+            }
+            if let Some(mut c) = bg {
+                c.0.set_alpha(a.applied[0]);
+            }
+            if let Some(mut c) = border {
+                let mut col = c.top;
+                col.set_alpha(a.applied[1]);
+                *c = BorderColor::all(col);
+            }
+            if let Some(mut c) = text {
+                c.0.set_alpha(a.applied[2]);
+            }
+            match alpha {
+                Some(mut stored) => {
+                    if stored.applied != a.applied || stored.base != a.base {
+                        *stored = a;
+                    }
+                }
+                None if !had => {
+                    commands.entity(e).insert(a);
+                }
+                None => {}
+            }
+        }
+    }
+}
+
 pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
@@ -522,6 +648,7 @@ impl Plugin for HudPlugin {
                     show_notifications,
                     expire_notifications,
                 ),
-            );
+            )
+            .add_systems(PostUpdate, (apply_layout, apply_opacity).before(bevy::ui::UiSystems::Layout));
     }
 }

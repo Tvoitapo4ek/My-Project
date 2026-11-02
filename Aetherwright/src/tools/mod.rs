@@ -83,7 +83,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
             Use::Focus => ActiveTool::Focus,
             Use::Eat { .. } => ActiveTool::Consume(item),
             Use::Module(_) => ActiveTool::Module(item),
-            Use::None => ActiveTool::Inert(item),
+            Use::None | Use::Wear(_) => ActiveTool::Inert(item),
         },
     };
     if *tool != new {

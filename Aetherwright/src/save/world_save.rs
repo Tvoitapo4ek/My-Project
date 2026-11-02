@@ -210,6 +210,45 @@ pub fn capture(world: &mut World) -> SaveFile {
         props,
         joints,
         drops,
+        extensions: capture_extensions(world),
+    }
+}
+
+/// A module's piece of the save file (see `SaveFile::extensions`).
+#[derive(Clone, Copy)]
+pub struct SaveHook {
+    pub key: &'static str,
+    pub capture: fn(&mut World) -> serde_json::Value,
+    /// Called after loading; `None` when the save has no data for the key
+    /// (older save) — reset to defaults then.
+    pub restore: fn(&mut World, Option<&serde_json::Value>),
+}
+
+/// Registered save extensions. Modules add theirs in `Plugin::build`.
+#[derive(Resource, Default, Clone)]
+pub struct SaveHooks(pub Vec<SaveHook>);
+
+pub trait SaveHookExt {
+    fn add_save_hook(&mut self, hook: SaveHook) -> &mut Self;
+}
+
+impl SaveHookExt for App {
+    fn add_save_hook(&mut self, hook: SaveHook) -> &mut Self {
+        self.init_resource::<SaveHooks>();
+        self.world_mut().resource_mut::<SaveHooks>().0.push(hook);
+        self
+    }
+}
+
+fn capture_extensions(world: &mut World) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let hooks = world.get_resource::<SaveHooks>().cloned().unwrap_or_default();
+    hooks.0.iter().map(|h| (h.key.to_string(), (h.capture)(world))).collect()
+}
+
+fn restore_extensions(world: &mut World, ext: &std::collections::BTreeMap<String, serde_json::Value>) {
+    let hooks = world.get_resource::<SaveHooks>().cloned().unwrap_or_default();
+    for h in &hooks.0 {
+        (h.restore)(world, ext.get(h.key));
     }
 }
 
@@ -303,6 +342,7 @@ pub fn restore_entities(world: &mut World) {
         .resource_mut::<NextState<GameMode>>()
         .set(save.game_mode);
     world.resource_mut::<WorldClock>().time_of_day = save.time_of_day.rem_euclid(1.0);
+    restore_extensions(world, &save.extensions);
     world.resource_mut::<Gravity>().0 = Vec3::NEG_Y * save.gravity.clamp(0.0, 60.0);
     {
         let mut rig = world.resource_mut::<CameraRig>();

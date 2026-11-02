@@ -118,6 +118,11 @@ pub struct SaveFile {
     pub props: Vec<PropSave>,
     pub joints: Vec<JointSave>,
     pub drops: Vec<DropSave>,
+    /// Data of independent modules (equipment, explored map, journal…),
+    /// keyed by module name. Unknown keys are kept as they are; missing
+    /// keys reset the module to its default. Registered via `SaveHooks`.
+    #[serde(default)]
+    pub extensions: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,6 +294,7 @@ pub mod tests {
                 },
             }],
             drops: vec![],
+            extensions: Default::default(),
         }
     }
 

@@ -13,6 +13,7 @@
 | Текстуры (материалы) | `assets/content/textures.ron` | `mods/<мод>/content/textures.ron` |
 | Предметы | `assets/content/items.ron` | `mods/<мод>/content/items.ron` |
 | Рецепты | `assets/content/recipes.ron` | `mods/<мод>/content/recipes.ron` |
+| Журнал | `assets/content/journal.ron` | `mods/<мод>/content/journal.ron` |
 | Картинки блоков | `assets/textures/blocks/<имя>.png` | `mods/<мод>/textures/blocks/<имя>.png` |
 | 3D-модели | `assets/models/<категория>/<ключ>.glb` | `mods/<мод>/models/<категория>/<ключ>.glb` |
 
@@ -86,8 +87,17 @@
 
 `category: Resource | Block | Tool | Weapon | Part | Station | Food | Magic | Module`,
 `use`: `None`, `Block("ключ")`, `Part("ключ детали")`, `Eat(food: 10.0, water: 0.0)`,
-`Module("drill2" | "cutter")`, `Manipulator`, `PhysGun`, `Melee`, `Ranged`, `Focus`.
+`Module("drill2" | "cutter")`, `Manipulator`, `PhysGun`, `Melee`, `Ranged`, `Focus`,
+`Wear(Head | Body | Hands | Legs | Accessory)` — снаряжение (категория `Gear`).
 `color` — цвет значка; `icon` — зарезервировано для PNG-иконок.
+
+## Записи журнала
+
+`journal.ron`: `key`, `category` (`Creatures`, `Plants`, `Materials`, `Biomes`,
+`Ruins`, `Technologies`, `Magic`, `Anomalies`), `title`, `text`,
+`hypothesis` (необязательно), `image` (`Texture("имя")`, `Item("ключ")`,
+`Scheme([(x0, y0, x1, y1), ...])`), `unlock` (`Always`, `ScanBlock("ключ")`,
+`ScanObject("часть названия")`, `Obtain("ключ предмета")`).
 
 ## Текстуры
 

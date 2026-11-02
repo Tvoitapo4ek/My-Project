@@ -29,6 +29,8 @@ pub struct Registry {
     pub textures: Vec<TextureDef>,
     pub items: Vec<ItemDef>,
     pub recipes: Vec<RecipeDef>,
+    pub journal: Vec<JournalDef>,
+    journal_index: HashMap<String, u16>,
     block_index: HashMap<String, u16>,
     texture_index: HashMap<String, u16>,
     item_index: HashMap<String, u16>,
@@ -70,6 +72,7 @@ const BUILTIN_BLOCKS: &str = include_str!("../../assets/content/blocks.ron");
 const BUILTIN_TEXTURES: &str = include_str!("../../assets/content/textures.ron");
 const BUILTIN_ITEMS: &str = include_str!("../../assets/content/items.ron");
 const BUILTIN_RECIPES: &str = include_str!("../../assets/content/recipes.ron");
+const BUILTIN_JOURNAL: &str = include_str!("../../assets/content/journal.ron");
 
 /// Keys of the built-in blocks in their fixed order (code refers to them by
 /// index through `world::voxel::blocks`). Also the v1 save palette.
@@ -135,13 +138,14 @@ impl Registry {
     fn load(roots: &[PathBuf]) -> Registry {
         let mut r = Registry::default();
         let mut w = Vec::new();
-        let mut layers: Vec<(String, [Option<String>; 4])> = vec![(
+        let mut layers: Vec<(String, [Option<String>; 5])> = vec![(
             "встроенный контент".into(),
             [
                 Some(BUILTIN_BLOCKS.into()),
                 Some(BUILTIN_TEXTURES.into()),
                 Some(BUILTIN_ITEMS.into()),
                 Some(BUILTIN_RECIPES.into()),
+                Some(BUILTIN_JOURNAL.into()),
             ],
         )];
         for root in roots {
@@ -152,12 +156,17 @@ impl Registry {
                 read("textures.ron"),
                 read("items.ron"),
                 read("recipes.ron"),
+                read("journal.ron"),
             ];
             if files.iter().any(Option::is_some) {
                 layers.push((root.display().to_string(), files));
             }
         }
-        for (origin, [blocks, textures, items, recipes]) in layers {
+        for (origin, [blocks, textures, items, recipes, journal]) in layers {
+            if let Some(t) = journal {
+                let v: Vec<JournalDef> = parse(&t, &format!("{origin}/journal.ron"), &mut w);
+                merge(&mut r.journal, &mut r.journal_index, v, |j| &j.key);
+            }
             if let Some(t) = textures {
                 let v: Vec<TextureDef> = parse(&t, &format!("{origin}/textures.ron"), &mut w);
                 merge(&mut r.textures, &mut r.texture_index, v, |t| &t.name);
@@ -233,6 +242,17 @@ impl Registry {
                 _ => {}
             }
         }
+        for j in &self.journal {
+            match &j.image {
+                JournalImage::Texture(t) if !self.texture_index.contains_key(t) => {
+                    w.push(format!("журнал {}: нет текстуры {t}", j.key))
+                }
+                JournalImage::Item(i) if !self.item_index.contains_key(i) => {
+                    w.push(format!("журнал {}: нет предмета {i}", j.key))
+                }
+                _ => {}
+            }
+        }
         let items = &self.item_index;
         self.recipes.retain(|r| {
             let ok = r.inputs.iter().all(|(k, _)| items.contains_key(k))
@@ -280,7 +300,8 @@ mod tests {
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(r.blocks.len(), 24);
         assert_eq!(r.textures.len(), 25);
-        assert_eq!(r.items.len(), 43);
+        assert_eq!(r.items.len(), 48);
+        assert!(r.journal.len() >= 12);
         assert_eq!(r.recipes.len(), 28);
     }
 
@@ -312,7 +333,7 @@ mod tests {
         );
         assert_eq!(
             r.items.len(),
-            43,
+            Registry::load(&[]).items.len(),
             "broken mod file leaves base items intact"
         );
         let _ = std::fs::remove_dir_all(dir);

@@ -57,6 +57,9 @@ fn spawn_camera(mut commands: Commands, cfg: Res<GameConfig>, mut rig: ResMut<Ca
         Name::new("Main Camera"),
         MainCamera,
         Camera3d::default(),
+        // HUD always draws on the world camera (the holo overlay camera has
+        // its own layer).
+        IsDefaultUiCamera,
         Projection::Perspective(PerspectiveProjection {
             fov: cfg.camera.fov_degrees.to_radians(),
             near: 0.05,
@@ -84,8 +87,15 @@ fn mouse_look(
     mut rig: ResMut<CameraRig>,
     cursor: Single<&CursorOptions>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    focus: Res<State<InputFocus>>,
 ) {
-    if cursor.grab_mode == CursorGrabMode::None {
+    if *focus.get() == InputFocus::Device {
+        // Device open: look around only while RMB is held.
+        if !mouse.pressed(MouseButton::Right) {
+            return;
+        }
+    } else if cursor.grab_mode == CursorGrabMode::None {
         return;
     }
     // Holding R is reserved for rotating held objects (physics gun).
@@ -131,7 +141,7 @@ fn sync_yaw_to_character(rig: Res<CameraRig>, mut q: Query<&mut CharacterState, 
 }
 
 /// Places the camera after physics interpolation, before transform propagation.
-fn follow_player(
+pub fn follow_player(
     time: Res<Time>,
     spatial: SpatialQuery,
     mut rig: ResMut<CameraRig>,
@@ -222,6 +232,10 @@ fn pause_toggle(
     focus: Res<State<InputFocus>>,
     mut next: ResMut<NextState<InputFocus>>,
 ) {
+    // The device closes itself (with its animation) on Escape.
+    if *focus.get() == InputFocus::Device {
+        return;
+    }
     if keys.just_pressed(KeyCode::Escape) {
         next.set(match focus.get() {
             InputFocus::Gameplay => InputFocus::Paused,
@@ -239,7 +253,8 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
-                    (mouse_look, camera_hotkeys).run_if(gameplay_active),
+                    mouse_look.run_if(crate::core::states::look_allowed),
+                    camera_hotkeys.run_if(gameplay_active),
                     sync_yaw_to_character,
                     recapture_cursor,
                     pause_toggle.run_if(crate::core::states::in_game),

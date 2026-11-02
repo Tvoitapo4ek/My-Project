@@ -90,4 +90,17 @@
      color: (0.45, 0.4, 0.38), info: "Плавит руду и песок. Нужен уголь."),
     (key: "grinder", name: "Дробилка", category: Station, max_stack: 4, use: Part("grinder"), mass: 50.0,
      color: (0.5, 0.55, 0.6), info: "Перерабатывает материалы, пока её вал вращается."),
+
+    // --- Тестовое снаряжение интерфейса экипировки (раздел 24). ---
+    // Характеристик пока нет: предметы проверяют слоты, проекцию и перенос.
+    (key: "test_visor", name: "Шлем-визор (тест)", category: Gear, max_stack: 1, use: Wear(Head), mass: 1.2,
+     color: (0.55, 0.85, 0.95), info: "Тестовый предмет экипировки. Характеристик пока нет."),
+    (key: "test_coat", name: "Куртка экспедиции (тест)", category: Gear, max_stack: 1, use: Wear(Body), mass: 2.5,
+     color: (0.62, 0.48, 0.32), info: "Тестовый предмет экипировки. Характеристик пока нет."),
+    (key: "test_gloves", name: "Перчатки (тест)", category: Gear, max_stack: 1, use: Wear(Hands), mass: 0.4,
+     color: (0.35, 0.3, 0.28), info: "Тестовый предмет экипировки. Характеристик пока нет."),
+    (key: "test_boots", name: "Ботинки (тест)", category: Gear, max_stack: 1, use: Wear(Legs), mass: 1.4,
+     color: (0.3, 0.27, 0.25), info: "Тестовый предмет экипировки. Характеристик пока нет."),
+    (key: "test_charm", name: "Подвеска (тест)", category: Gear, max_stack: 1, use: Wear(Accessory), mass: 0.1,
+     color: (0.8, 0.6, 1.0), info: "Тестовый предмет экипировки. Характеристик пока нет."),
 ]

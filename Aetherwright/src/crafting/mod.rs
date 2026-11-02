@@ -40,6 +40,40 @@ pub fn workbench_near(player: Vec3, parts: &Query<(&Transform, &Part)>) -> bool 
     })
 }
 
+/// Is a workbench in reach (or creative, where stations are not needed)?
+pub fn bench_available(world: &mut World) -> bool {
+    if !world.resource::<ModeRules>().consume_items {
+        return true;
+    }
+    let mut pq = world.query_filtered::<&Transform, With<Player>>();
+    let Some(pt) = pq.iter(world).next().map(|t| t.translation) else {
+        return false;
+    };
+    let mut q = world.query::<(&Transform, &Part)>();
+    q.iter(world)
+        .any(|(t, p)| p.kind == PartKind::Workbench && t.translation.distance(pt) < WORKBENCH_RANGE)
+}
+
+/// Crafts recipe `i` by hand / at a nearby workbench. Ok = message to show.
+pub fn craft_recipe(world: &mut World, i: usize) -> Result<String, String> {
+    let r = recipes().get(i).ok_or("нет рецепта")?;
+    if !matches!(r.station, Station::Hand | Station::Workbench) {
+        return Err(format!("Нужна станция: {}", r.station.label()));
+    }
+    if r.station == Station::Workbench && !bench_available(world) {
+        return Err("Нужен верстак рядом".into());
+    }
+    let consume = world.resource::<ModeRules>().consume_items;
+    let mut q = world.query_filtered::<&mut Inventory, With<Player>>();
+    let mut inv = q.iter_mut(world).next().ok_or("нет инвентаря")?;
+    let ok = if consume { r.craft(&mut inv) } else { inv.add(r.output_item(), r.output.1) == 0 };
+    if ok {
+        Ok(format!("Создано: {} ×{}", r.output_item().def().name, r.output.1))
+    } else {
+        Err("Не хватает материалов или места".into())
+    }
+}
+
 fn open_station(
     mut reader: MessageReader<OpenStation>,
     mut ctx: ResMut<StationContext>,

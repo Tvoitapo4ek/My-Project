@@ -34,7 +34,42 @@ pub enum InputFocus {
     Paused,
     /// In-game texture editor (F7).
     TextureEditor,
+    /// The holographic device is open: the cursor drives the spatial
+    /// panels, the character may still walk slowly and look around (RMB),
+    /// but no gameplay action (tools, building, combat, vehicles) runs.
+    Device,
 }
+
+/// True while a text field (search, note) owns the keyboard.
+#[derive(Resource, Debug, Default)]
+pub struct TypingFocus(pub bool);
+
+/// Movement keys are read in gameplay and (slowed) while the device is open.
+pub fn movement_allowed(
+    app: Option<Res<State<AppState>>>,
+    focus: Option<Res<State<InputFocus>>>,
+    typing: Option<Res<TypingFocus>>,
+) -> bool {
+    matches!(app.map(|s| *s.get()), Some(AppState::InGame))
+        && matches!(
+            focus.map(|s| *s.get()),
+            Some(InputFocus::Gameplay | InputFocus::Device)
+        )
+        && !typing.is_some_and(|t| t.0)
+}
+
+/// Mouse look: in gameplay, and with the device open (while RMB is held).
+pub fn look_allowed(
+    app: Option<Res<State<AppState>>>,
+    focus: Option<Res<State<InputFocus>>>,
+) -> bool {
+    matches!(app.map(|s| *s.get()), Some(AppState::InGame))
+        && matches!(
+            focus.map(|s| *s.get()),
+            Some(InputFocus::Gameplay | InputFocus::Device)
+        )
+}
+
 
 /// Convenience run condition: in game and nothing overlays the gameplay.
 pub fn gameplay_active(
@@ -55,6 +90,7 @@ impl Plugin for StatesPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>()
             .init_state::<GameMode>()
-            .init_state::<InputFocus>();
+            .init_state::<InputFocus>()
+            .init_resource::<TypingFocus>();
     }
 }

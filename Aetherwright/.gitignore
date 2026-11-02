@@ -1,2 +1,4 @@
 /target
 /saves
+# personal settings written by the in-game settings screen
+/assets/config/game.json

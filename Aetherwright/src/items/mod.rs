@@ -5,6 +5,7 @@
 //! never by index, so content can be reordered or extended safely.
 
 pub mod drops;
+pub mod equipment;
 pub mod inventory;
 
 use bevy::prelude::*;
@@ -100,7 +101,11 @@ pub struct ItemsPlugin;
 
 impl Plugin for ItemsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((inventory::InventoryPlugin, drops::DropsPlugin));
+        app.add_plugins((
+            inventory::InventoryPlugin,
+            drops::DropsPlugin,
+            equipment::EquipmentPlugin,
+        ));
     }
 }
 

@@ -11,6 +11,7 @@ mod content;
 mod core;
 mod crafting;
 mod creative;
+mod holo;
 mod items;
 mod machinery;
 mod magic;

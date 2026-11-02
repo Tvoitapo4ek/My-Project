@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use super::{ItemId, ItemStack, SavedStack};
+use super::{Category, ItemId, ItemStack, SavedStack};
 
 pub const SLOTS: usize = 36;
 pub const HOTBAR: usize = 9;
@@ -157,6 +157,78 @@ impl Inventory {
         }
     }
 
+    /// Moves the stack in `from` onto `to`: merges same items (leftover
+    /// stays in `from`), otherwise swaps.
+    pub fn move_stack(&mut self, from: usize, to: usize) {
+        if from == to || from >= self.slots.len() || to >= self.slots.len() {
+            return;
+        }
+        let mut carried = self.slots[from].take();
+        self.click_slot(to, &mut carried);
+        self.slots[from] = carried;
+    }
+
+    /// Splits half of a stack into the first empty slot. False if the
+    /// stack has one item or there is no room.
+    pub fn split(&mut self, slot: usize) -> bool {
+        let Some(Some(st)) = self.slots.get(slot).copied() else {
+            return false;
+        };
+        if st.count < 2 {
+            return false;
+        }
+        let Some(empty) = (HOTBAR..self.slots.len())
+            .chain(0..HOTBAR)
+            .find(|&i| self.slots[i].is_none())
+        else {
+            return false;
+        };
+        let half = st.count / 2;
+        self.slots[slot] = Some(ItemStack::new(st.item, st.count - half));
+        self.slots[empty] = Some(ItemStack::new(st.item, half));
+        true
+    }
+
+    /// Collects all stacks of the item in `slot` into it (up to max stack).
+    pub fn gather(&mut self, slot: usize) {
+        let Some(Some(st)) = self.slots.get(slot).copied() else {
+            return;
+        };
+        for i in 0..self.slots.len() {
+            if i != slot && self.slots[i].is_some_and(|o| o.item == st.item) {
+                self.move_stack(i, slot);
+            }
+        }
+    }
+
+    /// Sorts the backpack (hotbar untouched): merges stacks and orders by
+    /// category, then name.
+    pub fn sort_backpack(&mut self) {
+        let mut items: Vec<ItemStack> = self.slots[HOTBAR..].iter_mut().filter_map(Option::take).collect();
+        items.sort_by(|a, b| {
+            let (da, db) = (a.item.def(), b.item.def());
+            let ca = Category::ALL.iter().position(|c| *c == da.category);
+            let cb = Category::ALL.iter().position(|c| *c == db.category);
+            ca.cmp(&cb).then(da.name.cmp(&db.name)).then(b.count.cmp(&a.count))
+        });
+        let mut packed: Vec<ItemStack> = Vec::new();
+        for st in items {
+            let mut left = st.count;
+            if let Some(last) = packed.last_mut().filter(|l| l.item == st.item) {
+                let room = st.item.def().max_stack.saturating_sub(last.count);
+                let n = room.min(left);
+                last.count += n;
+                left -= n;
+            }
+            if left > 0 {
+                packed.push(ItemStack::new(st.item, left));
+            }
+        }
+        for (i, st) in packed.into_iter().enumerate() {
+            self.slots[HOTBAR + i] = Some(st);
+        }
+    }
+
     pub fn to_saved(&self) -> Vec<Option<SavedStack>> {
         self.slots.iter().map(|s| s.map(|s| s.to_saved())).collect()
     }
@@ -254,6 +326,30 @@ mod tests {
         assert!(cursor.is_none());
         inv.right_click_slot(5, &mut cursor); // split half
         assert_eq!(cursor.unwrap().count, 30);
+    }
+
+    #[test]
+    fn move_split_gather_sort() {
+        let mut inv = Inventory::default();
+        let stone = ItemId::k("stone");
+        let wood = ItemId::k("wood");
+        inv.slots[HOTBAR] = Some(ItemStack::new(wood, 3));
+        inv.slots[HOTBAR + 2] = Some(ItemStack::new(stone, 10));
+        inv.slots[HOTBAR + 5] = Some(ItemStack::new(stone, 7));
+        assert!(inv.split(HOTBAR + 2));
+        assert_eq!(inv.count(stone), 17);
+        inv.gather(HOTBAR + 5);
+        assert_eq!(inv.slots[HOTBAR + 5].unwrap().count, 17);
+        inv.move_stack(HOTBAR + 5, 0);
+        assert_eq!(inv.slots[0].unwrap().count, 17);
+        inv.move_stack(0, HOTBAR); // swap with wood
+        assert_eq!(inv.slots[0].unwrap().item, wood);
+        inv.slots[HOTBAR + 8] = Some(ItemStack::new(stone, 5));
+        inv.sort_backpack();
+        let total: u32 = inv.slots.iter().flatten().map(|s| s.count).sum();
+        assert_eq!(total, 3 + 17 + 5);
+        assert_eq!(inv.slots[HOTBAR].unwrap().count, 22, "stacks merged");
+        assert!(inv.slots[HOTBAR + 1].is_none());
     }
 
     #[test]

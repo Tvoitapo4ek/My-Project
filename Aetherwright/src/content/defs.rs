@@ -185,10 +185,12 @@ pub enum Category {
     Food,
     Magic,
     Module,
+    /// Worn equipment.
+    Gear,
 }
 
 impl Category {
-    pub const ALL: [Category; 9] = [
+    pub const ALL: [Category; 10] = [
         Category::Resource,
         Category::Block,
         Category::Tool,
@@ -198,6 +200,7 @@ impl Category {
         Category::Food,
         Category::Magic,
         Category::Module,
+        Category::Gear,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -210,6 +213,7 @@ impl Category {
             Category::Food => "Еда",
             Category::Magic => "Магия",
             Category::Module => "Модуль",
+            Category::Gear => "Снаряжение",
         }
     }
     /// Picked up automatically when auto-pickup is on ("ordinary resources").
@@ -234,6 +238,116 @@ pub enum ItemUse {
     Focus,
     Eat { food: f32, water: f32 },
     Module(String),
+    /// Worn in an equipment slot (holographic device → Экипировка).
+    Wear(EquipSlot),
+}
+
+/// Equipment slots that hold worn items. Weapon / tool / manipulator
+/// modules are shown by the equipment screen from their own state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EquipSlot {
+    Head,
+    Body,
+    Hands,
+    Legs,
+    Accessory,
+}
+
+impl EquipSlot {
+    pub const ALL: [EquipSlot; 5] = [
+        EquipSlot::Head,
+        EquipSlot::Body,
+        EquipSlot::Hands,
+        EquipSlot::Legs,
+        EquipSlot::Accessory,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            EquipSlot::Head => "Голова",
+            EquipSlot::Body => "Броня",
+            EquipSlot::Hands => "Руки",
+            EquipSlot::Legs => "Ноги",
+            EquipSlot::Accessory => "Аксессуар",
+        }
+    }
+}
+
+/// Journal categories (concept: knowledge is discovered gradually).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum JournalCategory {
+    Creatures,
+    Plants,
+    Materials,
+    Biomes,
+    Ruins,
+    Technologies,
+    Magic,
+    Anomalies,
+}
+
+impl JournalCategory {
+    pub const ALL: [JournalCategory; 8] = [
+        JournalCategory::Creatures,
+        JournalCategory::Plants,
+        JournalCategory::Materials,
+        JournalCategory::Biomes,
+        JournalCategory::Ruins,
+        JournalCategory::Technologies,
+        JournalCategory::Magic,
+        JournalCategory::Anomalies,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            JournalCategory::Creatures => "Существа",
+            JournalCategory::Plants => "Растения",
+            JournalCategory::Materials => "Материалы",
+            JournalCategory::Biomes => "Биомы",
+            JournalCategory::Ruins => "Руины",
+            JournalCategory::Technologies => "Технологии",
+            JournalCategory::Magic => "Магия",
+            JournalCategory::Anomalies => "Аномалии",
+        }
+    }
+}
+
+/// Picture shown with a journal entry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub enum JournalImage {
+    #[default]
+    None,
+    /// A block texture by name (`textures.ron`).
+    Texture(String),
+    /// An item icon colour by item key.
+    Item(String),
+    /// A schematic drawn from lines: list of (x0, y0, x1, y1) in 0..1.
+    Scheme(Vec<(f32, f32, f32, f32)>),
+}
+
+/// What opens a journal entry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum JournalUnlock {
+    /// Known from the start.
+    Always,
+    /// Scanning a block with this key.
+    ScanBlock(String),
+    /// Scanning an object whose title contains this text.
+    ScanObject(String),
+    /// Picking up / crafting an item with this key.
+    Obtain(String),
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct JournalDef {
+    pub key: String,
+    pub category: JournalCategory,
+    pub title: String,
+    pub text: String,
+    /// Open questions written as the researcher's assumptions.
+    #[serde(default)]
+    pub hypothesis: String,
+    #[serde(default)]
+    pub image: JournalImage,
+    pub unlock: JournalUnlock,
 }
 
 #[derive(Debug, Clone, Deserialize)]

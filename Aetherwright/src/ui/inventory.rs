@@ -1,5 +1,7 @@
-//! Inventory screen (I / Tab): backpack grid, hotbar row, the stack held by
-//! the cursor, item tooltip and — in creative — a catalog of every item.
+//! Station screen (opened by using a workbench / smelter / crate): backpack
+//! grid, hotbar row, the stack held by the cursor, item tooltip and — in
+//! creative — a catalog of every item. The personal inventory lives in the
+//! holographic device (`holo::sections::inventory`, I / Tab).
 //! The crafting panel (`crafting` module) docks into `CraftingDock`.
 
 use bevy::prelude::*;
@@ -9,7 +11,7 @@ use super::{
     theme,
 };
 use crate::{
-    core::states::{GameMode, InputFocus, gameplay_active},
+    core::states::{GameMode, InputFocus},
     items::{
         ItemStack, all_items,
         inventory::{HOTBAR, Inventory, SLOTS},
@@ -29,12 +31,6 @@ struct Tooltip;
 /// Container other modules (crafting) fill with their panel.
 #[derive(Component)]
 pub struct CraftingDock;
-
-fn open_inventory(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<InputFocus>>) {
-    if keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::Tab) {
-        next.set(InputFocus::Inventory);
-    }
-}
 
 fn close_inventory(keys: Res<ButtonInput<KeyCode>>, mut next: ResMut<NextState<InputFocus>>) {
     if keys.just_pressed(KeyCode::KeyI)
@@ -212,8 +208,7 @@ pub struct InventoryUiPlugin;
 
 impl Plugin for InventoryUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, open_inventory.run_if(gameplay_active))
-            .add_systems(
+        app.add_systems(
                 Update,
                 (close_inventory, update_cursor_and_tooltip)
                     .run_if(in_state(InputFocus::Inventory)),

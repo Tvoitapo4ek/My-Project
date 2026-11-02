@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::core::states::gameplay_active;
+use crate::core::states::{InputFocus, movement_allowed};
 
 #[derive(Resource, Debug, Default, Clone)]
 pub struct PlayerIntent {
@@ -22,10 +22,18 @@ pub struct PlayerIntent {
     pub scripted: bool,
 }
 
-fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut intent: ResMut<PlayerIntent>) {
+/// Speed factor while the holographic device is open (spec §24: slow walk).
+pub const DEVICE_MOVE_FACTOR: f32 = 0.35;
+
+fn read_keyboard(
+    keys: Res<ButtonInput<KeyCode>>,
+    focus: Res<State<InputFocus>>,
+    mut intent: ResMut<PlayerIntent>,
+) {
     if intent.scripted {
         return;
     }
+    let device = *focus.get() == InputFocus::Device;
     let axis =
         |pos: KeyCode, neg: KeyCode| (keys.pressed(pos) as i8 - keys.pressed(neg) as i8) as f32;
     intent.movement = Vec2::new(
@@ -39,6 +47,15 @@ fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut intent: ResMut<PlayerInten
     intent.jump_held = keys.pressed(KeyCode::Space);
     if keys.just_pressed(KeyCode::Space) {
         intent.jump_pressed = true;
+    }
+    if device {
+        // Only careful walking: no sprint, jump or crouch with panels open.
+        intent.movement *= DEVICE_MOVE_FACTOR;
+        intent.sprint = false;
+        intent.crouch = false;
+        intent.descend = false;
+        intent.jump_held = false;
+        intent.jump_pressed = false;
     }
 }
 
@@ -56,8 +73,8 @@ impl Plugin for InputPlugin {
         app.init_resource::<PlayerIntent>().add_systems(
             PreUpdate,
             (
-                read_keyboard.run_if(gameplay_active),
-                clear_when_inactive.run_if(not(gameplay_active)),
+                read_keyboard.run_if(movement_allowed),
+                clear_when_inactive.run_if(not(movement_allowed)),
             )
                 .after(bevy::input::InputSystems),
         );

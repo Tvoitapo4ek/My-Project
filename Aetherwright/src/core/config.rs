@@ -29,8 +29,28 @@ pub struct HudConfig {
     pub notifications: bool,
     pub tool_line: bool,
     pub energy: bool,
-    /// UI scale multiplier.
+    /// HUD scale multiplier (applied per panel; the projection has its own).
     pub scale: f32,
+    /// Opacity of all HUD panels (0.2..1).
+    pub opacity: f32,
+    /// Per-panel placement set in the device settings (key = panel name).
+    pub layout: std::collections::BTreeMap<String, HudLayout>,
+}
+
+/// Offset (logical px), size and opacity of one HUD panel.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HudLayout {
+    pub dx: f32,
+    pub dy: f32,
+    pub scale: f32,
+    pub opacity: f32,
+}
+
+impl Default for HudLayout {
+    fn default() -> Self {
+        Self { dx: 0.0, dy: 0.0, scale: 1.0, opacity: 1.0 }
+    }
 }
 
 impl Default for HudConfig {
@@ -44,6 +64,8 @@ impl Default for HudConfig {
             tool_line: true,
             energy: true,
             scale: 1.0,
+            opacity: 1.0,
+            layout: Default::default(),
         }
     }
 }
@@ -213,6 +235,15 @@ impl GameConfig {
         }
     }
 
+    /// Writes the settings to [`CONFIG_PATH`] (the device settings screen).
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = std::path::Path::new(CONFIG_PATH);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(path, serde_json::to_string_pretty(self).unwrap_or_default())
+    }
+
     /// Clamps values into ranges the engine can handle.
     pub fn sanitized(mut self) -> Self {
         self.world.chunk_size = self.world.chunk_size.clamp(8, 32);
@@ -221,6 +252,12 @@ impl GameConfig {
         let height = self.world.chunk_size * self.world.height_chunks;
         self.world.sea_level = self.world.sea_level.clamp(1, height - 4);
         self.physics.tick_hz = self.physics.tick_hz.clamp(30.0, 240.0);
+        self.hud.scale = self.hud.scale.clamp(0.5, 2.5);
+        self.hud.opacity = self.hud.opacity.clamp(0.2, 1.0);
+        for l in self.hud.layout.values_mut() {
+            l.scale = l.scale.clamp(0.5, 2.5);
+            l.opacity = l.opacity.clamp(0.1, 1.0);
+        }
         self.camera.third_person_distance = self
             .camera
             .third_person_distance

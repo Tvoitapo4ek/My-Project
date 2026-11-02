@@ -29,6 +29,13 @@ pub struct ScanResult {
 #[derive(Resource, Default)]
 pub struct ScanExtras(pub Vec<fn(&World, Vec3) -> Option<String>>);
 
+/// Something was scanned (journal, research): block key or object title.
+#[derive(Message, Debug, Clone)]
+pub struct Scanned {
+    pub block: Option<String>,
+    pub title: String,
+}
+
 fn handle_scans(world: &mut World) {
     let requests: Vec<ScanRequest> = world
         .resource_mut::<Messages<ScanRequest>>()
@@ -108,6 +115,11 @@ fn handle_scans(world: &mut World) {
                 }
             }
         }
+        let block = match r {
+            ScanRequest::Block(pos) => Some(world.resource::<VoxelWorld>().get(pos).def().key.clone()),
+            ScanRequest::Entity(_) => None,
+        };
+        world.write_message(Scanned { block, title: result.title.clone() });
         world.insert_resource(result);
     }
 }
@@ -122,6 +134,7 @@ impl Plugin for ScanningPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScanResult>()
             .init_resource::<ScanExtras>()
+            .add_message::<Scanned>()
             .add_systems(PostUpdate, handle_scans)
             .add_systems(Update, tick);
     }

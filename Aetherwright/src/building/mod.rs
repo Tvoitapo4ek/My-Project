@@ -6,6 +6,7 @@
 
 pub mod blueprints;
 pub mod construction;
+pub mod library;
 pub mod placement;
 pub mod preview;
 pub mod selection;
@@ -20,6 +21,7 @@ impl Plugin for BuildingPlugin {
             placement::PlacementPlugin,
             selection::SelectionPlugin,
             preview::PreviewPlugin,
+            library::LibraryPlugin,
         ));
     }
 }
