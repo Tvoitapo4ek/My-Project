@@ -107,7 +107,9 @@ impl Plugin for HoloPlugin {
                 panels::PanelsPlugin,
                 projection::ProjectionPlugin,
                 sections::SectionsPlugin,
-                engineering::EngineeringPlugin,
             ));
+        if std::env::var("AW_NO_ENG").is_err() {
+            app.add_plugins(engineering::EngineeringPlugin);
+        }
     }
 }
