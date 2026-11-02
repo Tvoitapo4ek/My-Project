@@ -10,6 +10,7 @@ mod building;
 mod core;
 mod items;
 mod machinery;
+mod magic;
 mod physics;
 mod player;
 mod tools;

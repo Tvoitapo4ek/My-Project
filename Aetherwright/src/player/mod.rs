@@ -44,9 +44,12 @@ fn spawn_player(mut commands: Commands, spawn: Res<SpawnPoint>, existing: Query<
     commands.spawn((
         Name::new("Player"),
         Player,
-        crate::items::inventory::starter_inventory(),
-        crate::tools::manipulator::Manipulator::default(),
-        crate::items::drops::Picker,
+        (
+            crate::items::inventory::starter_inventory(),
+            crate::tools::manipulator::Manipulator::default(),
+            crate::items::drops::Picker,
+            crate::magic::spells::AetherReserve::default(),
+        ),
         movement::CharacterState::default(),
         Transform::from_translation(spawn.0),
         Visibility::default(),

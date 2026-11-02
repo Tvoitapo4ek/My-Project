@@ -6,6 +6,7 @@
 //! lose support become bodies.
 
 pub mod collision;
+pub mod impulses;
 pub mod joints;
 pub mod physics_gun;
 pub mod rigid_bodies;
@@ -39,6 +40,7 @@ impl Plugin for PhysicsPlugin {
             joints::JointsPlugin,
             physics_gun::PhysicsGunPlugin,
             collision::CollisionPlugin,
+            impulses::ImpulsesPlugin,
         ));
     }
 }

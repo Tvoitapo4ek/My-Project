@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// Flat empty test field west of spawn (cleared by the first step).
-fn field(world: &World) -> Vec3 {
+pub(super) fn field(world: &World) -> Vec3 {
     let s = world.resource::<SpawnPoint>().0;
     Vec3::new(s.x - 8.0, s.y - 1.0, s.z + 4.0)
 }
@@ -141,6 +141,65 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
                     return Step::Next;
                 }
             }
+        }
+        Step::Wait
+    }));
+
+    // --- group operations ---------------------------------------------------
+    steps.push(step("select, copy, paste, rotate, delete", |world, ctx| {
+        let f = field(world).floor().as_ivec3() + IVec3::new(3, 1, -6);
+        if ctx.frames == 1 {
+            // An L-shaped bricks wall with a frame part on it.
+            for p in [IVec3::ZERO, IVec3::X, IVec3::new(2, 0, 0), IVec3::new(0, 1, 0), IVec3::new(0, 0, 1)] {
+                edit(world, f + p, blocks::BRICKS, EditCause::Script);
+            }
+            with_manip(world, |m| m.mode = ManipulatorMode::Select);
+            select(world, "manipulator");
+        }
+        if ctx.frames == 6 {
+            let mut sel = world.resource_mut::<Selection>();
+            sel.a = Some(f);
+            sel.b = Some(f + IVec3::new(2, 1, 1));
+            world.resource_mut::<PendingOps>().0.push(GroupOp::Copy);
+        }
+        if ctx.frames == 10 {
+            let n = world.resource::<Selection>().clipboard.as_ref().map(|c| c.blocks.len()).unwrap_or(0);
+            ctx.check("copy captures blocks", n == 5, format!("{n} blocks"));
+            // Paste rotated 90° next to the original (creative-free path: survival with items).
+            with_inv(world, |i| {
+                i.add(ItemId::k("bricks"), 10);
+            });
+            let bp = world.resource::<Selection>().clipboard.clone().unwrap().rotated_y90();
+            let origin = f + IVec3::new(0, 0, 2);
+            let r = paste(world, &bp, origin);
+            ctx.check("paste rotated copy", r.is_ok(), format!("{r:?}"));
+            ctx.vars.insert("ox".into(), origin.x as f32);
+        }
+        if ctx.frames == 16 {
+            let origin = f + IVec3::new(0, 0, 2);
+            // Rotated L: original (2,0,0) → (0,0,s.x-1-2)=(0,0,0); original (0,0,0) → (0,0,2).
+            let ok = block_at(world, origin + IVec3::new(0, 0, 2)) == blocks::BRICKS
+                && block_at(world, origin + IVec3::new(1, 0, 2)) == blocks::BRICKS
+                && block_at(world, origin + IVec3::new(0, 1, 2)) == blocks::BRICKS;
+            let mut found = Vec::new();
+            for c in Area::new(origin - IVec3::ONE, origin + IVec3::new(3, 2, 3)).cells() {
+                if block_at(world, c) == blocks::BRICKS {
+                    found.push(c - origin);
+                }
+            }
+            ctx.check("pasted blocks are rotated correctly", ok, format!("bricks at {found:?}"));
+            let mut sel = world.resource_mut::<Selection>();
+            sel.a = Some(origin);
+            sel.b = Some(origin + IVec3::new(1, 1, 2));
+            world.resource_mut::<PendingOps>().0.push(GroupOp::Delete);
+        }
+        if ctx.frames == 22 {
+            let origin = f + IVec3::new(0, 0, 2);
+            let area = Area::new(origin, origin + IVec3::new(1, 1, 2));
+            let left = area.cells().filter(|c| !block_at(world, *c).is_air()).count();
+            ctx.check("delete clears the selection", left == 0, format!("{left} left"));
+            key(world, KeyCode::KeyV, false);
+            return Step::Next;
         }
         Step::Wait
     }));
@@ -342,62 +401,4 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
         Step::Wait
     }));
 
-    // --- group operations ---------------------------------------------------
-    steps.push(step("select, copy, paste, rotate, delete", |world, ctx| {
-        let f = field(world).floor().as_ivec3() + IVec3::new(3, 1, -6);
-        if ctx.frames == 1 {
-            // An L-shaped bricks wall with a frame part on it.
-            for p in [IVec3::ZERO, IVec3::X, IVec3::new(2, 0, 0), IVec3::new(0, 1, 0), IVec3::new(0, 0, 1)] {
-                edit(world, f + p, blocks::BRICKS, EditCause::Script);
-            }
-            with_manip(world, |m| m.mode = ManipulatorMode::Select);
-            select(world, "manipulator");
-        }
-        if ctx.frames == 6 {
-            let mut sel = world.resource_mut::<Selection>();
-            sel.a = Some(f);
-            sel.b = Some(f + IVec3::new(2, 1, 1));
-            world.resource_mut::<PendingOps>().0.push(GroupOp::Copy);
-        }
-        if ctx.frames == 10 {
-            let n = world.resource::<Selection>().clipboard.as_ref().map(|c| c.blocks.len()).unwrap_or(0);
-            ctx.check("copy captures blocks", n == 5, format!("{n} blocks"));
-            // Paste rotated 90° next to the original (creative-free path: survival with items).
-            with_inv(world, |i| {
-                i.add(ItemId::k("bricks"), 10);
-            });
-            let bp = world.resource::<Selection>().clipboard.clone().unwrap().rotated_y90();
-            let origin = f + IVec3::new(0, 0, 2);
-            let r = paste(world, &bp, origin);
-            ctx.check("paste rotated copy", r.is_ok(), format!("{r:?}"));
-            ctx.vars.insert("ox".into(), origin.x as f32);
-        }
-        if ctx.frames == 16 {
-            let origin = f + IVec3::new(0, 0, 2);
-            // Rotated L: original (2,0,0) → (0,0,s.x-1-2)=(0,0,0); original (0,0,0) → (0,0,2).
-            let ok = block_at(world, origin + IVec3::new(0, 0, 2)) == blocks::BRICKS
-                && block_at(world, origin + IVec3::new(1, 0, 2)) == blocks::BRICKS
-                && block_at(world, origin + IVec3::new(0, 1, 2)) == blocks::BRICKS;
-            let mut found = Vec::new();
-            for c in Area::new(origin - IVec3::ONE, origin + IVec3::new(3, 2, 3)).cells() {
-                if block_at(world, c) == blocks::BRICKS {
-                    found.push(c - origin);
-                }
-            }
-            ctx.check("pasted blocks are rotated correctly", ok, format!("bricks at {found:?}"));
-            let mut sel = world.resource_mut::<Selection>();
-            sel.a = Some(origin);
-            sel.b = Some(origin + IVec3::new(1, 1, 2));
-            world.resource_mut::<PendingOps>().0.push(GroupOp::Delete);
-        }
-        if ctx.frames == 22 {
-            let origin = f + IVec3::new(0, 0, 2);
-            let area = Area::new(origin, origin + IVec3::new(1, 1, 2));
-            let left = area.cells().filter(|c| !block_at(world, *c).is_air()).count();
-            ctx.check("delete clears the selection", left == 0, format!("{left} left"));
-            key(world, KeyCode::KeyV, false);
-            return Step::Next;
-        }
-        Step::Wait
-    }));
 }

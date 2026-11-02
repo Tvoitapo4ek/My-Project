@@ -183,7 +183,8 @@ fn update_hud_text(
     progress: Res<MiningProgress>,
     scan: Res<ScanResult>,
     gun: Res<crate::physics::physics_gun::PhysGun>,
-    player: Query<(&Inventory, &Manipulator), With<Player>>,
+    spells: Res<crate::magic::spells::SpellState>,
+    player: Query<(&Inventory, &Manipulator, Option<&crate::magic::spells::AetherReserve>), With<Player>>,
     scannables: Query<(Option<&Scannable>, Option<&Name>, Option<&LinearVelocity>)>,
     mut texts: ParamSet<(
         Single<&mut Text, With<ToolLineText>>,
@@ -192,7 +193,7 @@ fn update_hud_text(
     )>,
     mut fill: Single<&mut Node, With<ProgressFill>>,
 ) {
-    let Ok((inv, m)) = player.single() else { return };
+    let Ok((inv, m, reserve)) = player.single() else { return };
     let line = match *tool {
         ActiveTool::Manipulator => format!(
             "Манипулятор · {}  [Q]   ·  бурение {}  ·  резка {}",
@@ -209,6 +210,13 @@ fn update_hud_text(
                 crate::physics::physics_gun::GunMode::Hinge => "ЛКМ: деталь (её грань), затем грань основания",
                 crate::physics::physics_gun::GunMode::Unlink => "ЛКМ: снять все соединения объекта",
             }
+        ),
+        ActiveTool::Focus => format!(
+            "Эфирный фокус · {}  [Q]  ·  стоимость {:.0}  ·  эфир {:.0}/{:.0}",
+            spells.selected.label(),
+            spells.selected.cost(),
+            reserve.map(|r| r.amount).unwrap_or(0.0),
+            reserve.map(|r| r.max).unwrap_or(0.0)
         ),
         ActiveTool::Hand => "Рука (манипулятор, слабая добыча)".to_string(),
         ActiveTool::PlaceBlock(item, _) => format!("{} — ПКМ поставить, ЛКМ добыть", item.def().name),

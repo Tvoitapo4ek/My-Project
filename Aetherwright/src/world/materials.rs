@@ -189,11 +189,11 @@ fn material_for(t: Tex, image: Handle<Image>) -> StandardMaterial {
             m.perceptual_roughness = 0.4;
         }
         Tex::Aether => {
-            m.emissive = LinearRgba::rgb(0.6, 2.4, 3.0);
+            m.emissive = LinearRgba::rgb(0.25, 1.0, 1.3);
             m.perceptual_roughness = 0.2;
         }
         Tex::AgitatedAether => {
-            m.emissive = LinearRgba::rgb(2.8, 0.7, 1.6);
+            m.emissive = LinearRgba::rgb(1.1, 0.25, 0.65);
             m.perceptual_roughness = 0.25;
         }
         Tex::Ancient => {

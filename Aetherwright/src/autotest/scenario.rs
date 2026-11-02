@@ -190,6 +190,7 @@ pub fn build() -> Scenario {
     super::scenario3::stage3(&mut steps);
     super::scenario4::stage4(&mut steps);
     super::scenario5::stage5(&mut steps);
+    super::scenario6::stage6(&mut steps);
 
     Scenario {
         steps,
