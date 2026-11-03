@@ -33,6 +33,8 @@ pub enum ActiveTool {
     PlacePart(ItemId),
     /// Kinetic block on the grid (`kinetics`).
     PlaceKinetic(ItemId),
+    /// Wire tool (`electric`).
+    Wire(ItemId),
     PhysGun,
     Melee,
     Ranged,
@@ -80,6 +82,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
                 .map_or(ActiveTool::Inert(item), |b| ActiveTool::PlaceBlock(item, b)),
             Use::Part(_) => ActiveTool::PlacePart(item),
             Use::Kinetic(_) => ActiveTool::PlaceKinetic(item),
+            Use::Wire(_) => ActiveTool::Wire(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,

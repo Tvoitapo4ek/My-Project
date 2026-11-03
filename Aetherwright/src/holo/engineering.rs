@@ -168,7 +168,11 @@ fn kind_name(k: PartKind) -> String {
 
 /// Text of the panel from the part's real components.
 pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)> {
-    if let Some((name, lines, diag)) = crate::kinetics::describe_block(world, e) {
+    if let Some((name, mut lines, mut diag)) = crate::kinetics::describe_block(world, e) {
+        if let Some((l, d)) = crate::electric::describe(world, e) {
+            lines.extend(l);
+            diag.extend(d);
+        }
         let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
         return Some((name, lines.join("\n"), diag));
     }
@@ -255,7 +259,11 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
     if own.is_empty() && !part.is_station() && !matches!(part, PartKind::Crate) {
         diag.push("Деталь ни с чем не соединена".into());
     }
-    lines.push("Целостность: нет данных (повреждения — этап G5)".into());
+    if let Some((l, d)) = crate::electric::describe(world, e) {
+        lines.extend(l);
+        diag.extend(d);
+    }
+    lines.push("Целостность: нет данных (повреждения — этап V5)".into());
     let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
     Some((kind_name(part), lines.join("\n"), diag))
 }

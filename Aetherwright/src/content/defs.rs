@@ -242,6 +242,19 @@ pub enum ItemUse {
     Wear(EquipSlot),
     /// Places a kinetic block (`kinetics.ron` key).
     Kinetic(String),
+    /// Lays wires between electric devices.
+    Wire(WireSpec),
+}
+
+/// Electric wire parameters (temporary balance).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WireSpec {
+    /// Max power through (energy units per second, "W").
+    pub capacity: f32,
+    /// Fraction of power lost per metre.
+    pub loss_per_m: f32,
+    /// Longest span (m).
+    pub max_len: f32,
 }
 
 /// A kinetic block type (`content/kinetics.ron`). Behaviour by `role`,

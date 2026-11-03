@@ -325,10 +325,10 @@ mod tests {
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(r.blocks.len(), 24);
         assert_eq!(r.textures.len(), 25);
-        assert_eq!(r.items.len(), 57);
+        assert_eq!(r.items.len(), 60);
         assert!(r.journal.len() >= 12);
-        assert_eq!(r.kinetics.len(), 9);
-        assert_eq!(r.recipes.len(), 37);
+        assert_eq!(r.kinetics.len(), 10);
+        assert_eq!(r.recipes.len(), 40);
         // Every kinetic item places a defined block and back.
         for k in &r.kinetics {
             assert!(r.items.iter().any(|i| i.key == k.item && i.use_ == ItemUse::Kinetic(k.key.clone())), "{}", k.key);

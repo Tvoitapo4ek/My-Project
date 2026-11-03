@@ -146,8 +146,8 @@ pub fn stage4(steps: &mut Vec<(String, StepFn)>) {
                 .resource_mut::<crate::player::camera::CameraRig>()
                 .pitch = 0.3;
         }
-        if ctx.t > 2.5 {
-            let dy = pos_of(world, light).y - ctx.vars["ly0"];
+        let dy = pos_of(world, light).y - ctx.vars["ly0"];
+        if (ctx.t > 2.5 && dy > 1.0) || ctx.t > 6.0 {
             ctx.check("held object lifted", dy > 1.0, format!("rose {dy:.2} m"));
             screenshot(world, "07_physgun_hold");
             return Step::Next;

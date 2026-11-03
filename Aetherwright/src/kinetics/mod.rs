@@ -24,7 +24,7 @@ use crate::{
     content::{KineticDef, registry},
     core::{events::Notify, layers::Layer, rules::ModeRules, states::gameplay_active},
     items::{ItemId, ItemStack, Use, drops::SpawnDrop, inventory::Inventory},
-    machinery::components::{Part, PartKind, PowerCell},
+    machinery::components::{Part, PartKind},
     physics::{
         joints::{Connection, JointKind},
         rigid_bodies::CollectProp,
@@ -271,39 +271,18 @@ fn track_consumers(
 }
 
 /// Source state: crank timers, motors' access to power.
-fn update_sources(
-    time: Res<Time>,
-    mut blocks: Query<(&mut KineticBlock, &GlobalTransform)>,
-    cells: Query<(&PowerCell, &GlobalTransform)>,
-    mut grid: ResMut<KineticGrid>,
-) {
+/// Crank timers (motors get their power state from `electric`).
+fn update_sources(time: Res<Time>, mut blocks: Query<&mut KineticBlock>, mut grid: ResMut<KineticGrid>) {
     let dt = time.delta_secs();
-    for (mut b, gt) in &mut blocks {
-        let role = b.def().map(|d| d.role);
-        match role {
-            Some(Role::Crank) => {
-                let was = b.crank > 0.0;
-                b.crank = (b.crank - dt).max(0.0);
-                if was != (b.crank > 0.0) {
-                    grid.dirty = true;
-                }
+    for mut b in &mut blocks {
+        if b.def().is_some_and(|d| d.role == Role::Crank) && b.crank > 0.0 {
+            b.crank = (b.crank - dt).max(0.0);
+            if b.crank == 0.0 {
+                grid.dirty = true;
             }
-            Some(Role::Motor) => {
-                let p = gt.translation();
-                let has = cells.iter().any(|(c, t)| c.energy > 0.5 && t.translation().distance(p) < MOTOR_CELL_RANGE);
-                if has != b.powered {
-                    b.powered = has;
-                    grid.dirty = true;
-                }
-            }
-            _ => {}
         }
     }
 }
-
-/// Motors take energy from a power cell within this distance (until V2
-/// brings wires and electric networks).
-pub const MOTOR_CELL_RANGE: f32 = 1.8;
 
 /// Builds the solver input from the world.
 pub fn build_nodes(
@@ -375,38 +354,6 @@ fn solve_networks(
         }
     }
     grid.solution = sol;
-}
-
-/// Motors use energy for the power they actually deliver.
-fn motor_energy(
-    time: Res<Time>,
-    grid: Res<KineticGrid>,
-    blocks: Query<(&KineticBlock, &GlobalTransform)>,
-    mut cells: Query<(&mut PowerCell, &GlobalTransform)>,
-) {
-    let dt = time.delta_secs();
-    for (b, gt) in &blocks {
-        let Some(def) = b.def().filter(|d| d.role == Role::Motor) else { continue };
-        if !(b.on && b.powered) {
-            continue;
-        }
-        let Some(&net) = grid.solution.net_of.get(&b.cell) else { continue };
-        let Some(info) = grid.solution.nets.get(net) else { continue };
-        if info.capacity <= 0.0 || info.factor == 0.0 {
-            continue;
-        }
-        let delivered = (info.demand * info.factor).min(info.capacity);
-        let share = def.source_power / info.capacity;
-        let need = delivered * share * def.energy_per_su * dt;
-        let p = gt.translation();
-        if let Some((mut c, _)) = cells
-            .iter_mut()
-            .filter(|(c, t)| c.energy > 0.5 && t.translation().distance(p) < MOTOR_CELL_RANGE)
-            .max_by(|a, b| a.0.energy.total_cmp(&b.0.energy))
-        {
-            c.energy = (c.energy - need).max(0.0);
-        }
-    }
 }
 
 fn spin_rotors(
@@ -690,7 +637,7 @@ pub fn describe_block(world: &World, e: Entity) -> Option<(String, Vec<String>, 
         Role::Motor => {
             lines.push(format!("Мотор: {} · {:.0} об/мин · {:.0} SU", if b.on { "вкл" } else { "выкл" }, b.rpm, def.source_power));
             if !b.powered {
-                diag.push("Нет энергии: поставьте заряженную энергоячейку вплотную".into());
+                diag.push("Нет электроэнергии: подключите мотор проводом к энергоячейке или генератору".into());
             }
         }
         Role::Crank => lines.push(if b.crank > 0.0 { format!("Крутится ещё {:.1} с", b.crank) } else { "Не крутится (ЛКМ в режиме «Механизмы»)".into() }),
@@ -767,7 +714,7 @@ impl Plugin for KineticsPlugin {
                 Update,
                 (
                     (track_blocks, track_consumers, mechanics_use, collect_blocks, update_sources, solve_networks).chain(),
-                    (motor_energy, spin_rotors, drive_bearings, overlay),
+                    (spin_rotors, drive_bearings, overlay),
                     place_blocks.run_if(gameplay_active),
                 )
                     .run_if(crate::core::states::in_game),

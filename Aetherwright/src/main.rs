@@ -11,6 +11,7 @@ mod content;
 mod core;
 mod crafting;
 mod creative;
+mod electric;
 mod holo;
 mod items;
 mod kinetics;

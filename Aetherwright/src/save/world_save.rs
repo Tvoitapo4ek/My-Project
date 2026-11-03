@@ -210,9 +210,22 @@ pub fn capture(world: &mut World) -> SaveFile {
         props,
         joints,
         drops,
-        extensions: capture_extensions(world),
+        extensions: {
+            world.insert_resource(SaveEntityIds(ids.clone()));
+            let ext = capture_extensions(world);
+            world.remove_resource::<SaveEntityIds>();
+            ext
+        },
     }
 }
+
+/// During capture: entity → prop id, so extensions can refer to bodies.
+#[derive(Resource, Default, Debug, Clone)]
+pub struct SaveEntityIds(pub HashMap<Entity, u32>);
+
+/// During restore: prop id → new entity.
+#[derive(Resource, Default, Debug, Clone)]
+pub struct LoadedEntityIds(pub HashMap<u32, Entity>);
 
 /// A module's piece of the save file (see `SaveFile::extensions`).
 #[derive(Clone, Copy)]
@@ -342,7 +355,6 @@ pub fn restore_entities(world: &mut World) {
         .resource_mut::<NextState<GameMode>>()
         .set(save.game_mode);
     world.resource_mut::<WorldClock>().time_of_day = save.time_of_day.rem_euclid(1.0);
-    restore_extensions(world, &save.extensions);
     world.resource_mut::<Gravity>().0 = Vec3::NEG_Y * save.gravity.clamp(0.0, 60.0);
     {
         let mut rig = world.resource_mut::<CameraRig>();
@@ -489,6 +501,10 @@ pub fn restore_entities(world: &mut World) {
         }
     }
     world.flush();
+    // Module data last: bodies, joints and the player exist by now.
+    world.insert_resource(LoadedEntityIds(entities.clone()));
+    restore_extensions(world, &save.extensions);
+    world.remove_resource::<LoadedEntityIds>();
     for d in &save.drops {
         if let Some(stack) = ItemStack::from_saved(&d.item) {
             world.write_message(SpawnDrop {

@@ -52,7 +52,7 @@ pub fn stage_v1(steps: &mut Vec<(String, StepFn)>) {
             let a = assets_ref(world).unwrap();
             let parts = world.remove_resource::<PartAssets>().unwrap();
             let mut c = world.commands();
-            spawn_kinetic(&mut c, &a, "electric_motor", b, Axis::X);
+            let motor = spawn_kinetic(&mut c, &a, "electric_motor", b, Axis::X).unwrap();
             spawn_kinetic(&mut c, &a, "shaft", b + IVec3::X, Axis::X);
             spawn_kinetic(&mut c, &a, "clutch", b + IVec3::X * 2, Axis::X);
             spawn_kinetic(&mut c, &a, "cogwheel", b + IVec3::X * 3, Axis::X);
@@ -60,6 +60,8 @@ pub fn stage_v1(steps: &mut Vec<(String, StepFn)>) {
             spawn_kinetic(&mut c, &a, "shaft", b + IVec3::new(4, 1, 0), Axis::X);
             let g = spawn_part(&mut c, &parts, PartKind::Grinder, Transform::from_translation((b + IVec3::new(5, 1, 0)).as_vec3() + Vec3::splat(0.5)));
             let cell = spawn_part(&mut c, &parts, PartKind::PowerCell, Transform::from_translation(b.as_vec3() + Vec3::new(0.5, 0.6, 1.5)));
+            // The motor takes power through a wire (V2 electric network).
+            crate::electric::spawn_wire(&mut c, motor, cell, "copper_wire");
             world.flush();
             world.insert_resource(parts);
             ctx.entities.insert("v1_grinder".into(), g);

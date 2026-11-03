@@ -40,4 +40,9 @@
     (station: Hand, inputs: [("planks", 3), ("drive_shaft", 1)], output: ("hand_crank", 1), time: 1.0),
     (station: Workbench, inputs: [("metal", 4), ("copper", 4), ("drive_shaft", 1)], output: ("electric_motor", 1), time: 1.0),
     (station: Workbench, inputs: [("metal", 3), ("drive_shaft", 1)], output: ("bearing", 1), time: 1.0),
+
+    // Электросеть (V2)
+    (station: Hand, inputs: [("copper", 1)], output: ("copper_wire", 4), time: 0.0),
+    (station: Workbench, inputs: [("copper", 2), ("metal", 1)], output: ("power_cable", 4), time: 1.0),
+    (station: Workbench, inputs: [("metal", 3), ("copper", 4), ("drive_shaft", 1)], output: ("electric_generator", 1), time: 1.0),
 ]

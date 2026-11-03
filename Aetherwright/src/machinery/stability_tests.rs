@@ -31,7 +31,7 @@ fn app() -> App {
     .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
         std::time::Duration::from_secs_f64(1.0 / 60.0),
     ))
-    .add_plugins((super::power::PowerPlugin, super::engines::EnginesPlugin))
+    .add_plugins((super::power::PowerPlugin, super::engines::EnginesPlugin, crate::electric::ElectricCorePlugin))
     .configure_sets(
         FixedUpdate,
         (super::MachinerySet::Power, super::MachinerySet::Drive).chain(),

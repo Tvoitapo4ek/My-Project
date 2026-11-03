@@ -14,8 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::energy::{AetherKind, sample_field};
 use crate::{
-    machinery::components::{AetherDynamo, Part, PartKind, PowerCell},
-    physics::joints::Connection,
+    machinery::components::{AetherDynamo, Part, PartKind},
     world::{WorldReady, chunks::VoxelWorld, interaction::BlockChanged, voxel::BlockId},
 };
 
@@ -122,9 +121,6 @@ fn transfer(
     mut links: ResMut<AetherLinks>,
     mut jars: Query<(Entity, &Position, &mut AetherStore)>,
     mut dynamos: Query<(Entity, &Position, &mut AetherDynamo)>,
-    joints: Query<&Connection>,
-    parts: Query<Entity, With<Part>>,
-    mut cells: Query<&mut PowerCell>,
 ) {
     let dt = time.delta_secs();
     links.0.clear();
@@ -152,10 +148,7 @@ fn transfer(
             }
         }
     }
-    // Dynamos: aether → energy into their network's cells.
-    let all_parts: Vec<Entity> = parts.iter().collect();
-    let pairs: Vec<(Entity, Entity)> = joints.iter().map(|c| (c.a, c.b)).collect();
-    let nets = crate::machinery::power::networks(&all_parts, &pairs);
+    // Dynamos: aether → energy (handed to the electric network).
     for (d, dp, mut dynamo) in &mut dynamos {
         let mut produced = 0.0;
         for (j, jp, _) in &list {
@@ -170,26 +163,8 @@ fn transfer(
             }
         }
         dynamo.output = produced / dt.max(1e-4);
-        if produced <= 0.0 {
-            continue;
-        }
-        let Some(di) = all_parts.iter().position(|e| *e == d) else {
-            continue;
-        };
-        let my_net = nets[di];
-        let mut targets: Vec<Entity> = all_parts
-            .iter()
-            .zip(&nets)
-            .filter(|(_, n)| **n == my_net)
-            .map(|(e, _)| *e)
-            .collect();
-        targets.retain(|e| cells.get(*e).is_ok_and(|c| c.energy < c.capacity));
-        let share = produced / targets.len().max(1) as f32;
-        for e in targets {
-            if let Ok(mut c) = cells.get_mut(e) {
-                c.energy = (c.energy + share).min(c.capacity);
-            }
-        }
+        // The electric network takes it from the buffer (`electric`).
+        dynamo.buffer = (dynamo.buffer + produced).min(crate::machinery::components::DYNAMO_BUFFER);
     }
 }
 

@@ -73,6 +73,7 @@ pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
         crate::models::ModelsPlugin,
         crate::holo::HoloPlugin,
         crate::kinetics::KineticsPlugin,
+        crate::electric::ElectricPlugin,
     ));
 
     app

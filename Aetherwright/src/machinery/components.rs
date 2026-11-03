@@ -163,7 +163,14 @@ pub struct AetherDynamo {
     /// Energy produced last second (UI).
     #[serde(skip)]
     pub output: f32,
+    /// Produced energy waiting to be taken by the electric network
+    /// (small: the dynamo has no real storage).
+    #[serde(skip)]
+    pub buffer: f32,
 }
+
+/// Max energy a dynamo holds before production is wasted.
+pub const DYNAMO_BUFFER: f32 = 8.0;
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Gear {

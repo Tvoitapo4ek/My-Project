@@ -31,10 +31,14 @@ fn use_mechanics(
     stats: Res<PowerStats>,
     mut open: MessageWriter<OpenStation>,
     mut notify: MessageWriter<Notify>,
+    kinetic: Query<(), With<crate::kinetics::KineticBlock>>,
 ) {
     for u in reader.read() {
         let Ok(part) = parts.get(u.entity) else {
-            notify.write(Notify::warn("Это не механизм"));
+            // Kinetic blocks answer in `kinetics::mechanics_use`.
+            if !kinetic.contains(u.entity) {
+                notify.write(Notify::warn("Это не механизм"));
+            }
             continue;
         };
         match part.kind {
