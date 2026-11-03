@@ -337,11 +337,13 @@ fn load_texture(def: &TextureDef, index: u16) -> (Image, Option<(PathBuf, System
 fn material_for(def: &TextureDef, image: Handle<Image>) -> StandardMaterial {
     let (er, eg, eb) = def.emissive;
     StandardMaterial {
-        base_color_texture: Some(image),
+        base_color_texture: Some(image.clone()),
         perceptual_roughness: def.roughness,
         metallic: def.metallic,
         reflectance: def.reflectance,
         emissive: LinearRgba::rgb(er, eg, eb),
+        // Glow follows the picture: bright crystal pixels glow, rock doesn't.
+        emissive_texture: (er + eg + eb > 0.0).then(|| image.clone()),
         alpha_mode: match def.alpha {
             AlphaKind::Opaque => AlphaMode::Opaque,
             AlphaKind::Blend => AlphaMode::Blend,

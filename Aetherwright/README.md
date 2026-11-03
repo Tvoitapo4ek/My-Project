@@ -91,3 +91,7 @@ C копировать, X вырезать, Delete удалить, T повер�
 ## Системы машин
 
 Кинетика — `docs/KINETICS.md`, электросеть — `docs/ELECTRIC.md`, магический конвейер — `docs/ARCANA.md`, логика — `docs/LOGIC.md`, износ и ремонт — `docs/WEAR.md`, интерфейс — `docs/HOLO_UI.md`.
+
+## Стиль
+
+Правила — `docs/STYLE_GUIDE.md`. Витрина: `cargo run -- --showcase --screenshots shots`. Текстуры генерируются `python3 tools/texgen/texgen.py`.

@@ -23,6 +23,7 @@ mod models;
 mod physics;
 mod player;
 mod save;
+mod style;
 mod survival;
 mod tools;
 mod ui;

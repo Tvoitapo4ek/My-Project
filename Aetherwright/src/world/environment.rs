@@ -64,11 +64,12 @@ fn update_environment(
             Color::srgb(0.55, 0.65, 0.95)
         };
     }
-    ambient.color = lerp_color(Vec3::new(0.30, 0.36, 0.62), Vec3::new(0.78, 0.85, 1.0), day);
-    ambient.brightness = 120.0 + day * 700.0;
+    // Style: bright, slightly warm daylight with a blue sky fill.
+    ambient.color = lerp_color(Vec3::new(0.30, 0.34, 0.62), Vec3::new(0.80, 0.86, 1.0), day);
+    ambient.brightness = 140.0 + day * 820.0;
 
-    let night_sky = Vec3::new(0.03, 0.04, 0.09);
-    let day_sky = Vec3::new(0.55, 0.70, 0.86);
+    let night_sky = Vec3::new(0.03, 0.04, 0.10);
+    let day_sky = Vec3::new(0.45, 0.70, 0.95);
     let dusk = Vec3::new(0.85, 0.55, 0.42);
     let sky = night_sky.lerp(day_sky, day).lerp(dusk, warm * day * 0.6);
     clear.0 = Color::srgb(sky.x, sky.y, sky.z);

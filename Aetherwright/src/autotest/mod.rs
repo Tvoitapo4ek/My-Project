@@ -22,6 +22,7 @@ pub mod scenario_v2;
 pub mod scenario_v3;
 pub mod scenario_v4;
 pub mod scenario_v5;
+pub mod showcase;
 
 use bevy::{
     prelude::*,
@@ -150,7 +151,8 @@ impl Plugin for AutotestPlugin {
         if !enabled {
             return;
         }
-        app.insert_resource(scenario::build())
+        let showcase = app.world().resource::<LaunchOptions>().showcase;
+        app.insert_resource(if showcase { showcase::build() } else { scenario::build() })
             .add_systems(PreUpdate, run_scenario.after(bevy::input::InputSystems));
     }
 }

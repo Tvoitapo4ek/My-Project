@@ -50,7 +50,7 @@ pub fn stage_t2(steps: &mut Vec<(String, StepFn)>) {
             let (w, h, n) = (ed.width, ed.height, ed.pixels.len());
             ctx.check(
                 "editor loaded the texture",
-                w == 16 && h == 16 && n == 256,
+                w == h && w >= 16 && n == (w * h) as usize,
                 format!("{w}×{h}, {n} px"),
             );
             screenshot(world, "22_texture_editor");

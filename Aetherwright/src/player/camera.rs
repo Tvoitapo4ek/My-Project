@@ -66,7 +66,11 @@ fn spawn_camera(mut commands: Commands, cfg: Res<GameConfig>, mut rig: ResMut<Ca
             far: 600.0,
             ..default()
         }),
-        Tonemapping::AcesFitted,
+        // Style: saturated colours (TonyMcMapface keeps hues), HDR + soft
+        // bloom so magic and emissive parts glow (docs/STYLE_GUIDE.md).
+        Tonemapping::TonyMcMapface,
+        bevy::camera::Hdr,
+        bevy::post_process::bloom::Bloom { intensity: 0.2, ..bevy::post_process::bloom::Bloom::NATURAL },
         Transform::from_xyz(0.0, 20.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
         // Fog values are animated by the environment (day/night).
         DistanceFog {

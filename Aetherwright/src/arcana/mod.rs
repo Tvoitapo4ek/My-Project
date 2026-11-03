@@ -699,17 +699,96 @@ fn restore(world: &mut World, v: Option<&serde_json::Value>) {
     world.flush();
 }
 
+/// A spark rising from a magical device (purely visual).
+#[derive(Component)]
+struct Spark {
+    vel: Vec3,
+    life: f32,
+}
+
+#[derive(Resource)]
+struct SparkAssets {
+    mesh: Handle<Mesh>,
+    by_kind: Vec<Handle<StandardMaterial>>,
+}
+
+/// Upper bound on live sparks (cheap even on weak GPUs).
+const MAX_SPARKS: usize = 240;
+
+fn setup_sparks(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mats: ResMut<Assets<StandardMaterial>>) {
+    let by_kind = AetherKind::ALL
+        .iter()
+        .map(|k| {
+            let [r, g, b] = k.rgb();
+            mats.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(r * 4.0, g * 4.0, b * 4.0)), unlit: true, ..default() })
+        })
+        .collect();
+    commands.insert_resource(SparkAssets { mesh: meshes.add(Cuboid::new(0.05, 0.05, 0.05)), by_kind });
+}
+
+fn sparks(
+    mut commands: Commands,
+    time: Res<Time>,
+    assets: Option<Res<SparkAssets>>,
+    devices: Query<(&MagicNode, &GlobalTransform)>,
+    mut live: Query<(Entity, &mut Spark, &mut Transform)>,
+    mut acc: Local<f32>,
+) {
+    let Some(a) = assets else { return };
+    let dt = time.delta_secs();
+    let mut count = 0;
+    for (e, mut s, mut t) in &mut live {
+        s.life -= dt;
+        if s.life <= 0.0 {
+            commands.entity(e).despawn();
+            continue;
+        }
+        count += 1;
+        t.translation += s.vel * dt;
+        s.vel.y += 0.15 * dt;
+        t.scale = Vec3::splat((s.life / 1.6).clamp(0.0, 1.0));
+    }
+    *acc += dt;
+    if *acc < 0.1 {
+        return;
+    }
+    *acc = 0.0;
+    let seed = (time.elapsed_secs() * 1000.0) as u32;
+    for (i, (n, gt)) in devices.iter().enumerate() {
+        let Some(def) = n.def() else { continue };
+        let fill = n.amount / def.capacity.max(1e-3);
+        if fill < 0.05 || count >= MAX_SPARKS {
+            continue;
+        }
+        // Pseudo-random from time and index (no RNG dependency).
+        let h = |k: u32| ((seed.wrapping_mul(2654435761).wrapping_add(i as u32 * 97 + k * 31)) % 1000) as f32 / 1000.0;
+        if h(0) > 0.25 + fill * 0.5 {
+            continue;
+        }
+        let p = gt.translation() + Vec3::new(h(1) - 0.5, 0.3 + h(2) * 0.3, h(3) - 0.5) * 0.7;
+        let kind = AetherKind::ALL.iter().position(|k| *k == n.quality.kind).unwrap_or(0);
+        commands.spawn((
+            Spark { vel: Vec3::new(h(4) - 0.5, 0.4 + h(5) * 0.4, h(6) - 0.5) * 0.4, life: 1.0 + h(7) * 0.8 },
+            Mesh3d(a.mesh.clone()),
+            MeshMaterial3d(a.by_kind[kind].clone()),
+            Transform::from_translation(p),
+            NotShadowCaster,
+        ));
+        count += 1;
+    }
+}
+
 pub struct ArcanaPlugin;
 
 impl Plugin for ArcanaPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Resonance>()
             .init_resource::<LinkTool>()
-            .add_systems(Startup, setup_assets)
+            .add_systems(Startup, (setup_assets, setup_sparks))
             .add_save_hook(SaveHook { key: "arcana", capture, restore })
             .add_systems(
                 Update,
-                (attach_nodes, check_sight, draw_links, mechanics_runes, collect_runes).run_if(crate::core::states::in_game),
+                (attach_nodes, check_sight, draw_links, mechanics_runes, collect_runes, sparks).run_if(crate::core::states::in_game),
             )
             .add_systems(Update, (link_tool, rune_tool).run_if(gameplay_active))
             .add_systems(

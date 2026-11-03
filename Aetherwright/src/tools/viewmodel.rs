@@ -30,26 +30,29 @@ fn spawn_viewmodel(
     camera: Query<Entity, Added<MainCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    style: Option<Res<crate::style::StyleMaterials>>,
 ) {
     let Ok(cam) = camera.single() else { return };
-    let body = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.34, 0.38),
-        metallic: 0.6,
-        perceptual_roughness: 0.45,
-        ..default()
-    });
-    let brass = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.72, 0.56, 0.3),
-        metallic: 0.8,
-        perceptual_roughness: 0.35,
-        ..default()
-    });
+    let Some(style) = style else { return };
+    // Style: a chunky Create-like tool — brass body, andesite barrel,
+    // copper bands, wooden grip and a glowing crystal core.
     let core = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.3, 0.9, 1.0),
-        emissive: LinearRgba::rgb(0.6, 3.0, 4.0),
+        base_color: Color::LinearRgba(LinearRgba::rgb(1.2, 3.6, 4.8)),
+        unlit: true,
         ..default()
     });
     commands.insert_resource(CoreMaterial(core.clone()));
+    let mut boxed = |size: Vec3| meshes.add(crate::style::pixel_box(size));
+    let parts = [
+        (Vec3::new(0.15, 0.13, 0.32), "brass_casing", Vec3::ZERO),
+        (Vec3::new(0.08, 0.08, 0.26), "andesite", Vec3::new(0.0, 0.02, -0.27)),
+        (Vec3::new(0.11, 0.11, 0.04), "copper", Vec3::new(0.0, 0.02, -0.2)),
+        (Vec3::new(0.11, 0.11, 0.04), "copper", Vec3::new(0.0, 0.02, -0.33)),
+        (Vec3::new(0.08, 0.16, 0.09), "cogwood", Vec3::new(0.0, -0.12, 0.07)),
+        (Vec3::new(0.1, 0.04, 0.1), "gold_trim", Vec3::new(0.0, 0.085, 0.03)),
+    ];
+    let meshes_mats: Vec<_> = parts.iter().map(|(sz, m, at)| (boxed(*sz), style.get(m), *at)).collect();
+    let core_mesh = boxed(Vec3::splat(0.07));
     let vm = commands
         .spawn((
             ViewModel,
@@ -57,31 +60,14 @@ fn spawn_viewmodel(
             Visibility::default(),
         ))
         .with_children(|p| {
-            // Housing, barrel, brass rings and an exposed energy core.
-            p.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.14, 0.13, 0.34))),
-                MeshMaterial3d(body.clone()),
-                Transform::default(),
-            ));
-            p.spawn((
-                Mesh3d(meshes.add(Cylinder::new(0.035, 0.22))),
-                MeshMaterial3d(body),
-                Transform::from_xyz(0.0, 0.02, -0.25)
-                    .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-            ));
-            for z in [-0.2, -0.3] {
-                p.spawn((
-                    Mesh3d(meshes.add(Torus::new(0.035, 0.055))),
-                    MeshMaterial3d(brass.clone()),
-                    Transform::from_xyz(0.0, 0.02, z)
-                        .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-                ));
+            for (mesh, mat, at) in meshes_mats {
+                p.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_translation(at)));
             }
             p.spawn((
                 ViewCore,
-                Mesh3d(meshes.add(Sphere::new(0.045).mesh().ico(2).unwrap())),
+                Mesh3d(core_mesh),
                 MeshMaterial3d(core),
-                Transform::from_xyz(0.0, 0.085, 0.03),
+                Transform::from_xyz(0.0, 0.13, 0.03).with_rotation(Quat::from_rotation_y(0.78)),
             ));
         })
         .id();
@@ -108,11 +94,13 @@ fn update_viewmodel(
         ActiveTool::Melee | ActiveTool::Ranged => Color::srgb(1.0, 0.35, 0.3),
         _ => ManipulatorMode::Mine.color(),
     };
+    // Unlit HDR colour (blooms); touch the asset only when it changes.
+    let want = Color::LinearRgba(color.to_linear() * 3.0);
     if let Some(core) = core
+        && materials.get(&core.0).is_some_and(|m| m.base_color != want)
         && let Some(mut m) = materials.get_mut(&core.0)
     {
-        m.base_color = color;
-        m.emissive = color.to_linear() * 3.5;
+        m.base_color = want;
     }
     for (mut t, mut vis) in &mut vm {
         *vis = if rig.mode == CameraMode::FirstPerson {

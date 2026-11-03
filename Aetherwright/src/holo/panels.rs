@@ -264,6 +264,8 @@ fn spawn_panels(
             ..default()
         },
         Tonemapping::None,
+        // Same HDR setting as the world camera it is drawn over.
+        bevy::camera::Hdr,
         layer,
         Transform::default(),
     ));

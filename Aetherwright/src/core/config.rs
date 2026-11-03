@@ -276,6 +276,9 @@ pub struct LaunchOptions {
     pub screenshot_dir: Option<String>,
     /// Start in creative mode.
     pub creative: bool,
+    /// Style showcase: build a gallery of blocks and machines, take
+    /// screenshots and exit (`--showcase`).
+    pub showcase: bool,
 }
 
 impl LaunchOptions {
@@ -285,6 +288,10 @@ impl LaunchOptions {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--autotest" => opts.autotest = true,
+                "--showcase" => {
+                    opts.autotest = true;
+                    opts.showcase = true;
+                }
                 "--creative" => opts.creative = true,
                 "--screenshots" => opts.screenshot_dir = args.next(),
                 "--export-textures" => {}

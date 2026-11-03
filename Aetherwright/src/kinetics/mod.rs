@@ -106,54 +106,244 @@ fn axis_rotation(axis: Axis) -> Quat {
     Quat::from_rotation_arc(Vec3::Y, axis.unit().as_vec3())
 }
 
+/// What a model part looks like.
+#[derive(Clone, Copy, Debug)]
+pub enum Shape {
+    Box(Vec3),
+    Sphere(f32),
+    /// minor, major radius (ring lying in XZ).
+    Ring(f32, f32),
+}
+
+/// Which layer of the model a part belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Layer3 {
+    /// Fixed housing.
+    Housing,
+    /// Turns with the shaft (about local Y).
+    Rotor,
+    /// Glowing core: logic shows its output with it.
+    Core,
+    /// Magic: floats up and down.
+    Float,
+    /// Magic: spins slowly on its own.
+    Spin,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ModelPart {
+    pub shape: Shape,
+    pub mat: &'static str,
+    pub at: Vec3,
+    pub rot: Quat,
+    pub layer: Layer3,
+}
+
+fn part(shape: Shape, mat: &'static str, at: Vec3, layer: Layer3) -> ModelPart {
+    ModelPart { shape, mat, at, rot: Quat::IDENTITY, layer }
+}
+
+fn bx(x: f32, y: f32, z: f32) -> Shape {
+    Shape::Box(Vec3::new(x, y, z))
+}
+
+/// The model of a block (local Y = block axis). The style lives here:
+/// andesite / brass / copper / wood machines, rune-stone and gold magic.
+pub fn model(key: &str, role: Role) -> Vec<ModelPart> {
+    use Layer3::*;
+    let shaft = part(bx(0.22, 1.0, 0.22), "shaft", Vec3::ZERO, Rotor);
+    let y = |v: f32| Vec3::new(0.0, v, 0.0);
+    let reg = registry();
+    if let Some(m) = reg.magic(key) {
+        // Thaumcraft-like pedestal: rune stone, gold trim, a floating focus.
+        let mut v = vec![
+            part(bx(0.9, 0.24, 0.9), "arcane_stone", y(-0.38), Housing),
+            part(bx(0.94, 0.07, 0.94), "gold_trim", y(-0.23), Housing),
+        ];
+        use crate::content::MagicRole as R;
+        match m.role {
+            R::Collector => {
+                v.push(part(bx(0.5, 0.42, 0.5), "arcane_rune", y(-0.0), Housing));
+                v.push(part(bx(0.6, 0.06, 0.6), "gold_trim", y(0.22), Housing));
+                v.push(part(Shape::Sphere(0.14), "glow_cyan", y(0.4), Float));
+                v.push(part(Shape::Sphere(0.24), "halo_cyan", y(0.4), Float));
+            }
+            R::Accumulator => {
+                v.push(part(bx(0.58, 0.06, 0.58), "gold_trim", y(-0.17), Housing));
+                v.push(part(bx(0.5, 0.56, 0.5), "crystal", y(0.13), Housing));
+                v.push(part(bx(0.34, 0.4, 0.34), "glow_violet", y(0.11), Core));
+                v.push(part(bx(0.58, 0.07, 0.58), "gold_trim", y(0.44), Housing));
+            }
+            R::Stabilizer => {
+                v.push(part(bx(0.46, 0.36, 0.46), "arcane_rune", y(-0.03), Housing));
+                v.push(part(Shape::Sphere(0.12), "glow_green", y(0.36), Float));
+                v.push(part(Shape::Ring(0.025, 0.28), "gold_trim", y(0.36), Spin));
+                let mut r2 = part(Shape::Ring(0.022, 0.22), "gold_trim", y(0.36), Spin);
+                r2.rot = Quat::from_rotation_x(1.2);
+                v.push(r2);
+            }
+            R::Filter => {
+                v.push(part(bx(0.46, 0.2, 0.46), "arcane_stone", y(-0.1), Housing));
+                for (x, z) in [(-0.22, -0.22), (0.22, -0.22), (-0.22, 0.22), (0.22, 0.22)] {
+                    v.push(part(bx(0.07, 0.6, 0.07), "gold_trim", Vec3::new(x, 0.2, z), Housing));
+                }
+                v.push(part(bx(0.38, 0.5, 0.06), "crystal", y(0.2), Housing));
+                v.push(part(bx(0.06, 0.5, 0.38), "crystal", y(0.2), Housing));
+            }
+            R::Transmitter | R::Receiver => {
+                let glow = if m.role == R::Transmitter { "glow_violet" } else { "glow_cyan" };
+                v.push(part(bx(0.4, 0.3, 0.4), "arcane_rune", y(-0.05), Housing));
+                v.push(part(bx(0.08, 0.5, 0.08), "gold_trim", y(0.3), Housing));
+                v.push(part(bx(0.16, 0.24, 0.16), glow, y(0.5), Float));
+                v.push(part(Shape::Ring(0.02, 0.2), "gold_trim", y(0.42), Spin));
+            }
+            R::Engine => {
+                v = vec![
+                    part(bx(0.9, 0.5, 0.9), "arcane_stone", y(-0.2), Housing),
+                    part(bx(0.94, 0.08, 0.94), "gold_trim", y(0.05), Housing),
+                    part(bx(0.6, 0.22, 0.6), "arcane_rune", y(0.2), Housing),
+                    part(Shape::Sphere(0.12), "glow_violet", y(0.0), Core),
+                    shaft,
+                ];
+                // The core sits inside a crystal window on the side.
+                v.push(part(bx(0.3, 0.3, 0.92), "crystal", y(-0.15), Housing));
+            }
+        }
+        return v;
+    }
+    if let Some(l) = reg.logic(key) {
+        // Create-like logic: andesite base, brass/copper body, indicator.
+        use crate::logic::circuit::Element as E;
+        let body = match l.element {
+            E::Sensor(_) => "copper_casing",
+            E::Controller | E::Transmitter | E::Receiver => "brass_casing",
+            _ => "andesite_casing",
+        };
+        let mut v = vec![
+            part(bx(0.94, 0.18, 0.94), "andesite_casing", y(-0.41), Housing),
+            part(bx(0.64, 0.34, 0.64), body, y(-0.15), Housing),
+            part(bx(0.3, 0.12, 0.3), "glow_green", y(0.08), Core),
+        ];
+        match l.element {
+            E::Sensor(_) => v.push(part(bx(0.22, 0.22, 0.08), "crystal", Vec3::new(0.0, -0.15, 0.35), Housing)),
+            E::Lamp => v.push(part(bx(0.44, 0.44, 0.44), "glow_amber", y(0.22), Core)),
+            E::Lever => v.push(part(bx(0.08, 0.4, 0.08), "cogwood", Vec3::new(0.0, 0.2, 0.0), Housing)),
+            E::Button => v.push(part(bx(0.24, 0.1, 0.24), "brass", y(0.06), Housing)),
+            E::Transmitter | E::Receiver => v.push(part(bx(0.06, 0.5, 0.06), "copper", Vec3::new(0.2, 0.25, 0.2), Housing)),
+            _ => {}
+        }
+        return v;
+    }
+    let cog = |radius: f32, teeth: usize, disk: f32| -> Vec<ModelPart> {
+        let mut v = vec![
+            part(bx(disk, 0.2, disk), "cogwood", Vec3::ZERO, Rotor),
+            ModelPart { rot: Quat::from_rotation_y(std::f32::consts::FRAC_PI_4), ..part(bx(disk, 0.2, disk), "cogwood", Vec3::ZERO, Rotor) },
+            part(bx(0.34, 0.3, 0.34), "andesite", Vec3::ZERO, Rotor),
+            shaft,
+        ];
+        for i in 0..teeth {
+            let a = i as f32 / teeth as f32 * std::f32::consts::TAU;
+            v.push(ModelPart {
+                rot: Quat::from_rotation_y(-a),
+                ..part(bx(0.24, 0.26, 0.22), "cogwood", Vec3::new(a.cos() * radius, 0.0, a.sin() * radius), Rotor)
+            });
+        }
+        v
+    };
+    match role {
+        Role::Shaft => vec![shaft],
+        Role::Cog => cog(0.4, 8, 0.6),
+        Role::LargeCog => cog(0.86, 16, 1.36),
+        Role::Gearbox => vec![part(bx(0.98, 0.98, 0.98), "andesite_casing", Vec3::ZERO, Housing)],
+        Role::Clutch | Role::Gearshift => vec![
+            part(bx(0.86, 0.6, 0.86), if role == Role::Clutch { "andesite_casing" } else { "brass_casing" }, Vec3::ZERO, Housing),
+            part(bx(0.9, 0.12, 0.9), if role == Role::Clutch { "brass" } else { "copper" }, Vec3::ZERO, Housing),
+            shaft,
+        ],
+        Role::Crank => vec![
+            part(bx(0.9, 0.4, 0.9), "andesite_casing", y(-0.3), Housing),
+            part(bx(0.2, 0.5, 0.2), "shaft", y(0.1), Rotor),
+            part(bx(0.52, 0.12, 0.16), "cogwood", Vec3::new(0.18, 0.36, 0.0), Rotor),
+            part(bx(0.12, 0.26, 0.12), "cogwood", Vec3::new(0.4, 0.46, 0.0), Rotor),
+        ],
+        Role::Motor => vec![
+            part(bx(0.92, 0.5, 0.92), "copper_casing", y(-0.22), Housing),
+            part(bx(0.74, 0.12, 0.74), "brass", y(0.08), Housing),
+            part(bx(0.6, 0.12, 0.6), "andesite", y(0.2), Housing),
+            shaft,
+        ],
+        Role::Consumer => vec![
+            part(bx(0.9, 0.66, 0.9), "copper_casing", Vec3::ZERO, Housing),
+            part(bx(0.96, 0.1, 0.96), "brass", y(0.2), Housing),
+            part(bx(0.96, 0.1, 0.96), "brass", y(-0.2), Housing),
+            part(bx(0.3, 0.1, 0.3), "glow_amber", y(0.38), Core),
+            shaft,
+        ],
+        Role::Bearing => vec![
+            part(bx(0.98, 0.6, 0.98), "andesite_casing", y(-0.2), Housing),
+            part(bx(0.86, 0.14, 0.86), "cogwood", y(0.38), Rotor),
+            part(bx(0.3, 0.1, 0.3), "andesite", y(0.48), Rotor),
+        ],
+        Role::Static => vec![part(bx(0.8, 0.8, 0.8), "andesite_casing", Vec3::ZERO, Housing)],
+    }
+}
+
 #[derive(Resource, Clone)]
 struct KineticAssets {
-    shaft: Handle<Mesh>,
-    cog: Handle<Mesh>,
-    tooth: Handle<Mesh>,
-    large_cog: Handle<Mesh>,
-    casing: Handle<Mesh>,
-    plate: Handle<Mesh>,
-    handle: Handle<Mesh>,
-    andesite: Handle<StandardMaterial>,
-    wood: Handle<StandardMaterial>,
-    brass: Handle<StandardMaterial>,
-    copper: Handle<StandardMaterial>,
-    glow: Handle<StandardMaterial>,
-    /// Tinted housings by colour (built at startup for every item colour).
-    tints: Vec<(Color, Handle<StandardMaterial>)>,
+    meshes: HashMap<String, Handle<Mesh>>,
+    mats: HashMap<&'static str, Handle<StandardMaterial>>,
 }
 
-fn tinted(a: &KineticAssets, c: Color) -> Handle<StandardMaterial> {
-    a.tints.iter().find(|(k, _)| *k == c).map(|(_, h)| h.clone()).unwrap_or_else(|| a.andesite.clone())
+fn shape_key(s: &Shape) -> String {
+    match s {
+        Shape::Box(v) => format!("b{:.3},{:.3},{:.3}", v.x, v.y, v.z),
+        Shape::Sphere(r) => format!("s{r:.3}"),
+        Shape::Ring(a, b) => format!("r{a:.3},{b:.3}"),
+    }
 }
 
-fn setup_assets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mats: ResMut<Assets<StandardMaterial>>) {
-    let mat = |m: &mut Assets<StandardMaterial>, c: Color, metal: f32| {
-        m.add(StandardMaterial { base_color: c, metallic: metal, perceptual_roughness: 0.55, ..default() })
+fn setup_assets(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+    style: Res<crate::style::StyleMaterials>,
+) {
+    let mut kit = KineticAssets { meshes: HashMap::new(), mats: style.mats.clone() };
+    // Unlit materials output their base colour: HDR values above 1 bloom.
+    let glow = |m: &mut Assets<StandardMaterial>, c: LinearRgba| {
+        m.add(StandardMaterial { base_color: Color::LinearRgba(c * 3.5), unlit: true, ..default() })
     };
-    commands.insert_resource(KineticAssets {
-        shaft: meshes.add(Cylinder::new(0.11, 1.0)),
-        cog: meshes.add(Cylinder::new(0.4, 0.22)),
-        tooth: meshes.add(Cuboid::new(0.14, 0.22, 0.14)),
-        large_cog: meshes.add(Cylinder::new(0.88, 0.22)),
-        casing: meshes.add(Cuboid::new(0.84, 0.84, 0.84)),
-        plate: meshes.add(Cylinder::new(0.4, 0.12)),
-        handle: meshes.add(Cuboid::new(0.12, 0.12, 0.5)),
-        andesite: mat(&mut mats, Color::srgb(0.58, 0.6, 0.57), 0.1),
-        wood: mat(&mut mats, Color::srgb(0.45, 0.32, 0.2), 0.0),
-        brass: mat(&mut mats, Color::srgb(0.86, 0.66, 0.3), 0.8),
-        copper: mat(&mut mats, Color::srgb(0.78, 0.44, 0.28), 0.7),
-        glow: mats.add(StandardMaterial { base_color: Color::srgb(0.8, 0.6, 1.0), emissive: LinearRgba::rgb(2.0, 1.2, 4.0), ..default() }),
-        tints: registry()
-            .kinetics
-            .iter()
-            .filter(|k| k.role == Role::Static)
-            .filter_map(|k| ItemId::from_key(&k.item).map(|i| i.color()))
-            .map(|c| (c, mats.add(StandardMaterial { base_color: c, metallic: 0.3, perceptual_roughness: 0.45, ..default() })))
-            .collect(),
-    });
+    let halo = |m: &mut Assets<StandardMaterial>, c: Color| {
+        let l = LinearRgba::from(c);
+        m.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::new(l.red * 2.0, l.green * 2.0, l.blue * 2.0, l.alpha)), alpha_mode: AlphaMode::Add, unlit: true, ..default() })
+    };
+    kit.mats.insert("glow_cyan", glow(&mut mats, LinearRgba::rgb(0.35, 0.9, 1.2)));
+    kit.mats.insert("glow_violet", glow(&mut mats, LinearRgba::rgb(0.8, 0.35, 1.2)));
+    kit.mats.insert("glow_green", glow(&mut mats, LinearRgba::rgb(0.35, 1.2, 0.5)));
+    kit.mats.insert("glow_amber", glow(&mut mats, LinearRgba::rgb(1.2, 0.7, 0.2)));
+    kit.mats.insert("halo_cyan", halo(&mut mats, Color::srgba(0.3, 0.8, 1.0, 0.18)));
+    for k in &registry().kinetics {
+        for p in model(&k.key, k.role) {
+            kit.meshes.entry(shape_key(&p.shape)).or_insert_with(|| match p.shape {
+                Shape::Box(v) => meshes.add(crate::style::pixel_box(v)),
+                Shape::Sphere(r) => meshes.add(Sphere::new(r).mesh().ico(2).unwrap()),
+                Shape::Ring(a, b) => meshes.add(Torus::new(b - a, b + a)),
+            });
+        }
+    }
+    commands.insert_resource(kit);
 }
+
+/// Magic parts that bob up and down.
+#[derive(Component)]
+pub struct Float {
+    base: f32,
+    phase: f32,
+}
+
+/// Magic parts that turn on their own.
+#[derive(Component)]
+pub struct Spin(pub f32);
 
 fn collider(role: Role) -> Collider {
     match role {
@@ -192,63 +382,33 @@ pub fn spawn_kinetic(commands: &mut Commands, a: &KineticAssetsRef, key: &str, c
         CollisionLayers::new(Layer::Prop, LayerMask::ALL),
     ));
     let role = def.role;
+    let parts = model(key, role);
+    let phase = (cell.x * 7 + cell.z * 13) as f32 * 0.37;
     e.with_children(|p| {
-        // Non-rotating housing.
-        match role {
-            Role::Gearbox => {
-                p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.andesite.clone()), Transform::default()));
+        let spawn_part = |p: &mut ChildSpawnerCommands, mp: &ModelPart| {
+            let mesh = a.meshes.get(&shape_key(&mp.shape)).cloned().unwrap_or_default();
+            let mat = a.mats.get(mp.mat).cloned().unwrap_or_default();
+            let mut ec = p.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_translation(mp.at).with_rotation(mp.rot)));
+            match mp.layer {
+                Layer3::Core => {
+                    ec.insert((Core, NotShadowCaster));
+                }
+                Layer3::Float => {
+                    ec.insert((Float { base: mp.at.y, phase }, NotShadowCaster));
+                }
+                Layer3::Spin => {
+                    ec.insert(Spin(0.8 + (phase % 1.0)));
+                }
+                _ => {}
             }
-            Role::Clutch | Role::Gearshift => {
-                p.spawn((
-                    Mesh3d(a.casing.clone()),
-                    MeshMaterial3d(if role == Role::Clutch { a.andesite.clone() } else { a.brass.clone() }),
-                    Transform::from_scale(Vec3::new(0.9, 0.55, 0.9)),
-                ));
-            }
-            Role::Motor => {
-                p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.copper.clone()), Transform::from_xyz(0.0, -0.08, 0.0).with_scale(Vec3::new(1.0, 0.8, 1.0))));
-            }
-            Role::Static => {
-                // Magical / passive device: tinted housing and a glowing core.
-                let c = ItemId::from_key(&def.item).map(|i| i.color()).unwrap_or(Color::WHITE);
-                p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(tinted(&a, c)), Transform::from_scale(Vec3::new(0.8, 0.8, 0.8))));
-                p.spawn((Mesh3d(a.plate.clone()), MeshMaterial3d(a.glow.clone()), Transform::from_xyz(0.0, 0.36, 0.0).with_scale(Vec3::new(0.5, 0.6, 0.5)), Core));
-            }
-            Role::Bearing | Role::Crank => {
-                p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.andesite.clone()), Transform::from_xyz(0.0, -0.15, 0.0).with_scale(Vec3::new(1.0, 0.65, 1.0))));
-            }
-            _ => {}
+        };
+        for mp in parts.iter().filter(|m| m.layer != Layer3::Rotor) {
+            spawn_part(p, mp);
         }
         // Rotor (rotates about local Y = block axis).
         p.spawn((Rotor { angle: 0.0 }, Transform::default(), Visibility::default())).with_children(|r| {
-            match role {
-                Role::Cog | Role::LargeCog => {
-                    let (mesh, rad, teeth) = if role == Role::Cog { (a.cog.clone(), 0.4, 8) } else { (a.large_cog.clone(), 0.88, 16) };
-                    r.spawn((Mesh3d(mesh), MeshMaterial3d(a.wood.clone()), Transform::default()));
-                    for i in 0..teeth {
-                        let ang = i as f32 / teeth as f32 * std::f32::consts::TAU;
-                        r.spawn((
-                            Mesh3d(a.tooth.clone()),
-                            MeshMaterial3d(a.andesite.clone()),
-                            Transform::from_xyz(ang.cos() * (rad + 0.05), 0.0, ang.sin() * (rad + 0.05)).with_rotation(Quat::from_rotation_y(-ang)),
-                            NotShadowCaster,
-                        ));
-                    }
-                    r.spawn((Mesh3d(a.shaft.clone()), MeshMaterial3d(a.andesite.clone()), Transform::default()));
-                }
-                Role::Gearbox | Role::Static => {}
-                Role::Crank => {
-                    r.spawn((Mesh3d(a.shaft.clone()), MeshMaterial3d(a.andesite.clone()), Transform::from_scale(Vec3::new(1.0, 1.0, 1.0))));
-                    r.spawn((Mesh3d(a.handle.clone()), MeshMaterial3d(a.wood.clone()), Transform::from_xyz(0.0, 0.45, 0.2)));
-                }
-                Role::Bearing => {
-                    r.spawn((Mesh3d(a.plate.clone()), MeshMaterial3d(a.brass.clone()), Transform::from_xyz(0.0, 0.38, 0.0)));
-                }
-                _ => {
-                    r.spawn((Mesh3d(a.shaft.clone()), MeshMaterial3d(a.andesite.clone()), Transform::default()));
-                    // A notch makes the rotation visible.
-                    r.spawn((Mesh3d(a.tooth.clone()), MeshMaterial3d(a.brass.clone()), Transform::from_xyz(0.1, 0.0, 0.0).with_scale(Vec3::new(0.6, 0.5, 0.6))));
-                }
+            for mp in parts.iter().filter(|m| m.layer == Layer3::Rotor) {
+                spawn_part(r, mp);
             }
         });
     });
@@ -376,6 +536,20 @@ fn solve_networks(
         }
     }
     grid.solution = sol;
+}
+
+/// Floating foci and spinning rings of magical devices.
+fn animate_magic(time: Res<Time>, mut floats: Query<(&Float, &mut Transform), Without<Spin>>, mut spins: Query<(&Spin, &mut Transform), Without<Float>>) {
+    let t = time.elapsed_secs();
+    for (f, mut tr) in &mut floats {
+        tr.translation.y = f.base + (t * 1.6 + f.phase).sin() * 0.04;
+        let s = 1.0 + (t * 2.3 + f.phase).sin() * 0.06;
+        tr.scale = Vec3::splat(s);
+    }
+    let dt = time.delta_secs();
+    for (s, mut tr) in &mut spins {
+        tr.rotate_y(s.0 * dt);
+    }
 }
 
 fn spin_rotors(
@@ -737,7 +911,7 @@ impl Plugin for KineticsPlugin {
                 Update,
                 (
                     (track_blocks, track_consumers, mechanics_use, collect_blocks, update_sources, solve_networks).chain(),
-                    (spin_rotors, drive_bearings, overlay),
+                    (spin_rotors, animate_magic, drive_bearings, overlay),
                     place_blocks.run_if(gameplay_active),
                 )
                     .run_if(crate::core::states::in_game),
