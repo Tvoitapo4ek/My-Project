@@ -17,6 +17,7 @@ pub mod generation;
 pub mod interaction;
 pub mod materials;
 pub mod meshing;
+pub mod sky;
 pub mod voxel;
 
 use std::collections::HashMap;
@@ -390,6 +391,7 @@ impl Plugin for WorldPlugin {
             materials::BlockMaterialsPlugin,
             interaction::InteractionPlugin,
             destruction::DestructionPlugin,
+            sky::SkyPlugin,
         ))
         .init_resource::<ChunkEntities>()
         .init_resource::<LoadProgress>()

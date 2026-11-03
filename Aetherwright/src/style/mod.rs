@@ -29,7 +29,15 @@ impl StyleMaterials {
 }
 
 /// (name, metallic, roughness, emissive multiplier, alpha blend)
-const MATERIALS: [(&str, f32, f32, f32, bool); 15] = [
+const MATERIALS: [(&str, f32, f32, f32, bool); 23] = [
+    ("char_skin", 0.0, 0.8, 0.0, false),
+    ("char_face", 0.0, 0.8, 0.0, false),
+    ("char_hair", 0.0, 0.9, 0.0, false),
+    ("char_tunic", 0.0, 0.9, 0.0, false),
+    ("char_pants", 0.0, 0.9, 0.0, false),
+    ("char_leather", 0.0, 0.8, 0.0, false),
+    ("hollow_shell", 0.0, 0.7, 0.0, false),
+    ("rubber", 0.0, 0.95, 0.0, false),
     ("andesite", 0.05, 0.85, 0.0, false),
     ("andesite_casing", 0.05, 0.8, 0.0, false),
     ("brass_casing", 0.6, 0.45, 0.0, false),
@@ -73,6 +81,11 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut material
         if emissive > 0.0 {
             m.emissive = LinearRgba::rgb(emissive, emissive, emissive);
             m.emissive_texture = tex;
+        }
+        if name == "hollow_shell" {
+            // Only the seams glow.
+            m.emissive = LinearRgba::rgb(3.0, 3.0, 3.0);
+            m.emissive_texture = load("hollow_glow").map(|i| images.add(i));
         }
         if name == "arcane_rune" {
             // Only the carved runes glow.

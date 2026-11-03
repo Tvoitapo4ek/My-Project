@@ -530,7 +530,92 @@ BLOCKS = {
     "moss": t_moss, "agitated_aether": lambda: crystal(129, FLUX)[0],
 }
 
+def t_rubber():
+    y, x = np.mgrid[0:N, 0:N]
+    t = 0.45 + (fbm(341, 8) - 0.5) * 0.2
+    img = shade(pal("#1a1a1d", "#242428", "#2f2f34", "#3b3b41"), np.clip(t, 0, 0.999))
+    tread = ((y + (x // 8) * 4) % 8 < 2)
+    img[tread] = hexc("#121214")
+    return rgba(img)
+
+
+# --- characters (Hytale-like: chunky, readable faces) -------------------------
+
+SKIN = pal("#b9785a", "#cf8e6b", "#e2a67f", "#f0be98")
+HAIR = pal("#3a2414", "#55331b", "#704524", "#8c5a30")
+TUNIC = pal("#1f4d4f", "#2a6668", "#378284", "#4c9fa0", "#6cbcb8")
+PANTS = pal("#3a2b20", "#4b382a", "#5e4635", "#715541")
+LEATHER = pal("#3c2414", "#55341d", "#6e4628", "#8a5b35")
+
+
+def t_skin():
+    return rgba(shade(SKIN, np.clip(lit(0.55 + (fbm(501, 8) - 0.5) * 0.15), 0, 0.999)))
+
+
+def t_face():
+    img = np.array(t_skin()[..., :3], dtype=np.float32)
+    # Eyes (white, iris, pupil), brows, nose shade and mouth.
+    for ex in (8, 19):
+        img[14:18, ex : ex + 5] = hexc("#f4f1ec")
+        img[14:18, ex + 2 : ex + 4] = hexc("#3b7bb5")
+        img[15:17, ex + 2 : ex + 3] = hexc("#14212e")
+        img[11:13, ex - 1 : ex + 5] = HAIR[0]
+    img[19:21, 15:17] = SKIN[0]
+    img[24:25, 12:20] = hexc("#8a4a3a")
+    img[25:26, 13:19] = SKIN[1]
+    return rgba(img)
+
+
+def t_hair():
+    y, x = np.mgrid[0:N, 0:N]
+    t = 0.5 + np.sin(x * 0.9 + fbm(511, 4) * 4) * 0.25 + (fbm(512, 16) - 0.5) * 0.25
+    return rgba(bevel(shade(HAIR, np.clip(lit(t), 0, 0.999)), 0.12))
+
+
+def t_tunic():
+    y, x = np.mgrid[0:N, 0:N]
+    t = lit(0.5 + (fbm(521, 8) - 0.5) * 0.25)
+    img = shade(TUNIC, np.clip(t, 0, 0.999))
+    img[(x == 15) & (y % 3 != 0)] = TUNIC[0]  # stitching
+    img[(y == 2) | (y == N - 3)] = TUNIC[4]
+    return rgba(bevel(img, 0.12))
+
+
+def t_pants():
+    t = lit(0.5 + (fbm(531, 8) - 0.5) * 0.3)
+    img = shade(PANTS, np.clip(t, 0, 0.999))
+    return rgba(bevel(img, 0.12))
+
+
+def t_leather():
+    y, x = np.mgrid[0:N, 0:N]
+    t = lit(0.5 + (fbm(541, 8) - 0.5) * 0.35)
+    img = shade(LEATHER, np.clip(t, 0, 0.999))
+    img[(y % 16 == 0)] = LEATHER[0]
+    img[(y % 16 == 1) & (x % 4 == 0)] = hexc("#d9b26b")  # stitches
+    return rgba(bevel(img, 0.14))
+
+
+def t_hollow_shell():
+    img = stone_like(551, pal("#120c18", "#1e1428", "#2b1d3a", "#3c2a50", "#523a6a"), points=7, crack=1.2)
+    ids, edge = voronoi(552, 7)
+    img[edge < 0.8] = FLUX[3]  # glowing seams
+    return rgba(img)
+
+
+def t_hollow_glow():
+    base = t_hollow_shell()[..., :3]
+    m = np.all(base == FLUX[3].astype(np.uint8), axis=2)
+    img = np.zeros((N, N, 3))
+    img[m] = FLUX[3]
+    return rgba(img)
+
+
 MATERIALS = {
+    "char_skin": t_skin, "char_face": t_face, "char_hair": t_hair, "char_tunic": t_tunic,
+    "char_pants": t_pants, "char_leather": t_leather, "hollow_shell": t_hollow_shell,
+    "hollow_glow": t_hollow_glow,
+    "rubber": t_rubber,
     "andesite": t_andesite, "andesite_casing": lambda: casing(ANDESITE, 311),
     "brass_casing": lambda: casing(BRASS, 312), "copper_casing": lambda: casing(COPPER, 313),
     "brass": lambda: plate(BRASS, 314), "copper": lambda: plate(COPPER, 315),

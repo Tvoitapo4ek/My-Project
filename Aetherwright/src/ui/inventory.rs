@@ -106,6 +106,7 @@ fn spawn_screen(mut commands: Commands, mode: Res<State<GameMode>>) {
             ..default()
         },
         BackgroundColor(Color::NONE),
+        ImageNode { color: Color::NONE, ..default() },
         BorderColor::all(Color::NONE),
         GlobalZIndex(60),
         Pickable::IGNORE,
@@ -141,18 +142,18 @@ fn despawn_screen(
 fn update_cursor_and_tooltip(
     windows: Query<&Window>,
     cursor: Res<CursorStack>,
-    mut icon: Query<(&mut Node, &mut BackgroundColor, &mut BorderColor), With<CursorIcon>>,
+    mut icon: Query<(&mut Node, &mut BackgroundColor, &mut ImageNode, &mut BorderColor), With<CursorIcon>>,
     hovered: Query<(&SlotView, &bevy::picking::hover::Hovered)>,
     player: Query<&Inventory, With<Player>>,
     mut tooltip: Query<&mut Text, With<Tooltip>>,
 ) {
     let Ok(window) = windows.single() else { return };
-    if let Ok((mut node, mut bg, mut border)) = icon.single_mut() {
+    if let Ok((mut node, mut bg, mut img, mut border)) = icon.single_mut() {
         if let Some(pos) = window.cursor_position() {
             node.left = px(pos.x + 8.0);
             node.top = px(pos.y + 8.0);
         }
-        bg.0 = cursor.0.map(|s| s.item.color()).unwrap_or(Color::NONE);
+        super::slots::set_icon(cursor.0.map(|s| s.item), &mut bg, &mut img);
         *border = if cursor.0.is_some() {
             BorderColor::all(theme::ACCENT)
         } else {

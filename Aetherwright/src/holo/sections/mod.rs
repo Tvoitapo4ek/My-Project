@@ -101,29 +101,24 @@ pub fn action_button(
     e.id()
 }
 
-/// Item icon: the block texture for block items, otherwise a colour tile
-/// with the first letter of the name.
+/// Item icon: the generated pixel icon (`items::icons`), otherwise a
+/// colour tile with the first letter of the name.
 pub fn item_icon(
     p: &mut ChildSpawnerCommands,
     item: crate::items::ItemId,
     size: f32,
-    blocks: Option<&crate::world::materials::BlockMaterials>,
+    _blocks: Option<&crate::world::materials::BlockMaterials>,
 ) {
-    let tex = item.block().and_then(|b| {
-        let t = b.def().tex[1];
-        blocks.and_then(|m| m.images.get(t.0 as usize).cloned())
-    });
     let node = Node {
         width: px(size),
         height: px(size),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
-        border: UiRect::all(px(1)),
         ..default()
     };
-    match tex {
+    match crate::items::icons::icon(item) {
         Some(img) => {
-            p.spawn((node, ImageNode::new(img), BorderColor::all(LINE_DIM), Pickable::IGNORE));
+            p.spawn((node, ImageNode::new(img), Pickable::IGNORE));
         }
         None => {
             let c = item.color().to_srgba();

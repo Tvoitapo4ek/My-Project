@@ -39,40 +39,40 @@ const MAX_CREATURES: usize = 6;
 
 #[derive(Resource)]
 struct CreatureAssets {
-    body: Handle<Mesh>,
-    spike: Handle<Mesh>,
-    eye: Handle<Mesh>,
-    shell: Handle<StandardMaterial>,
-    crystal: Handle<StandardMaterial>,
-    glow: Handle<StandardMaterial>,
+    /// (mesh, material, transform) of every primitive part.
+    parts: Vec<(Handle<Mesh>, Handle<StandardMaterial>, Transform)>,
 }
 
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    style: Res<crate::style::StyleMaterials>,
 ) {
-    commands.insert_resource(CreatureAssets {
-        body: meshes.add(Sphere::new(0.45).mesh().ico(2).unwrap()),
-        spike: meshes.add(Cone::new(0.12, 0.45)),
-        eye: meshes.add(Sphere::new(0.07).mesh().ico(1).unwrap()),
-        shell: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.16, 0.14, 0.18),
-            perceptual_roughness: 0.7,
-            ..default()
-        }),
-        crystal: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.3, 0.7),
-            emissive: LinearRgba::rgb(1.2, 0.2, 0.7),
-            ..default()
-        }),
-        glow: materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.6, 0.9),
-            emissive: LinearRgba::rgb(5.0, 1.0, 3.0),
-            unlit: true,
-            ..default()
-        }),
+    // Style: a chunk of agitated magic — dark shell with glowing seams,
+    // flux crystals on the back, bright eyes, short tentacles below.
+    let mut bx = |x: f32, y: f32, z: f32| meshes.add(crate::style::pixel_box(Vec3::new(x, y, z)));
+    let eye = materials.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(5.0, 1.2, 3.5)), unlit: true, ..default() });
+    let crystal = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.4, 1.0),
+        emissive: LinearRgba::rgb(2.0, 0.6, 2.8),
+        perceptual_roughness: 0.2,
+        ..default()
     });
+    let shell = style.get("hollow_shell");
+    let mut parts = vec![
+        (bx(0.72, 0.56, 0.78), shell.clone(), Transform::from_xyz(0.0, 0.02, 0.0)),
+        (bx(0.56, 0.2, 0.6), shell.clone(), Transform::from_xyz(0.0, 0.36, 0.06)),
+        (bx(0.12, 0.08, 0.04), eye.clone(), Transform::from_xyz(-0.16, 0.1, -0.4)),
+        (bx(0.12, 0.08, 0.04), eye.clone(), Transform::from_xyz(0.16, 0.1, -0.4)),
+    ];
+    for (x, z, tilt) in [(-0.18f32, 0.0f32, 0.35f32), (0.05, 0.12, -0.1), (0.2, -0.1, -0.4)] {
+        parts.push((bx(0.14, 0.42, 0.14), crystal.clone(), Transform::from_xyz(x, 0.55, z).with_rotation(Quat::from_rotation_z(tilt) * Quat::from_rotation_y(0.6))));
+    }
+    for (x, z) in [(-0.22f32, -0.2f32), (0.22, -0.2), (-0.22, 0.24), (0.22, 0.24)] {
+        parts.push((bx(0.12, 0.22, 0.12), shell.clone(), Transform::from_xyz(x, -0.34, z)));
+    }
+    commands.insert_resource(CreatureAssets { parts });
 }
 
 pub fn spawn_hollowling(commands: &mut Commands, at: Vec3) -> Entity {
@@ -130,28 +130,8 @@ fn attach_visuals(
                 AnimationRequest("idle".into()),
             ))
             .with_children(|p| {
-                p.spawn((
-                    Mesh3d(assets.body.clone()),
-                    MeshMaterial3d(assets.shell.clone()),
-                    Transform::default(),
-                    PrimitiveVisual,
-                ));
-                for (i, a) in [-0.5f32, 0.0, 0.5].iter().enumerate() {
-                    p.spawn((
-                        Mesh3d(assets.spike.clone()),
-                        MeshMaterial3d(assets.crystal.clone()),
-                        Transform::from_xyz(*a * 0.4, 0.42, 0.1 * i as f32)
-                            .with_rotation(Quat::from_rotation_z(-a * 0.6)),
-                        PrimitiveVisual,
-                    ));
-                }
-                for x in [-0.15, 0.15] {
-                    p.spawn((
-                        Mesh3d(assets.eye.clone()),
-                        MeshMaterial3d(assets.glow.clone()),
-                        Transform::from_xyz(x, 0.12, -0.42),
-                        PrimitiveVisual,
-                    ));
+                for (mesh, mat, t) in &assets.parts {
+                    p.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), *t, PrimitiveVisual));
                 }
             });
     }

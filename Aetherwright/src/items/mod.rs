@@ -6,6 +6,7 @@
 
 pub mod drops;
 pub mod equipment;
+pub mod icons;
 pub mod inventory;
 
 use bevy::prelude::*;
@@ -105,6 +106,7 @@ impl Plugin for ItemsPlugin {
             inventory::InventoryPlugin,
             drops::DropsPlugin,
             equipment::EquipmentPlugin,
+            icons::ItemIconsPlugin,
         ));
     }
 }

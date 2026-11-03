@@ -67,10 +67,11 @@ pub fn spawn_slot(parent: &mut ChildSpawnerCommands, source: SlotSource, hotbar:
             s.spawn((
                 SlotIcon,
                 Node {
-                    width: px(18),
-                    height: px(18),
+                    width: px(30),
+                    height: px(30),
                     ..default()
                 },
+                ImageNode { color: Color::NONE, ..default() },
                 BackgroundColor(Color::NONE),
                 Pickable::IGNORE,
             ));
@@ -155,10 +156,31 @@ fn on_slot_click(
     }
 }
 
+/// Shows an item's pixel icon (or its colour before icons exist).
+pub fn set_icon(item: Option<ItemId>, bg: &mut BackgroundColor, img: &mut ImageNode) {
+    let pic = item.and_then(crate::items::icons::icon);
+    let (want_bg, want_col) = match (item, &pic) {
+        (Some(_), Some(_)) => (Color::NONE, Color::WHITE),
+        (Some(i), None) => (i.color(), Color::NONE),
+        (None, _) => (Color::NONE, Color::NONE),
+    };
+    if bg.0 != want_bg {
+        bg.0 = want_bg;
+    }
+    if img.color != want_col {
+        img.color = want_col;
+    }
+    if let Some(h) = pic {
+        if img.image != h {
+            img.image = h;
+        }
+    }
+}
+
 fn refresh_slots(
     player: Query<&Inventory, With<Player>>,
     views: Query<(&SlotView, &Children, &mut BorderColor, &mut BackgroundColor)>,
-    mut icons: Query<&mut BackgroundColor, (With<SlotIcon>, Without<SlotView>)>,
+    mut icons: Query<(&mut BackgroundColor, &mut ImageNode), (With<SlotIcon>, Without<SlotView>)>,
     mut labels: Query<&mut Text, (With<SlotLabel>, Without<SlotCount>)>,
     mut counts: Query<&mut Text, (With<SlotCount>, Without<SlotLabel>)>,
 ) {
@@ -186,8 +208,8 @@ fn refresh_slots(
             theme::PANEL_BG
         };
         for child in children.iter() {
-            if let Ok(mut icon) = icons.get_mut(child) {
-                icon.0 = stack.map(|s| s.item.color()).unwrap_or(Color::NONE);
+            if let Ok((mut bg, mut img)) = icons.get_mut(child) {
+                set_icon(stack.map(|s| s.item), &mut bg, &mut img);
             }
             if let Ok(mut t) = labels.get_mut(child) {
                 let s = stack.map(|s| short_name(s.item)).unwrap_or_default();

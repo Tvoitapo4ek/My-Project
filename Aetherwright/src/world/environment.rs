@@ -73,12 +73,11 @@ fn update_environment(
     let dusk = Vec3::new(0.85, 0.55, 0.42);
     let sky = night_sky.lerp(day_sky, day).lerp(dusk, warm * day * 0.6);
     clear.0 = Color::srgb(sky.x, sky.y, sky.z);
+    // Horizon haze (the sky dome uses the same colour, so distant terrain
+    // melts into the horizon like in the style references).
+    let horizon = sky.lerp(Vec3::new(0.86, 0.93, 1.0), 0.55 * day).lerp(Vec3::new(1.0, 0.7, 0.52), warm * day * 0.5);
     for mut f in &mut fog {
-        f.color = Color::srgb(
-            sky.x * 0.95 + 0.03,
-            sky.y * 0.95 + 0.03,
-            sky.z * 0.95 + 0.04,
-        );
+        f.color = Color::srgb(horizon.x, horizon.y, horizon.z);
     }
 }
 

@@ -9,9 +9,9 @@ use super::{Ctx, Scenario, Step, StepFn, scenario::{edit, step, teleport}, scena
 use crate::{
     arcana::MagicNode,
     content::registry,
-    core::{resources::WorldClock, states::AppState},
+    core::{resources::WorldClock, states::{AppState, InputFocus}},
     kinetics::{KineticBlock, KineticGrid, assets_ref, network::{Axis, Role}, spawn_kinetic},
-    player::{Player, input::PlayerIntent},
+    player::{Player, camera::{CameraMode, CameraRig}, input::PlayerIntent},
     world::{chunks::{EditCause, VoxelWorld}, voxel::BlockId},
 };
 
@@ -137,5 +137,61 @@ pub fn build() -> Scenario {
             Step::Wait
         }));
     }
+    // Sky: horizon haze, gradient and blocky clouds.
+    steps.push(step("55_showcase_sky", |world, ctx| {
+        let o = Vec3::new(ctx.vars["ox"], ctx.vars["oy"], ctx.vars["oz"]);
+        if ctx.frames >= 1 && ctx.frames < 8 {
+            aim_at(world, o + Vec3::new(9.0, 30.0, -120.0));
+        }
+        if ctx.frames == 8 {
+            screenshot(world, "55_showcase_sky");
+        }
+        if ctx.frames > 12 {
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    // Character (third person) and a hollowling in front of it.
+    steps.push(step("56_showcase_character", |world, ctx| {
+        let o = Vec3::new(ctx.vars["ox"], ctx.vars["oy"], ctx.vars["oz"]);
+        if ctx.frames == 1 {
+            let mut q = world.query_filtered::<&mut crate::player::movement::CharacterState, With<Player>>();
+            for mut s in q.iter_mut(world) {
+                s.flying = false;
+            }
+            teleport(world, o + Vec3::new(10.5, 0.6, 5.6));
+            let mut c = world.commands();
+            crate::survival::creatures::spawn_hollowling(&mut c, o + Vec3::new(10.0, 0.8, 4.3));
+            world.flush();
+        }
+        if ctx.frames >= 2 && ctx.frames < 10 {
+            aim_at(world, o + Vec3::new(10.0, 0.2, 3.0));
+            let mut rig = world.resource_mut::<CameraRig>();
+            rig.mode = CameraMode::ThirdPerson;
+            rig.pitch = -0.3;
+        }
+        if ctx.frames == 14 {
+            screenshot(world, "56_showcase_character");
+        }
+        if ctx.frames > 18 {
+            world.resource_mut::<CameraRig>().mode = CameraMode::FirstPerson;
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    // Item icons: the inventory screen with the creative catalogue.
+    steps.push(step("57_showcase_icons", |world, ctx| {
+        if ctx.frames == 1 {
+            world.resource_mut::<NextState<InputFocus>>().set(InputFocus::Inventory);
+        }
+        if ctx.frames == 8 {
+            screenshot(world, "57_showcase_icons");
+        }
+        if ctx.frames > 12 {
+            world.resource_mut::<NextState<InputFocus>>().set(InputFocus::Gameplay);
+            return Step::Next;
+        }
+        Step::Wait
+    }));
     Scenario { steps, index: 0, ctx: Ctx::default(), elapsed_total: 0.0 }
 }

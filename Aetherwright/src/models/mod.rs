@@ -23,7 +23,7 @@ use bevy::{
 };
 
 /// Marks primitive placeholder meshes that a loaded model replaces.
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 pub struct PrimitiveVisual;
 
 /// Ask for a model `models/<category>/<key>.glb` on this entity.
@@ -82,10 +82,11 @@ fn spawn_loaded(
     assets: Res<AssetServer>,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
-    pending: Query<(Entity, &PendingModel, Option<&Children>)>,
+    pending: Query<(Entity, &PendingModel)>,
+    tree: Query<&Children>,
     mut primitives: Query<&mut Visibility, With<PrimitiveVisual>>,
 ) {
-    for (e, p, children) in &pending {
+    for (e, p) in &pending {
         if !assets.is_loaded_with_dependencies(&p.0) {
             if assets.load_state(&p.0).is_failed() {
                 warn!("model failed to load; keeping primitives");
@@ -104,8 +105,9 @@ fn spawn_loaded(
             commands.entity(e).remove::<PendingModel>();
             continue;
         };
-        for c in children.into_iter().flatten() {
-            if let Ok(mut v) = primitives.get_mut(*c) {
+        // Whole hierarchy: limbs sit under pivots (grandchildren).
+        for c in tree.iter_descendants(e) {
+            if let Ok(mut v) = primitives.get_mut(c) {
                 *v = Visibility::Hidden;
             }
         }
