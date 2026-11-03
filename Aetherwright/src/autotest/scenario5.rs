@@ -158,11 +158,27 @@ fn clear_view(world: &mut World, e: Entity, target: Vec3, n: Vec3, default: Vec3
     if hits_target(default) {
         return default;
     }
+    // Turn around the face normal first, then circle the part at three heights.
+    let mut tries: Vec<Vec3> = Vec::new();
     for (yaw, up) in [(0.5f32, 0.0f32), (-0.5, 0.0), (0.0, 0.8), (0.9, 0.4), (-0.9, 0.4), (0.5, 1.0), (-0.5, 1.0)] {
-        let dir = (Quat::from_axis_angle(Vec3::Y, yaw) * n + Vec3::Y * up).normalize();
-        let from = target + dir * 3.0;
-        if hits_target(from) {
-            return from;
+        tries.push((Quat::from_axis_angle(Vec3::Y, yaw) * n + Vec3::Y * up).normalize());
+    }
+    for up in [0.3f32, 0.9, 1.6] {
+        for k in 0..12 {
+            let a = k as f32 * std::f32::consts::TAU / 12.0;
+            tries.push(Vec3::new(a.cos(), up, a.sin()).normalize());
+        }
+    }
+    for dir in tries {
+        // Only views from the face's side make sense for a face click.
+        if dir.dot(n) < -0.2 {
+            continue;
+        }
+        for dist in [3.0, 2.2] {
+            let from = target + dir * dist;
+            if hits_target(from) {
+                return from;
+            }
         }
     }
     default
@@ -200,6 +216,12 @@ fn click_face(world: &mut World, ctx: &Ctx, f0: u32, e: Entity, n: Vec3, half: f
         aim_at(world, t);
     }
     if ctx.frames == f0 + 11 {
+        // Remember what the crosshair was on (diagnostics of failed clicks).
+        let aimed = world.resource::<crate::tools::EntityTarget>().entity;
+        if aimed != Some(e) {
+            let name = aimed.and_then(|a| world.get::<Name>(a)).map(|n| n.as_str().to_string()).unwrap_or_else(|| "terrain/none".into());
+            warn!("[AUTOTEST] click_face: aimed at {name} instead of {e:?}");
+        }
         mouse(world, MouseButton::Left, true);
     }
     if ctx.frames == f0 + 12 {
