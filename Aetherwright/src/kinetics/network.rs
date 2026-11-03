@@ -96,11 +96,13 @@ pub struct Node {
     pub source: Option<(f32, f32)>,
     /// Clutch disengaged / gearshift reversed.
     pub toggled: bool,
+    /// Broken (integrity 0): transmits and produces nothing.
+    pub broken: bool,
 }
 
 impl Node {
     pub fn new(role: Role, axis: Axis) -> Self {
-        Self { role, axis, impact: 0.0, strength: f32::INFINITY, source: None, toggled: false }
+        Self { role, axis, impact: 0.0, strength: f32::INFINITY, source: None, toggled: false, broken: false }
     }
     fn axial(&self) -> bool {
         !matches!(self.role, Role::Gearbox | Role::Consumer)
@@ -108,9 +110,12 @@ impl Node {
     /// Faces through which the node connects axially.
     fn ports(&self) -> Vec<IVec3> {
         if !self.axial() {
+            if self.broken {
+                return vec![];
+            }
             return vec![IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
         }
-        if (self.role == Role::Clutch && self.toggled) || self.role == Role::Static {
+        if (self.role == Role::Clutch && self.toggled) || self.role == Role::Static || self.broken {
             return vec![];
         }
         let u = self.axis.unit();
@@ -160,13 +165,14 @@ pub fn links(grid: &HashMap<IVec3, Node>, c: IVec3) -> Vec<(IVec3, f32)> {
             out.push((n, b.face_in(v, -d)));
         }
     }
-    if let Some(ra) = a.cog_radius() {
+    if let Some(ra) = a.cog_radius().filter(|_| !a.broken) {
         let u = a.axis.unit();
         for b_off in mesh_offsets(a.axis, a.role) {
             let n = c + b_off;
             if let Some(b) = grid.get(&n)
                 && b.axis == a.axis
-                && let Some(rb) = b.cog_radius()
+                && !b.broken
+            && let Some(rb) = b.cog_radius()
             {
                 let dist = (b_off.as_vec3() - u.as_vec3() * b_off.dot(u) as f32).length();
                 if (dist - (ra + rb)).abs() < 0.2 {
@@ -218,8 +224,9 @@ pub struct Solution {
     pub speed: HashMap<IVec3, f32>,
     pub net_of: HashMap<IVec3, usize>,
     pub nets: Vec<NetInfo>,
-    /// Nodes that break this solve (transmitted power above strength).
-    pub broken: Vec<IVec3>,
+    /// Nodes carrying more power than their strength, with the ratio
+    /// (transmitted / strength > 1): they wear out (`wear`).
+    pub overloaded: Vec<(IVec3, f32)>,
 }
 
 pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
@@ -262,6 +269,9 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
         let mut base: Option<f32> = None;
         for c in &info.members {
             let node = &grid[c];
+            if node.broken {
+                continue;
+            }
             if let Some((rpm, power)) = node.source {
                 info.capacity += power.max(0.0);
                 if rpm == 0.0 || power <= 0.0 {
@@ -275,6 +285,7 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
             }
         }
         let mut base = base.unwrap_or(0.0);
+        // Broken sources produce nothing (`source` is still listed).
         let max_rel = info.members.iter().map(|c| rel[c].abs()).fold(0.0, f32::max);
         if base.abs() * max_rel > MAX_RPM {
             base = base.signum() * MAX_RPM / max_rel;
@@ -295,15 +306,13 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
         for c in &info.members {
             sol.speed.insert(*c, base * rel[c] * info.factor);
         }
-        // Strength: the weakest node that cannot carry the power breaks.
+        // Strength: every node weaker than the transmitted power wears.
         let transmitted = info.demand.min(info.capacity) * if info.factor > 0.0 { 1.0 } else { 0.0 };
-        if let Some(c) = info
-            .members
-            .iter()
-            .filter(|c| grid[c].strength < transmitted)
-            .min_by(|a, b| grid[a].strength.total_cmp(&grid[b].strength))
-        {
-            sol.broken.push(*c);
+        for c in &info.members {
+            let st = grid[c].strength;
+            if st < transmitted {
+                sol.overloaded.push((*c, transmitted / st));
+            }
         }
         sol.nets.push(info);
     }
@@ -398,7 +407,13 @@ mod tests {
         g.insert(IVec3::X, Node { strength: 50.0, ..shaft(Axis::X) });
         g.insert(IVec3::new(2, 0, 0), Node { impact: 1.0, ..Node::new(Role::Consumer, Axis::Y) });
         let s = solve(&g);
-        assert_eq!(s.broken, vec![IVec3::X]);
+        assert_eq!(s.overloaded.len(), 1);
+        assert_eq!(s.overloaded[0].0, IVec3::X);
+        assert!(s.overloaded[0].1 > 1.3);
+        // A broken shaft cuts the line.
+        g.insert(IVec3::X, Node { broken: true, ..shaft(Axis::X) });
+        let s = solve(&g);
+        assert_eq!(s.speed[&IVec3::new(2, 0, 0)], 0.0);
     }
 
     #[test]

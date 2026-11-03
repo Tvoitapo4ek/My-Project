@@ -25,26 +25,31 @@ pub fn axis_sign(axis_in_engine_frame: Vec3) -> f32 {
     if dominant < 0.0 { -1.0 } else { 1.0 }
 }
 
-fn drive_hinges(engines: Query<&Engine>, mut joints: Query<(&Connection, &mut RevoluteJoint)>) {
+fn drive_hinges(
+    engines: Query<(&Engine, Option<&crate::wear::Integrity>)>,
+    mut joints: Query<(&Connection, &mut RevoluteJoint)>,
+) {
     for (c, mut joint) in &mut joints {
         if c.kind != JointKind::Hinge {
             continue;
         }
         // Hinge axis expressed in each body's local frame.
-        let (engine, sign) = match (engines.get(c.a), engines.get(c.b)) {
+        let ((engine, integ), sign) = match (engines.get(c.a), engines.get(c.b)) {
             (Ok(e), _) => (e, axis_sign(c.frame_a.basis * Vec3::Z)),
             (_, Ok(e)) => (e, -axis_sign(c.frame_b.basis * Vec3::Z)),
             _ => continue,
         };
+        // A worn engine gives less torque; a broken one none.
+        let health = integ.map(|i| i.value).unwrap_or(1.0);
         let dir = if engine.reverse { -1.0 } else { 1.0 };
-        let enabled = engine.powered;
+        let enabled = engine.powered && health > 0.0;
         let target = engine.max_speed * engine.throttle * dir * sign;
         let m = &mut joint.motor;
         if m.enabled != enabled || (m.target_velocity - target).abs() > 1e-3 {
             *m = AngularMotor {
                 enabled,
                 target_velocity: target,
-                max_torque: engine.max_torque * engine.throttle.max(0.25),
+                max_torque: engine.max_torque * engine.throttle.max(0.25) * health.max(0.05),
                 motor_model: MotorModel::AccelerationBased {
                     stiffness: 0.0,
                     damping: 1.0,

@@ -26,6 +26,7 @@ mod save;
 mod survival;
 mod tools;
 mod ui;
+mod wear;
 mod world;
 
 /// Finds the game root (the folder containing `assets/`) and makes it the

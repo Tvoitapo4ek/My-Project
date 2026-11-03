@@ -361,12 +361,12 @@ mod tests {
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(r.blocks.len(), 24);
         assert_eq!(r.textures.len(), 25);
-        assert_eq!(r.items.len(), 92);
+        assert_eq!(r.items.len(), 93);
         assert!(r.journal.len() >= 12);
         assert_eq!(r.kinetics.len(), 35);
         assert_eq!(r.logic.len(), 18);
         assert_eq!(r.magic.len(), 7);
-        assert_eq!(r.recipes.len(), 72);
+        assert_eq!(r.recipes.len(), 73);
         // Every kinetic item places a defined block and back.
         for k in &r.kinetics {
             assert!(r.items.iter().any(|i| i.key == k.item && i.use_ == ItemUse::Kinetic(k.key.clone())), "{}", k.key);

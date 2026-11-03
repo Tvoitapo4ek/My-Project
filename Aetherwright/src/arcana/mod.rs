@@ -98,7 +98,7 @@ fn attach_nodes(mut commands: Commands, added: Query<(Entity, &KineticBlock), (A
     }
 }
 
-fn mnode_for(n: &MagicNode, def: &MagicDef, pos: Vec3, sources: &AetherSources, power: f32, engine_on: bool) -> MNode {
+fn mnode_for(n: &MagicNode, def: &MagicDef, pos: Vec3, sources: &AetherSources, power: f32, engine_on: bool, integrity: f32) -> MNode {
     let mut m = MNode { amount: n.amount, capacity: def.capacity, quality: n.quality, max_distortion: def.max_distortion, ..Default::default() };
     if let Some(list) = &def.accepts {
         m.accepts = [false; 5];
@@ -109,9 +109,9 @@ fn mnode_for(n: &MagicNode, def: &MagicDef, pos: Vec3, sources: &AetherSources, 
     match def.role {
         MagicRole::Collector => {
             let f = sources.sample(pos);
-            m.inflow = Some((Quality::raw(f.kind), f.strength * def.rate));
+            m.inflow = Some((Quality::raw(f.kind), f.strength * def.rate * integrity));
         }
-        MagicRole::Stabilizer => m.stabilize = def.stabilize * power,
+        MagicRole::Stabilizer => m.stabilize = def.stabilize * power * integrity,
         MagicRole::Engine if engine_on => m.consume = def.rate,
         _ => {}
     }
@@ -134,6 +134,13 @@ fn mnode_for(n: &MagicNode, def: &MagicDef, pos: Vec3, sources: &AetherSources, 
             RuneKind::Link => {}
         }
     }
+    if integrity <= 0.0 {
+        // Broken: holds what it has, takes and gives nothing.
+        m.send = false;
+        m.receive = false;
+        m.inflow = None;
+        m.consume = 0.0;
+    }
     m
 }
 
@@ -141,7 +148,7 @@ fn mnode_for(n: &MagicNode, def: &MagicDef, pos: Vec3, sources: &AetherSources, 
 fn step_magic(
     time: Res<Time>,
     sources: Res<AetherSources>,
-    mut devices: Query<(Entity, &mut MagicNode, &GlobalTransform, Option<&ElectricState>)>,
+    mut devices: Query<(Entity, &mut MagicNode, &GlobalTransform, Option<&ElectricState>, Option<&crate::wear::Integrity>)>,
     mut jars: Query<(Entity, &mut AetherStore, &GlobalTransform), Without<MagicNode>>,
     mut links: Query<&mut MagicLink>,
     mut kblocks: Query<&mut KineticBlock>,
@@ -152,12 +159,12 @@ fn step_magic(
     let mut ents = Vec::new();
     let mut nodes = Vec::new();
     let mut pos = Vec::new();
-    for (e, n, gt, el) in &devices {
+    for (e, n, gt, el, integ) in &devices {
         let Some(def) = n.def() else { continue };
         let power = el.map(|s| s.satisfaction).unwrap_or(0.0);
         let on = kblocks.get(e).is_ok_and(|k| k.on);
         ents.push(e);
-        nodes.push(mnode_for(&n, def, gt.translation(), &sources, power, on));
+        nodes.push(mnode_for(&n, def, gt.translation(), &sources, power, on, integ.map(|i| i.value).unwrap_or(1.0)));
         pos.push(gt.translation());
     }
     let first_jar = ents.len();
@@ -191,7 +198,7 @@ fn step_magic(
     // (node index, role, frequency, def) of resonators, same order as nodes.
     let resonators: Vec<(usize, MagicRole, u8, &MagicDef)> = devices
         .iter()
-        .filter_map(|(e, n, _, _)| {
+        .filter_map(|(e, n, _, _, _)| {
             let d = n.def()?;
             matches!(d.role, MagicRole::Transmitter | MagicRole::Receiver).then(|| (index[&e], d.role, n.frequency(), d))
         })
@@ -220,7 +227,7 @@ fn step_magic(
     let r = network::step(&mut nodes, &edges, dt);
     // Write back.
     let mut i = 0;
-    for (e, mut n, _, _) in &mut devices {
+    for (e, mut n, _, _, _) in &mut devices {
         if n.def().is_none() {
             continue;
         }

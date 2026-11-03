@@ -81,4 +81,5 @@
     (station: Workbench, inputs: [("copper", 1), ("metal", 1)], output: ("signal_receiver", 1), time: 1.0),
     (station: Workbench, inputs: [("copper", 1), ("metal", 1)], output: ("signal_lamp", 1), time: 1.0),
     (station: Hand, inputs: [("copper", 1)], output: ("signal_cable", 4), time: 0.0),
+    (station: Workbench, inputs: [("metal", 3)], output: ("repair_wrench", 1), time: 1.0),
 ]

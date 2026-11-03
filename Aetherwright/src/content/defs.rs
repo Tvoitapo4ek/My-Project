@@ -250,6 +250,8 @@ pub enum ItemUse {
     Rune(RuneKind),
     /// Lays signal cables (output → input).
     SignalCable { max_len: f32 },
+    /// Repairs damaged machines (hold LMB).
+    Repair,
 }
 
 /// A logic element block (`content/logic.ron`); its block is the kinetic

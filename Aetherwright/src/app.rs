@@ -76,6 +76,7 @@ pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
         crate::electric::ElectricPlugin,
         crate::arcana::ArcanaPlugin,
         crate::logic::LogicPlugin,
+        crate::wear::WearPlugin,
     ));
 
     app

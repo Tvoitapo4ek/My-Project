@@ -181,6 +181,10 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
             lines.extend(l);
             diag.extend(d);
         }
+        if let Some((l, d)) = crate::wear::describe(world, e) {
+            lines.extend(l);
+            diag.extend(d);
+        }
         let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
         return Some((name, lines.join("\n"), diag));
     }
@@ -279,7 +283,10 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
         lines.extend(l);
         diag.extend(d);
     }
-    lines.push("Целостность: нет данных (повреждения — этап V5)".into());
+    if let Some((l, d)) = crate::wear::describe(world, e) {
+        lines.extend(l);
+        diag.extend(d);
+    }
     let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
     Some((kind_name(part), lines.join("\n"), diag))
 }

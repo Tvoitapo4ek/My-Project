@@ -23,7 +23,7 @@ use crate::{
     building::preview::{GhostShape, Ghosts, Validity},
     content::{KineticDef, registry},
     core::{events::Notify, layers::Layer, rules::ModeRules, states::gameplay_active},
-    items::{ItemId, ItemStack, Use, drops::SpawnDrop, inventory::Inventory},
+    items::{ItemId, Use, inventory::Inventory},
     machinery::components::{Part, PartKind},
     physics::{
         joints::{Connection, JointKind},
@@ -317,25 +317,30 @@ fn update_sources(time: Res<Time>, mut blocks: Query<&mut KineticBlock>, mut gri
 pub fn build_nodes(
     blocks: &Query<(Entity, &KineticBlock)>,
     consumers: &Query<(Entity, &KineticConsumer, &GlobalTransform)>,
+    integrity: &Query<&crate::wear::Integrity>,
 ) -> HashMap<IVec3, Node> {
     let mut g = HashMap::new();
-    for (_, b) in blocks.iter() {
+    for (e, b) in blocks.iter() {
         let Some(def) = b.def() else { continue };
         let mut n = Node::new(def.role, b.axis);
-        n.impact = def.impact;
+        // Worn parts rub (more friction) and broken ones stop working.
+        let i = integrity.get(e).map(|x| x.value).unwrap_or(1.0);
+        n.broken = i <= 0.0;
+        n.impact = def.impact * (1.0 + (1.0 - i) * 3.0);
         n.strength = def.strength.unwrap_or(f32::INFINITY);
         n.toggled = b.toggled;
         n.source = match def.role {
             Role::Crank if b.crank > 0.0 => Some((def.source_rpm, def.source_power)),
-            Role::Motor if b.on && b.powered => Some((b.rpm, def.source_power * b.power_scale)),
+            Role::Motor if b.on && b.powered => Some((b.rpm, def.source_power * b.power_scale * i)),
             Role::Crank | Role::Motor => Some((0.0, 0.0)),
             _ => None,
         };
         g.insert(b.cell, n);
     }
-    for (_, c, gt) in consumers.iter() {
+    for (e, c, gt) in consumers.iter() {
         let mut n = Node::new(Role::Consumer, Axis::Y);
         n.impact = c.impact;
+        n.broken = integrity.get(e).is_ok_and(|x| x.value <= 0.0);
         g.insert(cell_of(gt.translation()), n);
     }
     g
@@ -343,20 +348,18 @@ pub fn build_nodes(
 
 #[allow(clippy::too_many_arguments)]
 fn solve_networks(
-    mut commands: Commands,
     mut grid: ResMut<KineticGrid>,
     blocks: Query<(Entity, &KineticBlock)>,
     consumers: Query<(Entity, &KineticConsumer, &GlobalTransform)>,
+    integrity: Query<&crate::wear::Integrity>,
     mut states: Query<&mut KineticState>,
     mut drives: Query<&mut KineticDrive>,
-    mut drops: MessageWriter<SpawnDrop>,
-    mut notify: MessageWriter<Notify>,
 ) {
     if !grid.dirty {
         return;
     }
     grid.dirty = false;
-    let nodes = build_nodes(&blocks, &consumers);
+    let nodes = build_nodes(&blocks, &consumers, &integrity);
     let sol = network::solve(&nodes);
     for (e, b) in blocks.iter() {
         if let Ok(mut s) = states.get_mut(e) {
@@ -370,16 +373,6 @@ fn solve_networks(
     for (e, _, gt) in consumers.iter() {
         if let Ok(mut d) = drives.get_mut(e) {
             d.0 = sol.speed.get(&cell_of(gt.translation())).copied().unwrap_or(0.0).abs();
-        }
-    }
-    for cell in &sol.broken {
-        if let Some((e, b)) = blocks.iter().find(|(_, b)| b.cell == *cell) {
-            if let Some(item) = b.def().and_then(|d| ItemId::from_key(&d.item)) {
-                drops.write(SpawnDrop { stack: ItemStack::new(item, 1), position: cell.as_vec3() + Vec3::splat(0.5), velocity: Vec3::Y * 2.0 });
-            }
-            notify.write(Notify::warn(format!("Перегрузка: сломалась деталь «{}»", b.def().map(|d| d.key.as_str()).unwrap_or("?"))));
-            commands.entity(e).despawn();
-            grid.dirty = true;
         }
     }
     grid.solution = sol;
@@ -601,6 +594,7 @@ fn overlay(
     grid: Res<KineticGrid>,
     blocks: Query<(Entity, &KineticBlock)>,
     consumers: Query<(Entity, &KineticConsumer, &GlobalTransform)>,
+    integrity: Query<&crate::wear::Integrity>,
     mut gizmos: Gizmos,
 ) {
     if keys.just_pressed(KeyCode::F6) {
@@ -609,7 +603,7 @@ fn overlay(
     if !*on {
         return;
     }
-    let nodes = build_nodes(&blocks, &consumers);
+    let nodes = build_nodes(&blocks, &consumers, &integrity);
     for (&c, _) in &nodes {
         let Some(info) = grid.solution.net_of.get(&c).and_then(|n| grid.solution.nets.get(*n)) else { continue };
         let color = if info.conflict || info.stalled {

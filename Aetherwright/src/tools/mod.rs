@@ -41,6 +41,8 @@ pub enum ActiveTool {
     Rune(ItemId),
     /// Signal cable tool (`logic`).
     SignalCable(ItemId),
+    /// Repair wrench (`wear`).
+    Repair(ItemId),
     PhysGun,
     Melee,
     Ranged,
@@ -92,6 +94,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
             Use::MagicLink(_) => ActiveTool::MagicLink(item),
             Use::Rune(_) => ActiveTool::Rune(item),
             Use::SignalCable { .. } => ActiveTool::SignalCable(item),
+            Use::Repair => ActiveTool::Repair(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,
