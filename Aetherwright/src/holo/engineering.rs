@@ -177,6 +177,10 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
             lines.extend(l);
             diag.extend(d);
         }
+        if let Some((l, d)) = crate::logic::describe(world, e) {
+            lines.extend(l);
+            diag.extend(d);
+        }
         let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
         return Some((name, lines.join("\n"), diag));
     }
@@ -268,6 +272,10 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
         diag.extend(d);
     }
     if let Some((l, d)) = crate::arcana::describe(world, e) {
+        lines.extend(l);
+        diag.extend(d);
+    }
+    if let Some((l, d)) = crate::logic::describe(world, e) {
         lines.extend(l);
         diag.extend(d);
     }

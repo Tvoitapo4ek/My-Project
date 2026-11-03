@@ -39,6 +39,8 @@ pub enum ActiveTool {
     MagicLink(ItemId),
     /// Rune to inscribe (`arcana`).
     Rune(ItemId),
+    /// Signal cable tool (`logic`).
+    SignalCable(ItemId),
     PhysGun,
     Melee,
     Ranged,
@@ -89,6 +91,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
             Use::Wire(_) => ActiveTool::Wire(item),
             Use::MagicLink(_) => ActiveTool::MagicLink(item),
             Use::Rune(_) => ActiveTool::Rune(item),
+            Use::SignalCable { .. } => ActiveTool::SignalCable(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,

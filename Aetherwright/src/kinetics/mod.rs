@@ -80,6 +80,10 @@ pub struct KineticConsumer {
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct KineticDrive(pub f32);
 
+/// The glowing core of a static device (logic shows its output with it).
+#[derive(Component)]
+pub struct Core;
+
 #[derive(Component)]
 struct Rotor {
     angle: f32,
@@ -208,7 +212,7 @@ pub fn spawn_kinetic(commands: &mut Commands, a: &KineticAssetsRef, key: &str, c
                 // Magical / passive device: tinted housing and a glowing core.
                 let c = ItemId::from_key(&def.item).map(|i| i.color()).unwrap_or(Color::WHITE);
                 p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(tinted(&a, c)), Transform::from_scale(Vec3::new(0.8, 0.8, 0.8))));
-                p.spawn((Mesh3d(a.plate.clone()), MeshMaterial3d(a.glow.clone()), Transform::from_xyz(0.0, 0.36, 0.0).with_scale(Vec3::new(0.5, 0.6, 0.5))));
+                p.spawn((Mesh3d(a.plate.clone()), MeshMaterial3d(a.glow.clone()), Transform::from_xyz(0.0, 0.36, 0.0).with_scale(Vec3::new(0.5, 0.6, 0.5)), Core));
             }
             Role::Bearing | Role::Crank => {
                 p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.andesite.clone()), Transform::from_xyz(0.0, -0.15, 0.0).with_scale(Vec3::new(1.0, 0.65, 1.0))));

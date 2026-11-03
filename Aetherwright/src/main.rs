@@ -16,6 +16,7 @@ mod electric;
 mod holo;
 mod items;
 mod kinetics;
+mod logic;
 mod machinery;
 mod magic;
 mod models;

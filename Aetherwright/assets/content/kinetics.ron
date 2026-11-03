@@ -35,4 +35,24 @@
     // Магический двигатель: источник вращения, питается эфиром (не электричеством).
     (key: "magic_engine", role: Motor, impact: 0.0, source_rpm: 48.0, source_power: 384.0,
      energy_per_su: 0.0, strength: Some(1024.0), item: "magic_engine"),
+
+    // --- Логика и автоматизация (V4): элементы на клетках, без валов.
+    (key: "sensor_rotation", role: Static, item: "sensor_rotation"),
+    (key: "sensor_energy", role: Static, item: "sensor_energy"),
+    (key: "sensor_aether", role: Static, item: "sensor_aether"),
+    (key: "sensor_distortion", role: Static, item: "sensor_distortion"),
+    (key: "sensor_presence", role: Static, item: "sensor_presence"),
+    (key: "logic_button", role: Static, item: "logic_button"),
+    (key: "logic_lever", role: Static, item: "logic_lever"),
+    (key: "logic_timer", role: Static, item: "logic_timer"),
+    (key: "logic_counter", role: Static, item: "logic_counter"),
+    (key: "gate_and", role: Static, item: "gate_and"),
+    (key: "gate_or", role: Static, item: "gate_or"),
+    (key: "gate_not", role: Static, item: "gate_not"),
+    (key: "gate_xor", role: Static, item: "gate_xor"),
+    (key: "logic_comparator", role: Static, item: "logic_comparator"),
+    (key: "logic_controller", role: Static, item: "logic_controller"),
+    (key: "signal_transmitter", role: Static, item: "signal_transmitter"),
+    (key: "signal_receiver", role: Static, item: "signal_receiver"),
+    (key: "signal_lamp", role: Static, item: "signal_lamp"),
 ]

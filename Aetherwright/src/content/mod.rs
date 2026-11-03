@@ -35,6 +35,8 @@ pub struct Registry {
     kinetic_index: HashMap<String, u16>,
     pub magic: Vec<MagicDef>,
     magic_index: HashMap<String, u16>,
+    pub logic: Vec<LogicDef>,
+    logic_index: HashMap<String, u16>,
     block_index: HashMap<String, u16>,
     texture_index: HashMap<String, u16>,
     item_index: HashMap<String, u16>,
@@ -79,6 +81,7 @@ const BUILTIN_RECIPES: &str = include_str!("../../assets/content/recipes.ron");
 const BUILTIN_JOURNAL: &str = include_str!("../../assets/content/journal.ron");
 const BUILTIN_KINETICS: &str = include_str!("../../assets/content/kinetics.ron");
 const BUILTIN_ARCANA: &str = include_str!("../../assets/content/arcana.ron");
+const BUILTIN_LOGIC: &str = include_str!("../../assets/content/logic.ron");
 
 /// Keys of the built-in blocks in their fixed order (code refers to them by
 /// index through `world::voxel::blocks`). Also the v1 save palette.
@@ -144,7 +147,7 @@ impl Registry {
     fn load(roots: &[PathBuf]) -> Registry {
         let mut r = Registry::default();
         let mut w = Vec::new();
-        let mut layers: Vec<(String, [Option<String>; 7])> = vec![(
+        let mut layers: Vec<(String, [Option<String>; 8])> = vec![(
             "встроенный контент".into(),
             [
                 Some(BUILTIN_BLOCKS.into()),
@@ -154,6 +157,7 @@ impl Registry {
                 Some(BUILTIN_JOURNAL.into()),
                 Some(BUILTIN_KINETICS.into()),
                 Some(BUILTIN_ARCANA.into()),
+                Some(BUILTIN_LOGIC.into()),
             ],
         )];
         for root in roots {
@@ -167,12 +171,17 @@ impl Registry {
                 read("journal.ron"),
                 read("kinetics.ron"),
                 read("arcana.ron"),
+                read("logic.ron"),
             ];
             if files.iter().any(Option::is_some) {
                 layers.push((root.display().to_string(), files));
             }
         }
-        for (origin, [blocks, textures, items, recipes, journal, kinetics, arcana]) in layers {
+        for (origin, [blocks, textures, items, recipes, journal, kinetics, arcana, logic]) in layers {
+            if let Some(t) = logic {
+                let v: Vec<LogicDef> = parse(&t, &format!("{origin}/logic.ron"), &mut w);
+                merge(&mut r.logic, &mut r.logic_index, v, |k| &k.key);
+            }
             if let Some(t) = arcana {
                 let v: Vec<MagicDef> = parse(&t, &format!("{origin}/arcana.ron"), &mut w);
                 merge(&mut r.magic, &mut r.magic_index, v, |k| &k.key);
@@ -260,6 +269,11 @@ impl Registry {
                 _ => {}
             }
         }
+        for l in &self.logic {
+            if !self.kinetic_index.contains_key(&l.key) {
+                w.push(format!("логика {}: нет блока с таким ключом в kinetics.ron", l.key));
+            }
+        }
         for m in &self.magic {
             if !self.kinetic_index.contains_key(&m.key) {
                 w.push(format!("магия {}: нет блока с таким ключом в kinetics.ron", m.key));
@@ -300,6 +314,10 @@ impl Registry {
             }
             ok
         });
+    }
+
+    pub fn logic(&self, key: &str) -> Option<&LogicDef> {
+        self.logic_index.get(key).map(|&i| &self.logic[i as usize])
     }
 
     pub fn magic(&self, key: &str) -> Option<&MagicDef> {
@@ -343,11 +361,12 @@ mod tests {
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(r.blocks.len(), 24);
         assert_eq!(r.textures.len(), 25);
-        assert_eq!(r.items.len(), 73);
+        assert_eq!(r.items.len(), 92);
         assert!(r.journal.len() >= 12);
-        assert_eq!(r.kinetics.len(), 17);
+        assert_eq!(r.kinetics.len(), 35);
+        assert_eq!(r.logic.len(), 18);
         assert_eq!(r.magic.len(), 7);
-        assert_eq!(r.recipes.len(), 53);
+        assert_eq!(r.recipes.len(), 72);
         // Every kinetic item places a defined block and back.
         for k in &r.kinetics {
             assert!(r.items.iter().any(|i| i.key == k.item && i.use_ == ItemUse::Kinetic(k.key.clone())), "{}", k.key);

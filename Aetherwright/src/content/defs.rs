@@ -248,6 +248,16 @@ pub enum ItemUse {
     MagicLink(LinkSpec),
     /// Inscribes a rune on a magical device.
     Rune(RuneKind),
+    /// Lays signal cables (output → input).
+    SignalCable { max_len: f32 },
+}
+
+/// A logic element block (`content/logic.ron`); its block is the kinetic
+/// block with the same key.
+#[derive(Clone, Debug, Deserialize)]
+pub struct LogicDef {
+    pub key: String,
+    pub element: crate::logic::circuit::Element,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

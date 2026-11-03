@@ -1,0 +1,24 @@
+// Логические элементы (V4). Блок с тем же ключом описан в kinetics.ron.
+// element: Sensor(Rotation | Energy | Aether | Distortion | Presence) | Button
+//          | Lever | Timer | Counter | And | Or | Not | Xor | Comparator
+//          | Controller | Transmitter | Receiver | Lamp
+[
+    (key: "sensor_rotation", element: Sensor(Rotation)),
+    (key: "sensor_energy", element: Sensor(Energy)),
+    (key: "sensor_aether", element: Sensor(Aether)),
+    (key: "sensor_distortion", element: Sensor(Distortion)),
+    (key: "sensor_presence", element: Sensor(Presence)),
+    (key: "logic_button", element: Button),
+    (key: "logic_lever", element: Lever),
+    (key: "logic_timer", element: Timer),
+    (key: "logic_counter", element: Counter),
+    (key: "gate_and", element: And),
+    (key: "gate_or", element: Or),
+    (key: "gate_not", element: Not),
+    (key: "gate_xor", element: Xor),
+    (key: "logic_comparator", element: Comparator),
+    (key: "logic_controller", element: Controller),
+    (key: "signal_transmitter", element: Transmitter),
+    (key: "signal_receiver", element: Receiver),
+    (key: "signal_lamp", element: Lamp),
+]

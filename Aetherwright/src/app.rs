@@ -75,6 +75,7 @@ pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
         crate::kinetics::KineticsPlugin,
         crate::electric::ElectricPlugin,
         crate::arcana::ArcanaPlugin,
+        crate::logic::LogicPlugin,
     ));
 
     app
