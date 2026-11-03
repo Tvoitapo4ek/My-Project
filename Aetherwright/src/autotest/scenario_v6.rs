@@ -30,7 +30,8 @@ use crate::{
 };
 
 fn base(world: &World) -> IVec3 {
-    field(world).floor().as_ivec3() + IVec3::new(9, 1, 7)
+    // Far enough that the V3 stabilizer (field + (3, 1, −1)) cannot reach it.
+    field(world).floor().as_ivec3() + IVec3::new(15, 1, 12)
 }
 
 static LOSSES_SEEN: AtomicU32 = AtomicU32::new(0);
@@ -87,9 +88,9 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
             let placed_off = world.get::<crate::kinetics::KineticBlock>(ents["v6_gen"]).is_some_and(|k| !k.on);
             ctx.check("generator is placed switched off", placed_off, "");
             world.write_message(MechanicsUse { entity: ents["v6_gen"], secondary: false });
-            ctx.vars.insert("t0".into(), ctx.t);
+            ctx.vars.insert("v6_t0".into(), ctx.t);
         }
-        let t0 = ctx.vars.get("t0").copied().unwrap_or(f32::MAX);
+        let t0 = ctx.vars.get("v6_t0").copied().unwrap_or(f32::MAX);
         if ctx.t > t0 + 3.0 {
             let g = gen_state(world, ctx);
             ctx.check("calm surroundings: generator refuses to work", g.status == GenStatus::NoEnvironment && fields(world).is_empty(), format!("{:?}, instability {:.2}", g.status, g.instability));
@@ -106,11 +107,11 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
                 edit(world, c + p, blocks::AGITATED_CRYSTAL, EditCause::Script);
             }
             // RMB cycles the radius.
-            ctx.vars.insert("r_idx".into(), gen_state(world, ctx).radius_idx as f32);
+            ctx.vars.insert("v6_r_idx".into(), gen_state(world, ctx).radius_idx as f32);
             world.write_message(MechanicsUse { entity: ge, secondary: true });
         }
         if ctx.frames == 4 {
-            let before = ctx.vars["r_idx"] as usize;
+            let before = ctx.vars["v6_r_idx"] as usize;
             let g = gen_state(world, ctx);
             ctx.check("RMB changes the generator radius", g.radius_idx == before + 1, format!("{before} → {}", g.radius_idx));
             // Smallest radius, inverted pull (Shift+RMB in the game).
@@ -118,9 +119,9 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
                 g.radius_idx = 0;
                 g.mode_idx = 2;
             }
-            ctx.vars.insert("t1".into(), ctx.t);
+            ctx.vars.insert("v6_t1".into(), ctx.t);
         }
-        let t1 = ctx.vars.get("t1").copied().unwrap_or(f32::MAX);
+        let t1 = ctx.vars.get("v6_t1").copied().unwrap_or(f32::MAX);
         let g = gen_state(world, ctx);
         if g.status == GenStatus::Sustaining || ctx.t > t1 + 40.0 {
             let fs = fields(world);
@@ -130,8 +131,8 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
             if let Some((_, f)) = fs.first() {
                 // Setting: 4 m, ×−0.6; spread 25 % of the deviation.
                 ctx.check("shaped result spreads around the setting", (3.0..=5.0).contains(&f.radius) && (-1.0..=-0.2).contains(&f.gravity), format!("r {:.2}, g {:.2}", f.radius, f.gravity));
-                ctx.vars.insert("gmin".into(), f32::MAX);
-                ctx.vars.insert("gmax".into(), f32::MIN);
+                ctx.vars.insert("v6_gmin".into(), f32::MAX);
+                ctx.vars.insert("v6_gmax".into(), f32::MIN);
             }
             return Step::Next;
         }
@@ -143,9 +144,9 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
             ctx.check("anomaly exists", false, "");
             return Step::Next;
         };
-        let (lo, hi) = (ctx.vars["gmin"].min(f.now_gravity), ctx.vars["gmax"].max(f.now_gravity));
-        ctx.vars.insert("gmin".into(), lo);
-        ctx.vars.insert("gmax".into(), hi);
+        let (lo, hi) = (ctx.vars["v6_gmin"].min(f.now_gravity), ctx.vars["v6_gmax"].max(f.now_gravity));
+        ctx.vars.insert("v6_gmin".into(), lo);
+        ctx.vars.insert("v6_gmax".into(), hi);
         if ctx.t > 5.0 {
             ctx.check("without a stabilizer the anomaly is unpredictable", hi - lo > 0.1 && f.containment == 0.0, format!("g {lo:.2}..{hi:.2}, containment {:.2}", f.containment));
             return Step::Next;
@@ -166,17 +167,17 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
         }
         // The window starts once the stabilizer has power and full hold.
         let full = fields(world).first().is_some_and(|(_, f)| f.containment >= 0.999);
-        if ctx.frames > 1 && (full || ctx.t > 20.0) && ctx.vars.get("h0").is_none() {
-            ctx.vars.insert("h0".into(), ctx.t);
-            ctx.vars.insert("gmin".into(), f32::MAX);
-            ctx.vars.insert("gmax".into(), f32::MIN);
+        if ctx.frames > 1 && (full || ctx.t > 20.0) && ctx.vars.get("v6_h0").is_none() {
+            ctx.vars.insert("v6_h0".into(), ctx.t);
+            ctx.vars.insert("v6_gmin".into(), f32::MAX);
+            ctx.vars.insert("v6_gmax".into(), f32::MIN);
         }
-        if let Some(&h0) = ctx.vars.get("h0") {
+        if let Some(&h0) = ctx.vars.get("v6_h0") {
             let fs = fields(world);
             let Some((_, f)) = fs.first() else { return Step::Next };
-            let (lo, hi) = (ctx.vars["gmin"].min(f.now_gravity), ctx.vars["gmax"].max(f.now_gravity));
-            ctx.vars.insert("gmin".into(), lo);
-            ctx.vars.insert("gmax".into(), hi);
+            let (lo, hi) = (ctx.vars["v6_gmin"].min(f.now_gravity), ctx.vars["v6_gmax"].max(f.now_gravity));
+            ctx.vars.insert("v6_gmin".into(), lo);
+            ctx.vars.insert("v6_gmax".into(), hi);
             if ctx.t > h0 + 3.0 {
                 ctx.check("stabilizer holds it (containment ≥ 60 %)", f.containment >= 0.6 && f.held, format!("{:.2}", f.containment));
                 ctx.check("held anomaly is predictable and keeps its size", hi - lo < 0.02 && (f.now_radius - f.radius).abs() < 0.01, format!("g {lo:.3}..{hi:.3}, r {:.2}/{:.2}", f.now_radius, f.radius));
@@ -203,22 +204,22 @@ pub fn stage_v6(steps: &mut Vec<(String, StepFn)>) {
         }
         if ctx.frames == 2 {
             let y = world.get::<Position>(ctx.entities["v6_box"]).map(|p| p.0.y).unwrap_or(0.0);
-            ctx.vars.insert("y_spawn".into(), y);
+            ctx.vars.insert("v6_y_spawn".into(), y);
         }
         if ctx.frames == 5 {
             let b = ctx.entities["v6_box"];
             let y = world.get::<Position>(b).map(|p| p.0.y).unwrap_or(0.0);
-            ctx.check("inverted pull lifts the crate", y > ctx.vars["y_spawn"] + 0.5, format!("y {:.2} → {y:.2}", ctx.vars["y_spawn"]));
+            ctx.check("inverted pull lifts the crate", y > ctx.vars["v6_y_spawn"] + 0.5, format!("y {:.2} → {y:.2}", ctx.vars["v6_y_spawn"]));
             // A sideways push: nothing but gravity changed, so it keeps going.
             if let Some(mut v) = world.get_mut::<LinearVelocity>(b) {
                 v.0 = Vec3::new(0.6, 0.0, 0.0);
             }
-            ctx.vars.insert("t0".into(), ctx.t);
+            ctx.vars.insert("v6_t0".into(), ctx.t);
         }
         if ctx.frames == 12 {
             screenshot(world, "60_gravity_anomaly");
         }
-        let t0 = ctx.vars.get("t0").copied().unwrap_or(f32::MAX);
+        let t0 = ctx.vars.get("v6_t0").copied().unwrap_or(f32::MAX);
         if ctx.t > t0 + 1.5 {
             let b = ctx.entities["v6_box"];
             let p = world.get::<Position>(b).map(|p| p.0).unwrap_or_default();
