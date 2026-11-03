@@ -45,4 +45,19 @@
     (station: Hand, inputs: [("copper", 1)], output: ("copper_wire", 4), time: 0.0),
     (station: Workbench, inputs: [("copper", 2), ("metal", 1)], output: ("power_cable", 4), time: 1.0),
     (station: Workbench, inputs: [("metal", 3), ("copper", 4), ("drive_shaft", 1)], output: ("electric_generator", 1), time: 1.0),
+
+    // Магический конвейер (V3)
+    (station: Workbench, inputs: [("aether_shard", 2), ("metal", 2)], output: ("magic_collector", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 1), ("glass", 2)], output: ("magic_filter", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 2), ("copper", 3), ("metal", 2)], output: ("magic_stabilizer", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 4), ("glass", 2), ("metal", 2)], output: ("crystal_accumulator", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 2), ("copper", 2)], output: ("resonator_tx", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 2), ("copper", 2)], output: ("resonator_rx", 1), time: 1.0),
+    (station: Workbench, inputs: [("aether_shard", 3), ("metal", 4), ("drive_shaft", 1)], output: ("magic_engine", 1), time: 1.0),
+    (station: Hand, inputs: [("aether_shard", 1)], output: ("crystal_conductor", 3), time: 0.0),
+    (station: Workbench, inputs: [("metal", 1), ("aether_shard", 1)], output: ("rune_chisel", 1), time: 1.0),
+    (station: Hand, inputs: [("stone", 1), ("aether_shard", 1)], output: ("rune_filter", 1), time: 0.0),
+    (station: Hand, inputs: [("stone", 1), ("aether_shard", 1)], output: ("rune_limit", 1), time: 0.0),
+    (station: Hand, inputs: [("stone", 1), ("aether_shard", 1)], output: ("rune_direction", 1), time: 0.0),
+    (station: Hand, inputs: [("stone", 1), ("aether_shard", 1)], output: ("rune_link", 1), time: 0.0),
 ]

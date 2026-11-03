@@ -115,9 +115,12 @@ fn attach_nodes(
         commands.entity(e).insert((ElectricNode { role }, ElectricState::default()));
     }
     for (e, b) in &kinetic {
-        let role = match b.def().map(|d| (d.role, d.key.as_str())) {
-            Some((Role::Motor, _)) => ElectricRole::Consumer,
-            Some((Role::Consumer, "electric_generator")) => ElectricRole::Generator,
+        let draws = crate::content::registry().magic(&b.key).is_some_and(|m| m.electric_draw > 0.0);
+        let role = match b.def().map(|d| (d.role, d.key.as_str(), d.energy_per_su)) {
+            // Only electric motors; the magic engine runs on aether.
+            Some((Role::Motor, _, e)) if e > 0.0 => ElectricRole::Consumer,
+            Some((Role::Consumer, "electric_generator", _)) => ElectricRole::Generator,
+            _ if draws => ElectricRole::Consumer,
             _ => continue,
         };
         commands.entity(e).insert((ElectricNode { role }, ElectricState::default()));
@@ -183,7 +186,11 @@ fn solve_power(
                 if let Ok(en) = engines.get(*e) {
                     enodes[i].demand = if en.on { en.draw * en.throttle } else { 0.0 };
                 } else if let Ok((b, _)) = kblocks.get(*e) {
-                    enodes[i].demand = motor_demand(b, &kgrid);
+                    enodes[i].demand = match crate::content::registry().magic(&b.key) {
+                        // Magical devices that need power (stabilizer).
+                        Some(m) => m.electric_draw,
+                        None => motor_demand(b, &kgrid),
+                    };
                 }
             }
             ElectricRole::Relay => {}
@@ -229,6 +236,7 @@ fn solve_power(
         }
         if node.role == ElectricRole::Consumer
             && let Ok((mut b, _)) = kblocks.get_mut(*e)
+            && b.def().is_some_and(|d| d.role == Role::Motor)
         {
             let p = sat >= 0.5 && enodes[i].demand > 0.0;
             if b.powered != p {

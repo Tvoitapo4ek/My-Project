@@ -140,6 +140,34 @@ fn click_entity(world: &mut World, ctx: &mut Ctx, e: Entity) -> bool {
     false
 }
 
+/// A standing point from which the game's own targeting ray reaches `e`
+/// first (other parts of a half-built machine may hide the face from the
+/// default spot). Tries the default, then views turned around the face.
+fn clear_view(world: &mut World, e: Entity, target: Vec3, n: Vec3, default: Vec3) -> Vec3 {
+    let player: Vec<Entity> = world.query_filtered::<Entity, With<crate::player::Player>>().iter(world).collect();
+    let mut state = bevy::ecs::system::SystemState::<SpatialQuery>::new(world);
+    let Ok(sq) = state.get(world) else {
+        return default;
+    };
+    let filter = SpatialQueryFilter::from_mask([crate::core::layers::Layer::Prop, crate::core::layers::Layer::Creature, crate::core::layers::Layer::Item])
+        .with_excluded_entities(player);
+    let hits_target = |from: Vec3| {
+        let d = target - from;
+        Dir3::new(d).ok().and_then(|dir| sq.cast_ray(from, dir, d.length() + 0.5, true, &filter)).is_some_and(|h| h.entity == e)
+    };
+    if hits_target(default) {
+        return default;
+    }
+    for (yaw, up) in [(0.5f32, 0.0f32), (-0.5, 0.0), (0.0, 0.8), (0.9, 0.4), (-0.9, 0.4), (0.5, 1.0), (-0.5, 1.0)] {
+        let dir = (Quat::from_axis_angle(Vec3::Y, yaw) * n + Vec3::Y * up).normalize();
+        let from = target + dir * 3.0;
+        if hits_target(from) {
+            return from;
+        }
+    }
+    default
+}
+
 /// Clicks the face of `e` whose outward normal is `n` (world axis): first
 /// stands in front of the face along its normal so nothing else is in the
 /// way, then aims at the face centre and clicks LMB. Spans 14 frames from
@@ -159,10 +187,11 @@ fn click_face(world: &mut World, ctx: &Ctx, f0: u32, e: Entity, n: Vec3, half: f
     };
     if ctx.frames == f0 {
         let p = pos_of(world, e);
-        let from = p
+        let default = p
             + n * 3.0
             + Vec3::Y * if n.y.abs() > 0.5 { 0.0 } else { 0.3 }
             + if n.y > 0.5 { Vec3::Z * 1.0 } else { Vec3::ZERO };
+        let from = clear_view(world, e, p + n * half, n, default);
         teleport(world, from - Vec3::Y * 0.7);
         hover(world);
     }

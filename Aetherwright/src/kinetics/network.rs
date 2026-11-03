@@ -80,6 +80,8 @@ pub enum Role {
     Bearing,
     /// A machine taking rotation from any face.
     Consumer,
+    /// Occupies a cell, no rotation (magical devices, displays…).
+    Static,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,7 +110,7 @@ impl Node {
         if !self.axial() {
             return vec![IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
         }
-        if self.role == Role::Clutch && self.toggled {
+        if (self.role == Role::Clutch && self.toggled) || self.role == Role::Static {
             return vec![];
         }
         let u = self.axis.unit();

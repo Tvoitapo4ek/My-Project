@@ -244,6 +244,96 @@ pub enum ItemUse {
     Kinetic(String),
     /// Lays wires between electric devices.
     Wire(WireSpec),
+    /// Lays magical links (crystal conductor / rune channel).
+    MagicLink(LinkSpec),
+    /// Inscribes a rune on a magical device.
+    Rune(RuneKind),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkMode {
+    /// Physical crystal conductor: both ways, short.
+    Conductor,
+    /// Rune channel: one way (first → second), needs line of sight.
+    Channel,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LinkSpec {
+    pub mode: LinkMode,
+    /// Aether per second.
+    pub throughput: f32,
+    pub loss_per_m: f32,
+    pub max_len: f32,
+}
+
+/// Runes configure magical devices (concept: visual language of magic
+/// schemes; the full specification is an open question — this is the
+/// extensible base).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RuneKind {
+    /// Accept only one kind of magic.
+    Filter,
+    /// Limit the outflow.
+    Limit,
+    /// Only send / only receive.
+    Direction,
+    /// Resonance frequency of transmitters and receivers.
+    Link,
+}
+
+impl RuneKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            RuneKind::Filter => "Фильтр",
+            RuneKind::Limit => "Ограничение",
+            RuneKind::Direction => "Направление",
+            RuneKind::Link => "Связь",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MagicRole {
+    Collector,
+    Filter,
+    Stabilizer,
+    Accumulator,
+    Engine,
+    Transmitter,
+    Receiver,
+}
+
+/// A magical device (`content/arcana.ron`); its block is the kinetic
+/// block with the same key.
+#[derive(Clone, Debug, Deserialize)]
+pub struct MagicDef {
+    pub key: String,
+    pub role: MagicRole,
+    pub capacity: f32,
+    /// Collector: share of the local field collected; engine: aether / s.
+    #[serde(default)]
+    pub rate: f32,
+    #[serde(default = "one")]
+    pub max_distortion: f32,
+    /// Kinds accepted by design (None = all).
+    #[serde(default)]
+    pub accepts: Option<Vec<AetherKind>>,
+    /// Stabilizer: distortion removed per second at full power.
+    #[serde(default)]
+    pub stabilize: f32,
+    /// Electric draw (W) — the stabilizer needs power.
+    #[serde(default)]
+    pub electric_draw: f32,
+    /// Transmitters: range (m) and throughput (aether / s).
+    #[serde(default)]
+    pub range: f32,
+    #[serde(default)]
+    pub throughput: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 /// Electric wire parameters (temporary balance).

@@ -35,6 +35,10 @@ pub enum ActiveTool {
     PlaceKinetic(ItemId),
     /// Wire tool (`electric`).
     Wire(ItemId),
+    /// Magical link tool (`arcana`).
+    MagicLink(ItemId),
+    /// Rune to inscribe (`arcana`).
+    Rune(ItemId),
     PhysGun,
     Melee,
     Ranged,
@@ -83,6 +87,8 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
             Use::Part(_) => ActiveTool::PlacePart(item),
             Use::Kinetic(_) => ActiveTool::PlaceKinetic(item),
             Use::Wire(_) => ActiveTool::Wire(item),
+            Use::MagicLink(_) => ActiveTool::MagicLink(item),
+            Use::Rune(_) => ActiveTool::Rune(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,

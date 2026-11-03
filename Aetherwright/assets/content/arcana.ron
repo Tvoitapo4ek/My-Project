@@ -1,0 +1,23 @@
+// Магические устройства (V3). Блок с тем же ключом описан в kinetics.ron.
+// ЧИСЛА ВРЕМЕННЫЕ: полная спецификация магии — открытый вопрос концепта.
+//
+//   role           — Collector | Filter | Stabilizer | Accumulator | Engine
+//                    | Transmitter | Receiver;
+//   capacity       — сколько эфира помещается внутри;
+//   rate           — коллектор: доля локального поля, собираемая в секунду;
+//                    двигатель: эфира в секунду при полной мощности;
+//   max_distortion — сильнее искажённую магию устройство не принимает;
+//   accepts        — какие виды магии принимает по устройству (None — все);
+//   stabilize      — стабилизатор: снимает искажения в секунду при полном питании;
+//   electric_draw  — потребление электроэнергии (Вт);
+//   range, throughput — резонатор-передатчик: дальность (м) и поток (эфир/с).
+[
+    (key: "magic_collector", role: Collector, capacity: 6.0, rate: 0.6),
+    (key: "magic_filter", role: Filter, capacity: 2.0),
+    (key: "magic_stabilizer", role: Stabilizer, capacity: 4.0, stabilize: 0.4, electric_draw: 4.0),
+    (key: "crystal_accumulator", role: Accumulator, capacity: 120.0),
+    (key: "resonator_tx", role: Transmitter, capacity: 4.0, range: 32.0, throughput: 1.2),
+    (key: "resonator_rx", role: Receiver, capacity: 4.0),
+    (key: "magic_engine", role: Engine, capacity: 4.0, rate: 0.5, max_distortion: 0.3,
+     accepts: Some([Calm, Condensed, Ancient, Agitated])),
+]

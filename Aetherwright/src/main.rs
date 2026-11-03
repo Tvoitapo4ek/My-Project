@@ -5,6 +5,7 @@
 //! feature plugins assembled in [`app`].
 
 mod app;
+mod arcana;
 mod autotest;
 mod building;
 mod content;

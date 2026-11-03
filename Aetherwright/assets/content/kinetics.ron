@@ -24,4 +24,15 @@
     (key: "electric_generator", role: Consumer, impact: 2.0, strength: Some(1024.0),
      energy_per_su: 0.016, item: "electric_generator"),
     (key: "bearing", role: Bearing, impact: 1.0, strength: Some(1024.0), item: "bearing"),
+
+    // --- Магические устройства (V3): занимают клетку, параметры магии — в arcana.ron.
+    (key: "magic_collector", role: Static, item: "magic_collector"),
+    (key: "magic_filter", role: Static, item: "magic_filter"),
+    (key: "magic_stabilizer", role: Static, item: "magic_stabilizer"),
+    (key: "crystal_accumulator", role: Static, item: "crystal_accumulator"),
+    (key: "resonator_tx", role: Static, item: "resonator_tx"),
+    (key: "resonator_rx", role: Static, item: "resonator_rx"),
+    // Магический двигатель: источник вращения, питается эфиром (не электричеством).
+    (key: "magic_engine", role: Motor, impact: 0.0, source_rpm: 48.0, source_power: 384.0,
+     energy_per_su: 0.0, strength: Some(1024.0), item: "magic_engine"),
 ]

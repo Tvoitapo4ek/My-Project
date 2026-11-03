@@ -51,6 +51,9 @@ pub struct KineticBlock {
     pub crank: f32,
     /// Motor: had energy on the last tick.
     pub powered: bool,
+    /// Share of the nominal power a source can give now (magic engine:
+    /// how much aether of what stability it gets).
+    pub power_scale: f32,
 }
 
 impl KineticBlock {
@@ -112,6 +115,13 @@ struct KineticAssets {
     wood: Handle<StandardMaterial>,
     brass: Handle<StandardMaterial>,
     copper: Handle<StandardMaterial>,
+    glow: Handle<StandardMaterial>,
+    /// Tinted housings by colour (built at startup for every item colour).
+    tints: Vec<(Color, Handle<StandardMaterial>)>,
+}
+
+fn tinted(a: &KineticAssets, c: Color) -> Handle<StandardMaterial> {
+    a.tints.iter().find(|(k, _)| *k == c).map(|(_, h)| h.clone()).unwrap_or_else(|| a.andesite.clone())
 }
 
 fn setup_assets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mats: ResMut<Assets<StandardMaterial>>) {
@@ -130,6 +140,14 @@ fn setup_assets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut ma
         wood: mat(&mut mats, Color::srgb(0.45, 0.32, 0.2), 0.0),
         brass: mat(&mut mats, Color::srgb(0.86, 0.66, 0.3), 0.8),
         copper: mat(&mut mats, Color::srgb(0.78, 0.44, 0.28), 0.7),
+        glow: mats.add(StandardMaterial { base_color: Color::srgb(0.8, 0.6, 1.0), emissive: LinearRgba::rgb(2.0, 1.2, 4.0), ..default() }),
+        tints: registry()
+            .kinetics
+            .iter()
+            .filter(|k| k.role == Role::Static)
+            .filter_map(|k| ItemId::from_key(&k.item).map(|i| i.color()))
+            .map(|c| (c, mats.add(StandardMaterial { base_color: c, metallic: 0.3, perceptual_roughness: 0.45, ..default() })))
+            .collect(),
     });
 }
 
@@ -159,6 +177,7 @@ pub fn spawn_kinetic(commands: &mut Commands, a: &KineticAssetsRef, key: &str, c
             rpm: def.source_rpm,
             crank: 0.0,
             powered: false,
+            power_scale: 1.0,
         },
         KineticState::default(),
         Scannable { title: name, info },
@@ -185,6 +204,12 @@ pub fn spawn_kinetic(commands: &mut Commands, a: &KineticAssetsRef, key: &str, c
             Role::Motor => {
                 p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.copper.clone()), Transform::from_xyz(0.0, -0.08, 0.0).with_scale(Vec3::new(1.0, 0.8, 1.0))));
             }
+            Role::Static => {
+                // Magical / passive device: tinted housing and a glowing core.
+                let c = ItemId::from_key(&def.item).map(|i| i.color()).unwrap_or(Color::WHITE);
+                p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(tinted(&a, c)), Transform::from_scale(Vec3::new(0.8, 0.8, 0.8))));
+                p.spawn((Mesh3d(a.plate.clone()), MeshMaterial3d(a.glow.clone()), Transform::from_xyz(0.0, 0.36, 0.0).with_scale(Vec3::new(0.5, 0.6, 0.5))));
+            }
             Role::Bearing | Role::Crank => {
                 p.spawn((Mesh3d(a.casing.clone()), MeshMaterial3d(a.andesite.clone()), Transform::from_xyz(0.0, -0.15, 0.0).with_scale(Vec3::new(1.0, 0.65, 1.0))));
             }
@@ -207,7 +232,7 @@ pub fn spawn_kinetic(commands: &mut Commands, a: &KineticAssetsRef, key: &str, c
                     }
                     r.spawn((Mesh3d(a.shaft.clone()), MeshMaterial3d(a.andesite.clone()), Transform::default()));
                 }
-                Role::Gearbox => {}
+                Role::Gearbox | Role::Static => {}
                 Role::Crank => {
                     r.spawn((Mesh3d(a.shaft.clone()), MeshMaterial3d(a.andesite.clone()), Transform::from_scale(Vec3::new(1.0, 1.0, 1.0))));
                     r.spawn((Mesh3d(a.handle.clone()), MeshMaterial3d(a.wood.clone()), Transform::from_xyz(0.0, 0.45, 0.2)));
@@ -298,7 +323,7 @@ pub fn build_nodes(
         n.toggled = b.toggled;
         n.source = match def.role {
             Role::Crank if b.crank > 0.0 => Some((def.source_rpm, def.source_power)),
-            Role::Motor if b.on && b.powered => Some((b.rpm, def.source_power)),
+            Role::Motor if b.on && b.powered => Some((b.rpm, def.source_power * b.power_scale)),
             Role::Crank | Role::Motor => Some((0.0, 0.0)),
             _ => None,
         };
