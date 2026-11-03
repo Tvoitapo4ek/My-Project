@@ -100,19 +100,21 @@ fn crate_intake(
 fn grinder_drive(
     joints: Query<&Connection>,
     bodies: Query<&AngularVelocity>,
-    mut machines: Query<(Entity, &Part, &mut Machine)>,
+    mut machines: Query<(Entity, &Part, &mut Machine, Option<&crate::kinetics::KineticDrive>)>,
 ) {
-    for (e, part, mut m) in &mut machines {
+    for (e, part, mut m, kinetic) in &mut machines {
         if part.kind != PartKind::Grinder {
             continue;
         }
+        // Rotation from the kinetic network (RPM → rad/s).
+        let from_network = kinetic.map(|k| k.0 / 60.0 * std::f32::consts::TAU).unwrap_or(0.0);
         let mine = bodies.get(e).map(|a| a.0).unwrap_or_default();
         m.drive_speed = joints
             .iter()
             .filter(|c| c.kind == JointKind::Hinge && (c.a == e || c.b == e))
             .filter_map(|c| bodies.get(if c.a == e { c.b } else { c.a }).ok())
             .map(|w| (w.0 - mine).length())
-            .fold(0.0, f32::max);
+            .fold(from_network, f32::max);
     }
 }
 
@@ -184,7 +186,8 @@ fn run_machines(
         m.progress += dt * rate;
         if m.progress >= recipe.time {
             m.progress = 0.0;
-            m.input = None;
+            // One input item per operation; the rest of the stack waits.
+            m.input = (input.count > 1).then(|| ItemStack::new(input.item, input.count - 1));
             if station == Station::Smelter {
                 m.fuel_ops -= 1;
             }

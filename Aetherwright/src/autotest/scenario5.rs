@@ -145,6 +145,18 @@ fn click_entity(world: &mut World, ctx: &mut Ctx, e: Entity) -> bool {
 /// way, then aims at the face centre and clicks LMB. Spans 14 frames from
 /// `f0`; returns true on the last one.
 fn click_face(world: &mut World, ctx: &Ctx, f0: u32, e: Entity, n: Vec3, half: f32) -> bool {
+    // `n` is the face in the part's own frame, turned by its heading (yaw):
+    // assembled parts may have rotated on the floor, the test still means
+    // "the engine's left face". Tilted parts (wheels) keep a zero heading.
+    let n = {
+        let rot = world.get::<Transform>(e).map(|t| t.rotation).unwrap_or_default();
+        let fwd = rot * Vec3::X;
+        if fwd.y.abs() < 0.7 {
+            Quat::from_rotation_y((-fwd.z).atan2(fwd.x)) * n
+        } else {
+            n
+        }
+    };
     if ctx.frames == f0 {
         let p = pos_of(world, e);
         let from = p

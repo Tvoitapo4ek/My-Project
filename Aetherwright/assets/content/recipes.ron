@@ -29,4 +29,15 @@
     (station: Grinder, inputs: [("stone", 1)], output: ("gravel", 1), time: 2.0),
     (station: Grinder, inputs: [("agitated_shard", 1)], output: ("aether_shard", 2), time: 3.0),
     (station: Grinder, inputs: [("ancient_stone", 1)], output: ("aether_shard", 3), time: 5.0),
+
+    // Кинетика (V1)
+    (station: Workbench, inputs: [("metal", 1)], output: ("drive_shaft", 4), time: 1.0),
+    (station: Workbench, inputs: [("planks", 2), ("metal", 1)], output: ("cogwheel", 2), time: 1.0),
+    (station: Workbench, inputs: [("planks", 4), ("metal", 1)], output: ("large_cogwheel", 1), time: 1.0),
+    (station: Workbench, inputs: [("metal", 2), ("cogwheel", 2)], output: ("gearbox", 1), time: 1.0),
+    (station: Workbench, inputs: [("drive_shaft", 2), ("copper", 1)], output: ("clutch", 1), time: 1.0),
+    (station: Workbench, inputs: [("drive_shaft", 2), ("cogwheel", 2)], output: ("gearshift", 1), time: 1.0),
+    (station: Hand, inputs: [("planks", 3), ("drive_shaft", 1)], output: ("hand_crank", 1), time: 1.0),
+    (station: Workbench, inputs: [("metal", 4), ("copper", 4), ("drive_shaft", 1)], output: ("electric_motor", 1), time: 1.0),
+    (station: Workbench, inputs: [("metal", 3), ("drive_shaft", 1)], output: ("bearing", 1), time: 1.0),
 ]

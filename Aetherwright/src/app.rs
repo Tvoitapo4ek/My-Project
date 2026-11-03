@@ -69,7 +69,11 @@ pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
         crate::ui::UiPlugin,
         crate::autotest::AutotestPlugin,
     ));
-    app.add_plugins((crate::models::ModelsPlugin, crate::holo::HoloPlugin));
+    app.add_plugins((
+        crate::models::ModelsPlugin,
+        crate::holo::HoloPlugin,
+        crate::kinetics::KineticsPlugin,
+    ));
 
     app
 }

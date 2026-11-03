@@ -17,6 +17,7 @@ pub mod scenario8;
 pub mod scenario9;
 pub mod scenario_t2;
 pub mod scenario_t3;
+pub mod scenario_v1;
 
 use bevy::{
     prelude::*,

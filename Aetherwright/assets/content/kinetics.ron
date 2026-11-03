@@ -1,0 +1,22 @@
+// Кинетические блоки: вращение передаётся по сетке, как в Create
+// (см. docs/KINETICS.md). Поведение задаёт `role`, числа — здесь.
+// ЧИСЛА ВРЕМЕННЫЕ: баланс — открытый вопрос концепта.
+//
+//   impact        — трение / работа, единиц нагрузки (SU) на оборот в минуту;
+//   strength      — сколько мощности (SU) выдерживает деталь, None — не ломается;
+//   source_rpm    — источники: желаемые обороты;
+//   source_power  — источники: мощность (SU);
+//   energy_per_su — мотор: энергии в секунду на 1 SU отданной мощности;
+//   item          — предмет, который возвращается при разборке / поломке.
+[
+    (key: "shaft", role: Shaft, impact: 0.05, strength: Some(512.0), item: "drive_shaft"),
+    (key: "cogwheel", role: Cog, impact: 0.1, strength: Some(512.0), item: "cogwheel"),
+    (key: "large_cogwheel", role: LargeCog, impact: 0.15, strength: Some(768.0), item: "large_cogwheel"),
+    (key: "gearbox", role: Gearbox, impact: 0.2, strength: Some(1024.0), item: "gearbox"),
+    (key: "clutch", role: Clutch, impact: 0.1, strength: Some(512.0), item: "clutch"),
+    (key: "gearshift", role: Gearshift, impact: 0.1, strength: Some(512.0), item: "gearshift"),
+    (key: "hand_crank", role: Crank, impact: 0.0, source_rpm: 32.0, source_power: 48.0, item: "hand_crank"),
+    (key: "electric_motor", role: Motor, impact: 0.0, source_rpm: 64.0, source_power: 512.0,
+     energy_per_su: 0.004, item: "electric_motor"),
+    (key: "bearing", role: Bearing, impact: 1.0, strength: Some(1024.0), item: "bearing"),
+]

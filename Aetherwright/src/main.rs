@@ -13,6 +13,7 @@ mod crafting;
 mod creative;
 mod holo;
 mod items;
+mod kinetics;
 mod machinery;
 mod magic;
 mod models;

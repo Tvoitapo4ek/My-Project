@@ -129,7 +129,7 @@ fn spawn_panel(
 fn pick_target(
     time: Res<Time>,
     target: Res<EntityTarget>,
-    parts: Query<(), With<Part>>,
+    parts: Query<(), Or<(With<Part>, With<crate::kinetics::KineticBlock>)>>,
     focus: Res<State<InputFocus>>,
     mut eng: ResMut<EngineeringTarget>,
 ) {
@@ -168,6 +168,10 @@ fn kind_name(k: PartKind) -> String {
 
 /// Text of the panel from the part's real components.
 pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)> {
+    if let Some((name, lines, diag)) = crate::kinetics::describe_block(world, e) {
+        let diag = if diag.is_empty() { "✓ Неисправностей не найдено".to_string() } else { diag.iter().map(|d| format!("! {d}")).collect::<Vec<_>>().join("\n") };
+        return Some((name, lines.join("\n"), diag));
+    }
     let er = world.get_entity(e).ok()?;
     let part = er.get::<Part>()?.kind;
     let mut lines: Vec<String> = Vec::new();
@@ -215,6 +219,9 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
     }
     if let Some(a) = er.get::<AetherStore>() {
         lines.push(format!("Эфир: {:.0} / {:.0} ({})", a.amount, a.capacity, a.kind.label()));
+    }
+    if let Some(d) = er.get::<crate::kinetics::KineticDrive>() {
+        lines.push(format!("Вращение от сети: {:.0} об/мин", d.0));
     }
     if let Some(m) = er.get::<Machine>() {
         let st = |s: Option<crate::items::ItemStack>| s.map(|s| format!("{} ×{}", s.item.def().name, s.count)).unwrap_or("—".into());
@@ -273,7 +280,7 @@ fn update_panel(world: &mut World) {
         _ => None,
     };
     let part_t = entity.and_then(|e| world.get::<Transform>(e).copied());
-    let half = entity.and_then(|e| world.get::<Part>(e)).map(|p| p.kind.half_height()).unwrap_or(0.5);
+    let half = entity.and_then(|e| world.get::<Part>(e)).map(|p| p.kind.half_height()).unwrap_or(0.45);
     let mut q = world.query::<(&EngPanel, &mut Transform, &mut GlobalTransform, &mut Visibility)>();
     let mut cam_entity = None;
     for (panel, mut t, mut gt, mut vis) in q.iter_mut(world) {

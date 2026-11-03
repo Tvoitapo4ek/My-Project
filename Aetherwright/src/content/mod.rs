@@ -31,6 +31,8 @@ pub struct Registry {
     pub recipes: Vec<RecipeDef>,
     pub journal: Vec<JournalDef>,
     journal_index: HashMap<String, u16>,
+    pub kinetics: Vec<KineticDef>,
+    kinetic_index: HashMap<String, u16>,
     block_index: HashMap<String, u16>,
     texture_index: HashMap<String, u16>,
     item_index: HashMap<String, u16>,
@@ -73,6 +75,7 @@ const BUILTIN_TEXTURES: &str = include_str!("../../assets/content/textures.ron")
 const BUILTIN_ITEMS: &str = include_str!("../../assets/content/items.ron");
 const BUILTIN_RECIPES: &str = include_str!("../../assets/content/recipes.ron");
 const BUILTIN_JOURNAL: &str = include_str!("../../assets/content/journal.ron");
+const BUILTIN_KINETICS: &str = include_str!("../../assets/content/kinetics.ron");
 
 /// Keys of the built-in blocks in their fixed order (code refers to them by
 /// index through `world::voxel::blocks`). Also the v1 save palette.
@@ -138,7 +141,7 @@ impl Registry {
     fn load(roots: &[PathBuf]) -> Registry {
         let mut r = Registry::default();
         let mut w = Vec::new();
-        let mut layers: Vec<(String, [Option<String>; 5])> = vec![(
+        let mut layers: Vec<(String, [Option<String>; 6])> = vec![(
             "встроенный контент".into(),
             [
                 Some(BUILTIN_BLOCKS.into()),
@@ -146,6 +149,7 @@ impl Registry {
                 Some(BUILTIN_ITEMS.into()),
                 Some(BUILTIN_RECIPES.into()),
                 Some(BUILTIN_JOURNAL.into()),
+                Some(BUILTIN_KINETICS.into()),
             ],
         )];
         for root in roots {
@@ -157,12 +161,17 @@ impl Registry {
                 read("items.ron"),
                 read("recipes.ron"),
                 read("journal.ron"),
+                read("kinetics.ron"),
             ];
             if files.iter().any(Option::is_some) {
                 layers.push((root.display().to_string(), files));
             }
         }
-        for (origin, [blocks, textures, items, recipes, journal]) in layers {
+        for (origin, [blocks, textures, items, recipes, journal, kinetics]) in layers {
+            if let Some(t) = kinetics {
+                let v: Vec<KineticDef> = parse(&t, &format!("{origin}/kinetics.ron"), &mut w);
+                merge(&mut r.kinetics, &mut r.kinetic_index, v, |k| &k.key);
+            }
             if let Some(t) = journal {
                 let v: Vec<JournalDef> = parse(&t, &format!("{origin}/journal.ron"), &mut w);
                 merge(&mut r.journal, &mut r.journal_index, v, |j| &j.key);
@@ -242,6 +251,18 @@ impl Registry {
                 _ => {}
             }
         }
+        for k in &self.kinetics {
+            if !self.item_index.contains_key(&k.item) {
+                w.push(format!("кинетика {}: нет предмета {}", k.key, k.item));
+            }
+        }
+        for it in &self.items {
+            if let ItemUse::Kinetic(k) = &it.use_
+                && !self.kinetic_index.contains_key(k)
+            {
+                w.push(format!("предмет {}: нет кинетического блока {k}", it.key));
+            }
+        }
         for j in &self.journal {
             match &j.image {
                 JournalImage::Texture(t) if !self.texture_index.contains_key(t) => {
@@ -265,6 +286,10 @@ impl Registry {
             }
             ok
         });
+    }
+
+    pub fn kinetic(&self, key: &str) -> Option<&KineticDef> {
+        self.kinetic_index.get(key).map(|&i| &self.kinetics[i as usize])
     }
 
     pub fn block_id(&self, key: &str) -> Option<u16> {
@@ -300,9 +325,14 @@ mod tests {
         assert!(r.warnings.is_empty(), "{:?}", r.warnings);
         assert_eq!(r.blocks.len(), 24);
         assert_eq!(r.textures.len(), 25);
-        assert_eq!(r.items.len(), 48);
+        assert_eq!(r.items.len(), 57);
         assert!(r.journal.len() >= 12);
-        assert_eq!(r.recipes.len(), 28);
+        assert_eq!(r.kinetics.len(), 9);
+        assert_eq!(r.recipes.len(), 37);
+        // Every kinetic item places a defined block and back.
+        for k in &r.kinetics {
+            assert!(r.items.iter().any(|i| i.key == k.item && i.use_ == ItemUse::Kinetic(k.key.clone())), "{}", k.key);
+        }
     }
 
     #[test]

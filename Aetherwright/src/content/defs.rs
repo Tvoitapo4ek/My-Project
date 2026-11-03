@@ -240,6 +240,32 @@ pub enum ItemUse {
     Module(String),
     /// Worn in an equipment slot (holographic device → Экипировка).
     Wear(EquipSlot),
+    /// Places a kinetic block (`kinetics.ron` key).
+    Kinetic(String),
+}
+
+/// A kinetic block type (`content/kinetics.ron`). Behaviour by `role`,
+/// numbers here (temporary balance — open question of the concept).
+#[derive(Clone, Debug, Deserialize)]
+pub struct KineticDef {
+    pub key: String,
+    pub role: crate::kinetics::network::Role,
+    /// Friction / work in SU per RPM.
+    #[serde(default)]
+    pub impact: f32,
+    /// Max transmitted power (SU); None = unbreakable.
+    #[serde(default)]
+    pub strength: Option<f32>,
+    /// Sources: wanted RPM and power (SU).
+    #[serde(default)]
+    pub source_rpm: f32,
+    #[serde(default)]
+    pub source_power: f32,
+    /// Motor: energy per second per SU actually delivered.
+    #[serde(default)]
+    pub energy_per_su: f32,
+    /// Item dropped when broken / collected.
+    pub item: String,
 }
 
 /// Equipment slots that hold worn items. Weapon / tool / manipulator

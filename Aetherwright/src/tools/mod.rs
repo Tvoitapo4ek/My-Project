@@ -31,6 +31,8 @@ pub enum ActiveTool {
     Manipulator,
     PlaceBlock(ItemId, BlockId),
     PlacePart(ItemId),
+    /// Kinetic block on the grid (`kinetics`).
+    PlaceKinetic(ItemId),
     PhysGun,
     Melee,
     Ranged,
@@ -77,6 +79,7 @@ fn update_active_tool(player: Query<&Inventory, With<Player>>, mut tool: ResMut<
                 .block()
                 .map_or(ActiveTool::Inert(item), |b| ActiveTool::PlaceBlock(item, b)),
             Use::Part(_) => ActiveTool::PlacePart(item),
+            Use::Kinetic(_) => ActiveTool::PlaceKinetic(item),
             Use::PhysGun => ActiveTool::PhysGun,
             Use::Melee => ActiveTool::Melee,
             Use::Ranged => ActiveTool::Ranged,
