@@ -36,7 +36,12 @@ pub fn stage_v5(steps: &mut Vec<(String, StepFn)>) {
         if ctx.frames == 1 {
             // Alarm: rotation of the last shaft < 0.1 → lamp.
             let a = assets_ref(world).unwrap();
+            // V1 ended by taking the upper cog away: put it back.
+            let missing = !world.resource::<KineticGrid>().blocks.contains_key(&(b + IVec3::new(3, 1, 0)));
             let mut cm = world.commands();
+            if missing {
+                spawn_kinetic(&mut cm, &a, "cogwheel", b + IVec3::new(3, 1, 0), Axis::X);
+            }
             let sensor = spawn_kinetic(&mut cm, &a, "sensor_rotation", b + IVec3::new(4, 2, 0), Axis::Y).unwrap();
             let comp = spawn_kinetic(&mut cm, &a, "logic_comparator", b + IVec3::new(4, 3, 0), Axis::Y).unwrap();
             let lamp = spawn_kinetic(&mut cm, &a, "signal_lamp", b + IVec3::new(4, 4, 0), Axis::Y).unwrap();
@@ -58,6 +63,8 @@ pub fn stage_v5(steps: &mut Vec<(String, StepFn)>) {
             }
         }
         if ctx.frames == 12 {
+            let drive = world.get::<KineticDrive>(g).map(|d| d.0).unwrap_or(-1.0);
+            ctx.check("drivetrain runs before the fault", drive > 0.0, format!("{drive}"));
             let lamp = world.get::<LogicNode>(ctx.entities["v5_lamp"]).map(|n| n.gate.out).unwrap_or(-1.0);
             ctx.check("running drivetrain: alarm lamp off", lamp == 0.0, format!("{lamp}"));
         }
