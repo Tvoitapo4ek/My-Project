@@ -77,8 +77,8 @@ pub fn stage_v3(steps: &mut Vec<(String, StepFn)>) {
             for (n, e) in [("col", col), ("acc", acc), ("stab", stab), ("tx", tx), ("rx", rx), ("eng", eng), ("grinder", g)] {
                 ctx.entities.insert(format!("v3_{n}"), e);
             }
-            teleport(world, c.as_vec3() + Vec3::new(2.5, 2.2, 8.5));
-            aim_at(world, c.as_vec3() + Vec3::new(2.5, 0.5, 1.5));
+            teleport(world, c.as_vec3() + Vec3::new(2.5, 2.4, 5.5));
+            aim_at(world, c.as_vec3() + Vec3::new(2.5, 0.3, 1.0));
         }
         if ctx.frames == 8 {
             // Seed the accumulator so the far end does not wait for minutes.

@@ -108,6 +108,10 @@ pub fn stage_v4(steps: &mut Vec<(String, StepFn)>) {
             let off = world.get::<KineticBlock>(eng).is_some_and(|k| !k.on);
             let out = world.get::<LogicNode>(ctx.entities["v4_ctrl"]).map(|n| n.gate.out).unwrap_or(-1.0);
             ctx.check("low aether: controller switches the engine off", off && out == 0.0, format!("controller out {out}"));
+            teleport(world, c.as_vec3() + Vec3::new(3.0, 2.4, 5.0));
+            aim_at(world, c.as_vec3() + Vec3::new(3.5, 0.8, 0.0));
+        }
+        if ctx.frames == 56 {
             screenshot(world, "37_logic");
             return Step::Next;
         }
