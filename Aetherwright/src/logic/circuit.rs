@@ -21,6 +21,8 @@ pub enum SensorKind {
     Distortion,
     /// 1 when the player or a creature is within a few metres.
     Presence,
+    /// Strength of an anomaly at the sensor (|gravity − 1|, capped at 1).
+    Anomaly,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -75,6 +77,7 @@ impl Element {
             Element::Sensor(SensorKind::Aether) => "Датчик эфира",
             Element::Sensor(SensorKind::Distortion) => "Датчик искажения",
             Element::Sensor(SensorKind::Presence) => "Датчик присутствия",
+            Element::Sensor(SensorKind::Anomaly) => "Датчик аномалий",
             Element::Button => "Кнопка",
             Element::Lever => "Рычаг",
             Element::Timer => "Таймер",

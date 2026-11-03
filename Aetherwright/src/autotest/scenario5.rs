@@ -533,6 +533,14 @@ pub fn stage5(steps: &mut Vec<(String, StepFn)>) {
         {
             ctx.vars.insert("engine_clicked".into(), ctx.frames as f32);
         }
+        // A moving cart can shift the aim onto a neighbour part between
+        // aiming and the click: if the engine did not switch, click again.
+        if ctx.vars.get("engine_clicked").is_some_and(|f| ctx.frames == *f as u32 + 8)
+            && !world.get::<Engine>(e).is_some_and(|en| en.on)
+            && ctx.frames <= 200
+        {
+            ctx.vars.remove("engine_clicked");
+        }
         let done = ctx
             .vars
             .get("engine_clicked")

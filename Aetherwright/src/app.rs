@@ -78,6 +78,7 @@ pub fn build_app(options: LaunchOptions, root: std::path::PathBuf) -> App {
         crate::arcana::ArcanaPlugin,
         crate::logic::LogicPlugin,
         crate::wear::WearPlugin,
+        crate::anomaly::AnomalyPlugin,
     ));
 
     app

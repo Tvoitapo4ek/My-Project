@@ -197,6 +197,27 @@ pub fn model(key: &str, role: Role) -> Vec<ModelPart> {
                 v.push(part(bx(0.16, 0.24, 0.16), glow, y(0.5), Float));
                 v.push(part(Shape::Ring(0.02, 0.2), "gold_trim", y(0.42), Spin));
             }
+            R::Generator => {
+                // A void core between four gold pillars, caged by rings,
+                // with agitated crystals growing from the base.
+                v.push(part(bx(0.62, 0.16, 0.62), "arcane_rune", y(-0.18), Housing));
+                for (x, z) in [(-0.33, -0.33), (0.33, -0.33), (-0.33, 0.33), (0.33, 0.33)] {
+                    v.push(part(bx(0.1, 0.7, 0.1), "gold_trim", Vec3::new(x, 0.1, z), Housing));
+                    v.push(part(bx(0.14, 0.08, 0.14), "arcane_stone", Vec3::new(x, 0.46, z), Housing));
+                }
+                v.push(part(bx(0.76, 0.06, 0.76), "gold_trim", y(0.43), Housing));
+                v.push(part(Shape::Sphere(0.13), "glow_magenta", y(0.14), Core));
+                v.push(part(Shape::Sphere(0.24), "halo_magenta", y(0.14), Float));
+                v.push(part(Shape::Ring(0.024, 0.26), "gold_trim", y(0.14), Spin));
+                let mut r2 = part(Shape::Ring(0.02, 0.2), "gold_trim", y(0.14), Spin);
+                r2.rot = Quat::from_rotation_x(1.57);
+                v.push(r2);
+                for (x, z, t) in [(-0.22f32, 0.1f32, 0.4f32), (0.2, -0.18, -0.35)] {
+                    let mut c = part(bx(0.09, 0.26, 0.09), "glow_magenta", Vec3::new(x, -0.02, z), Housing);
+                    c.rot = Quat::from_rotation_z(t);
+                    v.push(c);
+                }
+            }
             R::Engine => {
                 v = vec![
                     part(bx(0.9, 0.5, 0.9), "arcane_stone", y(-0.2), Housing),
@@ -322,6 +343,8 @@ fn setup_assets(
     kit.mats.insert("glow_green", glow(&mut mats, LinearRgba::rgb(0.35, 1.2, 0.5)));
     kit.mats.insert("glow_amber", glow(&mut mats, LinearRgba::rgb(1.2, 0.7, 0.2)));
     kit.mats.insert("halo_cyan", halo(&mut mats, Color::srgba(0.3, 0.8, 1.0, 0.18)));
+    kit.mats.insert("glow_magenta", glow(&mut mats, LinearRgba::rgb(1.3, 0.3, 1.0)));
+    kit.mats.insert("halo_magenta", halo(&mut mats, Color::srgba(1.0, 0.3, 0.85, 0.2)));
     for k in &registry().kinetics {
         for p in model(&k.key, k.role) {
             kit.meshes.entry(shape_key(&p.shape)).or_insert_with(|| match p.shape {

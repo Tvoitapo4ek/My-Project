@@ -54,6 +54,8 @@
     (station: Workbench, inputs: [("aether_shard", 2), ("copper", 2)], output: ("resonator_tx", 1), time: 1.0),
     (station: Workbench, inputs: [("aether_shard", 2), ("copper", 2)], output: ("resonator_rx", 1), time: 1.0),
     (station: Workbench, inputs: [("aether_shard", 3), ("metal", 4), ("drive_shaft", 1)], output: ("magic_engine", 1), time: 1.0),
+    (station: Workbench, inputs: [("agitated_shard", 4), ("ancient_stone", 2), ("copper", 4), ("metal", 2)], output: ("anomaly_generator", 1), time: 1.0),
+    (station: Workbench, inputs: [("copper", 1), ("metal", 1), ("agitated_shard", 1)], output: ("sensor_anomaly", 1), time: 1.0),
     (station: Hand, inputs: [("aether_shard", 1)], output: ("crystal_conductor", 3), time: 0.0),
     (station: Workbench, inputs: [("metal", 1), ("aether_shard", 1)], output: ("rune_chisel", 1), time: 1.0),
     (station: Hand, inputs: [("stone", 1), ("aether_shard", 1)], output: ("rune_filter", 1), time: 0.0),

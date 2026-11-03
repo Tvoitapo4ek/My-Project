@@ -186,21 +186,35 @@ pub fn build() -> Scenario {
         if ctx.t > 0.5 { Step::Next } else { Step::Wait }
     }));
 
-    stage2(&mut steps);
-    super::scenario3::stage3(&mut steps);
-    super::scenario4::stage4(&mut steps);
-    super::scenario5::stage5(&mut steps);
-    super::scenario6::stage6(&mut steps);
-    super::scenario7::stage7(&mut steps);
-    super::scenario8::stage8(&mut steps);
-    super::scenario9::stage9(&mut steps);
-    super::scenario_t2::stage_t2(&mut steps);
-    super::scenario_t3::stage_t3(&mut steps);
-    super::scenario_v1::stage_v1(&mut steps);
-    super::scenario_v3::stage_v3(&mut steps);
-    super::scenario_v4::stage_v4(&mut steps);
-    super::scenario_v5::stage_v5(&mut steps);
-    super::scenario_v2::stage_v2(&mut steps);
+    // `AUTOTEST_ONLY=v6,v3` runs only those stages after the prelude
+    // (development shortcut; the full run is the default).
+    let only: Option<Vec<String>> = std::env::var("AUTOTEST_ONLY").ok().map(|v| v.split(',').map(|s| s.trim().to_lowercase()).collect());
+    let stages: [(&str, fn(&mut Vec<(String, StepFn)>)); 15] = [
+        ("2", stage2),
+        ("3", super::scenario3::stage3),
+        ("4", super::scenario4::stage4),
+        ("5", super::scenario5::stage5),
+        ("6", super::scenario6::stage6),
+        ("7", super::scenario7::stage7),
+        ("8", super::scenario8::stage8),
+        ("9", super::scenario9::stage9),
+        ("t2", super::scenario_t2::stage_t2),
+        ("t3", super::scenario_t3::stage_t3),
+        ("v1", super::scenario_v1::stage_v1),
+        ("v3", super::scenario_v3::stage_v3),
+        ("v4", super::scenario_v4::stage_v4),
+        ("v5", super::scenario_v5::stage_v5),
+        ("v6", super::scenario_v6::stage_v6),
+    ];
+    for (name, add) in stages {
+        if only.as_ref().is_none_or(|o| o.iter().any(|x| x == name)) {
+            add(&mut steps);
+        }
+    }
+    // V2 reloads the world, so it always runs last.
+    if only.as_ref().is_none_or(|o| o.iter().any(|x| x == "v2")) {
+        super::scenario_v2::stage_v2(&mut steps);
+    }
 
     Scenario {
         steps,

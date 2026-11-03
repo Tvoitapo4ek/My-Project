@@ -181,6 +181,10 @@ pub fn describe(world: &mut World, e: Entity) -> Option<(String, String, String)
             lines.extend(l);
             diag.extend(d);
         }
+        if let Some((l, d)) = crate::anomaly::describe(world, e) {
+            lines.extend(l);
+            diag.extend(d);
+        }
         if let Some((l, d)) = crate::wear::describe(world, e) {
             lines.extend(l);
             diag.extend(d);

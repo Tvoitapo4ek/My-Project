@@ -22,6 +22,7 @@ pub mod scenario_v2;
 pub mod scenario_v3;
 pub mod scenario_v4;
 pub mod scenario_v5;
+pub mod scenario_v6;
 pub mod showcase;
 
 use bevy::{

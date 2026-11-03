@@ -32,6 +32,7 @@
     (key: "crystal_accumulator", role: Static, item: "crystal_accumulator"),
     (key: "resonator_tx", role: Static, item: "resonator_tx"),
     (key: "resonator_rx", role: Static, item: "resonator_rx"),
+    (key: "anomaly_generator", role: Static, item: "anomaly_generator"),
     // Магический двигатель: источник вращения, питается эфиром (не электричеством).
     (key: "magic_engine", role: Motor, impact: 0.0, source_rpm: 48.0, source_power: 384.0,
      energy_per_su: 0.0, strength: Some(1024.0), item: "magic_engine"),
@@ -42,6 +43,7 @@
     (key: "sensor_aether", role: Static, item: "sensor_aether"),
     (key: "sensor_distortion", role: Static, item: "sensor_distortion"),
     (key: "sensor_presence", role: Static, item: "sensor_presence"),
+    (key: "sensor_anomaly", role: Static, item: "sensor_anomaly"),
     (key: "logic_button", role: Static, item: "logic_button"),
     (key: "logic_lever", role: Static, item: "logic_lever"),
     (key: "logic_timer", role: Static, item: "logic_timer"),

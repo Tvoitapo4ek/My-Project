@@ -314,6 +314,8 @@ pub enum MagicRole {
     Engine,
     Transmitter,
     Receiver,
+    /// Anomaly generator (V6): burns unstable aether to shape an anomaly.
+    Generator,
 }
 
 /// A magical device (`content/arcana.ron`); its block is the kinetic
@@ -342,6 +344,52 @@ pub struct MagicDef {
     pub range: f32,
     #[serde(default)]
     pub throughput: f32,
+    /// Generator: which anomaly it shapes (`anomalies.ron` key).
+    #[serde(default)]
+    pub anomaly: Option<String>,
+    /// Stabilizer: anomaly holding strength at full power, and how far
+    /// beyond an anomaly's edge it reaches (m).
+    #[serde(default)]
+    pub hold: f32,
+    #[serde(default)]
+    pub hold_range: f32,
+}
+
+/// What an anomaly does (`AnomalyDef::kind`). New kinds are added here and
+/// in `anomaly::effects`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnomalyKind {
+    /// Changes the pull of gravity on objects inside.
+    Gravity,
+}
+
+/// An anomaly type (`content/anomalies.ron`). Numbers are temporary
+/// balance: the mechanisms of individual anomalies are an open question.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AnomalyDef {
+    pub key: String,
+    pub name: String,
+    pub kind: AnomalyKind,
+    /// Generator modes: (label, gravity multiplier).
+    pub modes: Vec<(String, f32)>,
+    /// Generator radius settings (m).
+    pub radii: Vec<f32>,
+    /// Seconds of fuelled work to shape the anomaly.
+    pub form_time: f32,
+    /// Chance that shaping succeeds in a barely sufficient environment;
+    /// rises to 1 in twice as unstable surroundings.
+    pub success: f32,
+    /// Minimum strength of an unstable field (agitated / condensed /
+    /// unique) at the generator.
+    pub min_instability: f32,
+    /// Spread of the shaped result (share of the setting).
+    pub spread: f32,
+    /// How much an unheld anomaly wanders (share of its deviation).
+    pub jitter: f32,
+    /// Chance the anomaly stays after the generator stops, and how long
+    /// it then lasts (s, min..max).
+    pub persist_chance: f32,
+    pub persist_time: (f32, f32),
 }
 
 fn one() -> f32 {

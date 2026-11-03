@@ -90,7 +90,7 @@ C копировать, X вырезать, Delete удалить, T повер�
 
 ## Системы машин
 
-Кинетика — `docs/KINETICS.md`, электросеть — `docs/ELECTRIC.md`, магический конвейер — `docs/ARCANA.md`, логика — `docs/LOGIC.md`, износ и ремонт — `docs/WEAR.md`, интерфейс — `docs/HOLO_UI.md`.
+Кинетика — `docs/KINETICS.md`, электросеть — `docs/ELECTRIC.md`, магический конвейер — `docs/ARCANA.md`, логика — `docs/LOGIC.md`, износ и ремонт — `docs/WEAR.md`, аномалии — `docs/ANOMALIES.md`, интерфейс — `docs/HOLO_UI.md`.
 
 ## Стиль
 

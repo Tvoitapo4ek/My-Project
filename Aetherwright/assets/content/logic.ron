@@ -1,5 +1,5 @@
 // Логические элементы (V4). Блок с тем же ключом описан в kinetics.ron.
-// element: Sensor(Rotation | Energy | Aether | Distortion | Presence) | Button
+// element: Sensor(Rotation | Energy | Aether | Distortion | Presence | Anomaly) | Button
 //          | Lever | Timer | Counter | And | Or | Not | Xor | Comparator
 //          | Controller | Transmitter | Receiver | Lamp
 [
@@ -8,6 +8,7 @@
     (key: "sensor_aether", element: Sensor(Aether)),
     (key: "sensor_distortion", element: Sensor(Distortion)),
     (key: "sensor_presence", element: Sensor(Presence)),
+    (key: "sensor_anomaly", element: Sensor(Anomaly)),
     (key: "logic_button", element: Button),
     (key: "logic_lever", element: Lever),
     (key: "logic_timer", element: Timer),

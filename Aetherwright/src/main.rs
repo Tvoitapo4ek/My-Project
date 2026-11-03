@@ -4,6 +4,7 @@
 //! `main.rs` only parses the launch options; everything else lives in
 //! feature plugins assembled in [`app`].
 
+mod anomaly;
 mod app;
 mod arcana;
 mod autotest;

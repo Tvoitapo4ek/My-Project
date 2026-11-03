@@ -66,7 +66,7 @@ fn read_device(world: &World, kind: SensorKind, e: Entity) -> Option<f32> {
         SensorKind::Energy => world.resource::<PowerStats>().by_entity.get(&e).map(|(en, cap)| if *cap > 0.0 { en / cap } else { 0.0 }),
         SensorKind::Aether => world.get::<MagicNode>(e).and_then(|n| n.def().map(|d| n.amount / d.capacity.max(1e-3))),
         SensorKind::Distortion => world.get::<MagicNode>(e).map(|n| if n.amount > 1e-3 { n.quality.distortion } else { 0.0 }),
-        SensorKind::Presence => None,
+        SensorKind::Presence | SensorKind::Anomaly => None,
     }
 }
 
@@ -112,6 +112,7 @@ fn run_logic(world: &mut World) {
                 let near = |p: &Vec3| p.distance(*pos) < 4.0;
                 if player.as_ref().is_some_and(near) || creatures.iter().any(near) { 1.0 } else { 0.0 }
             }
+            SensorKind::Anomaly => crate::anomaly::strength_at(world, *pos),
             _ => {
                 let mut sources: Vec<Entity> = telemetry[i].clone();
                 if sources.is_empty() {
@@ -158,6 +159,13 @@ fn run_logic(world: &mut World) {
                     en.on = on;
                 }
             } else if let Some(mut k) = em.get_mut::<KineticBlock>() {
+                // Anomaly generators are switched like motors.
+                if registry().magic(&k.key).is_some_and(|m| m.role == crate::content::MagicRole::Generator) {
+                    if k.on != on {
+                        k.on = on;
+                    }
+                    continue;
+                }
                 match k.def().map(|d| d.role) {
                     Some(Role::Motor) if k.on != on => {
                         k.on = on;
