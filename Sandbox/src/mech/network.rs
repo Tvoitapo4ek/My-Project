@@ -12,12 +12,19 @@
 //!   All sources of a network must agree, otherwise it is in **conflict**
 //!   and stops. Creative sources have unlimited power.
 //! * Speeds are limited to `MAX_RPM`.
+//! * **Stress** (like Create): every node uses `stress × |RPM| / 32` SU,
+//!   sources give `capacity` SU. A network asking more than it gets slows
+//!   down by `capacity / stress`; below `STALL` it stops (overstressed).
 
 use std::collections::{HashMap, VecDeque};
 
 use bevy::math::IVec3;
 
 pub const MAX_RPM: f32 = 256.0;
+/// Speed factor below which an overloaded network stops.
+pub const STALL: f32 = 0.2;
+/// Stress is quoted per 32 RPM.
+pub const STRESS_RPM: f32 = 32.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Axis {
@@ -71,11 +78,23 @@ pub struct Node {
     /// Source: wanted RPM about world +axis.
     pub source: Option<f32>,
     pub toggled: bool,
+    /// Stress at 32 RPM (SU).
+    pub stress: f32,
+    /// Power of a source (SU).
+    pub capacity: f32,
 }
 
 impl Node {
     pub fn new(role: Role, axis: Axis) -> Self {
-        Self { role, axis, only: None, source: None, toggled: false }
+        Self { role, axis, only: None, source: None, toggled: false, stress: 0.0, capacity: 0.0 }
+    }
+    pub fn stress(mut self, su: f32) -> Self {
+        self.stress = su;
+        self
+    }
+    pub fn capacity(mut self, su: f32) -> Self {
+        self.capacity = su;
+        self
     }
     pub fn one_port(mut self, d: IVec3) -> Self {
         self.only = Some(d);
@@ -174,6 +193,9 @@ pub struct NetInfo {
     pub driven: bool,
     pub conflict: bool,
     pub limited: bool,
+    /// Power of its sources and what its nodes use at these speeds (SU).
+    pub capacity: f32,
+    pub stress: f32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -235,11 +257,42 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
             info.limited = true;
         }
         for c in &info.members {
-            sol.speed.insert(*c, base * rel[c]);
+            let v = base * rel[c];
+            sol.speed.insert(*c, v);
+            info.stress += grid[c].stress * v.abs() / STRESS_RPM;
+            if grid[c].source.is_some() {
+                info.capacity += grid[c].capacity;
+            }
         }
         sol.nets.push(info);
     }
     sol
+}
+
+/// Speed factor of a network (or of networks joined through speed
+/// controllers): 1 while it copes, `capacity / stress` when overloaded,
+/// 0 below `STALL`.
+pub fn factor(capacity: f32, stress: f32) -> f32 {
+    if stress <= capacity || stress <= 1e-6 {
+        1.0
+    } else {
+        let k = capacity / stress;
+        if k < STALL { 0.0 } else { k }
+    }
+}
+
+/// Multiplies the speeds of the given networks by `k`.
+pub fn scale(sol: &mut Solution, nets: &[usize], k: f32) {
+    if k == 1.0 {
+        return;
+    }
+    for &n in nets {
+        for c in sol.nets[n].members.clone() {
+            if let Some(v) = sol.speed.get_mut(&c) {
+                *v *= k;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -316,6 +369,53 @@ mod tests {
         g.insert(IVec3::new(1, 0, 1), Node::new(Role::Cog, Axis::Y));
         let s = solve(&g);
         assert!(s.speed.values().all(|v| v.abs() <= MAX_RPM + 1e-3));
+    }
+
+    #[test]
+    fn stress_of_shafts_and_cogs() {
+        // A source at 64 RPM, 4 shafts (0.5) and a cog (1.0): 2 × (0.5·4 + 1).
+        let mut g = HashMap::new();
+        g.insert(IVec3::ZERO, shaft(Axis::X).one_port(IVec3::X).source(64.0).capacity(100.0));
+        for x in 1..=4 {
+            g.insert(IVec3::new(x, 0, 0), shaft(Axis::X).stress(0.5));
+        }
+        g.insert(IVec3::new(5, 0, 0), Node::new(Role::Cog, Axis::X).stress(1.0));
+        let s = solve(&g);
+        let n = &s.nets[s.net_of[&IVec3::X]];
+        assert_eq!((n.capacity, n.stress), (100.0, 6.0));
+    }
+
+    #[test]
+    fn overload_slows_then_stops() {
+        assert_eq!(factor(2048.0, 1000.0), 1.0);
+        assert_eq!(factor(2048.0, 4096.0), 0.5, "twice the load: half speed");
+        assert_eq!(factor(2048.0, 20480.0), 0.0, "k < 0.2: stops");
+        let mut g = HashMap::new();
+        g.insert(IVec3::ZERO, shaft(Axis::X).one_port(IVec3::X).source(64.0).capacity(100.0));
+        g.insert(IVec3::X, shaft(Axis::X).stress(100.0));
+        let mut s = solve(&g);
+        let n = s.net_of[&IVec3::X];
+        let k = factor(s.nets[n].capacity, s.nets[n].stress);
+        scale(&mut s, &[n], k);
+        assert_eq!(s.speed[&IVec3::X], 32.0, "200 SU wanted, 100 given");
+    }
+
+    #[test]
+    fn a_reduction_gear_halves_the_stress() {
+        // The same load (a wheel of 50 SU) behind small→small and small→large.
+        let load = |large: bool| {
+            let mut g = HashMap::new();
+            g.insert(IVec3::ZERO, Node::new(Role::Cog, Axis::Z).source(64.0).capacity(1e6));
+            let (c, role) = if large { (IVec3::new(1, 1, 0), Role::LargeCog) } else { (IVec3::X, Role::Cog) };
+            g.insert(c, Node::new(role, Axis::Z));
+            g.insert(c + IVec3::Z, shaft(Axis::Z).stress(50.0));
+            let s = solve(&g);
+            (s.speed[&(c + IVec3::Z)].abs(), s.nets[0].stress)
+        };
+        let (fast, high) = load(false);
+        let (slow, low) = load(true);
+        assert_eq!((fast, slow), (64.0, 32.0));
+        assert_eq!(low * 2.0, high);
     }
 
     #[test]

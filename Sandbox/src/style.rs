@@ -82,6 +82,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mats: Re
         let l = col.to_linear();
         m.insert(crate::logic::WIRE_MATS_ON[i].into(), mats.add(StandardMaterial { base_color: col, emissive: LinearRgba::rgb(l.red * 3.0, l.green * 3.0, l.blue * 3.0), ..default() }));
     }
+    m.insert("smoke_black".into(), mats.add(StandardMaterial { base_color: Color::srgba(0.07, 0.07, 0.08, 0.85), alpha_mode: AlphaMode::Blend, perceptual_roughness: 1.0, ..default() }));
     m.insert("smoke".into(), mats.add(StandardMaterial { base_color: Color::srgba(0.32, 0.32, 0.34, 0.7), alpha_mode: AlphaMode::Blend, perceptual_roughness: 1.0, ..default() }));
     m.insert("seg_off".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.13, 0.16, 0.17), perceptual_roughness: 0.6, ..default() }));
     commands.insert_resource(Materials(m));

@@ -304,6 +304,22 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
         }
         // Drawn by the piston (its pole stretches through these cells).
         Mech::PistonPole => Vec::new(),
+        Mech::Flywheel => {
+            // A heavy brass disc with a steel rim and counterweights on the
+            // shaft (everything turns).
+            let mut v = shaft(1.0);
+            v.push(part([0.92, 0.22, 0.92], "brass", [0.0, 0.0, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.92, 0.22, 0.92], "brass", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(Layer::Rotor));
+            for i in 0..16 {
+                let a = i as f32 / 16.0 * TAU;
+                v.push(part([0.16, 0.3, 0.14], "steel", [a.cos() * 0.48, 0.0, a.sin() * 0.48]).rot(Quat::from_rotation_y(-a)).layer(Layer::Rotor));
+            }
+            for a in [0.0f32, std::f32::consts::PI] {
+                v.push(part([0.22, 0.3, 0.16], "steel_casing", [a.cos() * 0.26, 0.0, a.sin() * 0.26]).layer(Layer::Rotor));
+            }
+            v.push(part([0.3, 0.3, 0.3], "steel", [0.0, 0.0, 0.0]).layer(Layer::Rotor));
+            v
+        }
         Mech::FluidTank => {
             // Steel edges with brass corner bolts, glass sides; the fluid
             // level inside is added by `fluids`.

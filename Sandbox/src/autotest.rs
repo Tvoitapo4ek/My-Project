@@ -241,6 +241,9 @@ pub fn build() -> Scenario {
     if want("menu") {
         menu(&mut steps);
     }
+    if want("torque") {
+        torque(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -2013,4 +2016,127 @@ fn menu(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+}
+
+/// The proving-ground car with a diesel engine on top of the rear axle:
+/// direct drive (cog → cog, 1:1) or a reduction (small → large cog, 2:1).
+fn diesel_car(world: &mut World, front: IVec3, low: bool) -> IVec3 {
+    let o = front + IVec3::new(-1, 0, 31);
+    let at = |v: IVec3| o + v;
+    for x in 0..3 {
+        for z in -30..=-26 {
+            set_block(world, at(IVec3::new(x, 1, z)), "steel_block", 2);
+        }
+    }
+    for z in [-30, -26] {
+        set_block(world, at(IVec3::new(0, 0, z)), "suspension", 1);
+        set_block(world, at(IVec3::new(2, 0, z)), "suspension", 0);
+        set_block(world, at(IVec3::new(-1, 0, z)), "wheel", 1);
+        set_block(world, at(IVec3::new(3, 0, z)), "wheel", 0);
+    }
+    if low {
+        // Engine → shaft → small cog, meshing diagonally with a large cog on
+        // the axle: half the wheel speed, half the stress.
+        set_block(world, at(IVec3::new(1, 0, -26)), "large_cogwheel", 0);
+        set_block(world, at(IVec3::new(1, 1, -25)), "cogwheel", 0);
+        set_block(world, at(IVec3::new(2, 1, -25)), "shaft", 0);
+        set_block(world, at(IVec3::new(3, 1, -25)), "diesel_engine", 1);
+    } else {
+        set_block(world, at(IVec3::new(1, 0, -26)), "cogwheel", 0);
+        set_block(world, at(IVec3::new(1, 1, -26)), "cogwheel", 0);
+        set_block(world, at(IVec3::new(2, 1, -26)), "shaft", 0);
+        set_block(world, at(IVec3::new(3, 1, -26)), "diesel_engine", 1);
+    }
+    set_block(world, at(IVec3::new(1, 2, -26)), "physics_toggle", 2);
+    set_block(world, at(IVec3::new(0, 2, -30)), "speedometer", 4);
+    glue_box(world, at(IVec3::new(-1, 0, -31)), at(IVec3::new(3, 2, -25)));
+    at(IVec3::new(if low { 3 } else { 3 }, 1, if low { -25 } else { -26 }))
+}
+
+fn torque(steps: &mut Vec<(String, StepFn)>) {
+    for low in [false, true] {
+        let label = if low { "a reduction gear (small → large cog)" } else { "direct drive" };
+        steps.push(step(&format!("torque: diesel car on the 30° ramp, {label}"), move |world, ctx| {
+            let x = crate::world::lane_x(1) + 2;
+            let front = IVec3::new(x, 0, crate::world::LANE_START_Z + 9);
+            let o = front + IVec3::new(-1, 0, 31);
+            let engine_at = |world: &mut World, cell: IVec3| -> Option<crate::engine::Engine> {
+                let mut q = world.query_filtered::<&VoxelGrid, With<crate::contraption::Contraption>>();
+                let e = q.iter(world).next().and_then(|g| g.entities.get(&cell).copied())?;
+                world.get::<crate::engine::Engine>(e).copied()
+            };
+            let eng_cell = o + IVec3::new(3, 1, if low { -25 } else { -26 });
+            match ctx.frames {
+                1 => {
+                    clear_bodies(world);
+                    world.resource_mut::<CameraView>().0 = View::First;
+                    diesel_car(world, front, low);
+                    teleport(world, Vec3::new(x as f32 + 6.5, 0.0, front.z as f32 + 3.0));
+                }
+                3 => {
+                    if let Some(e) = block_entity(world, eng_cell) {
+                        world.get_mut::<crate::fluids::FluidStore>(e).unwrap().add(crate::fluids::Fluid::Diesel, 1000.0);
+                    }
+                    set_param(world, eng_cell, "speed", 128.0);
+                    set_param(world, eng_cell, "speed", 0.0);
+                }
+                5 => {
+                    let g = world_grid(world);
+                    world.write_message(crate::interact::UseBlock { grid: g, cell: o + IVec3::new(1, 2, -26), mech: crate::content::Mech::PhysicsToggle });
+                }
+                9 => {
+                    let mut q = world.query_filtered::<&VoxelGrid, With<crate::contraption::Contraption>>();
+                    if let Some(e) = q.iter(world).next().and_then(|g| g.entities.get(&eng_cell).copied())
+                        && let Some(mut p) = world.get_mut::<crate::mech::Params>(e)
+                    {
+                        p.0[0] = 128.0;
+                    }
+                    ctx.vars.insert("tq_y0".into(), -1.0);
+                }
+                12 => {
+                    // Forward is −Z: the right wheel (facing +X) turns about −X.
+                    let rpm = car_block(world, o + IVec3::new(3, 0, -26)).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(0.0);
+                    if rpm > 0.0
+                        && let Some(e) = car_block(world, eng_cell)
+                    {
+                        let mut p = world.get_mut::<crate::mech::Params>(e).unwrap();
+                        p.0[1] = 1.0 - p.0[1];
+                    }
+                    ctx.vars.insert("tq_t0".into(), ctx.t);
+                }
+                _ => {}
+            }
+            if ctx.frames > 12 {
+                if let Some((_, com)) = body_center(world) {
+                    if ctx.vars["tq_y0"] < 0.0 {
+                        ctx.vars.insert("tq_y0".into(), com.y);
+                    }
+                    let up = com.y - ctx.vars["tq_y0"];
+                    ctx.vars.insert("tq_maxy".into(), ctx.vars.get("tq_maxy").copied().unwrap_or(0.0).max(up));
+                }
+                if engine_at(world, eng_cell).is_some_and(|e| e.stall == Some(crate::engine::Stall::Overload)) {
+                    ctx.vars.insert("tq_stalled".into(), 1.0);
+                }
+                if ctx.frames == 30 {
+                    screenshot(world, &format!("98_torque_{}", if low { "low" } else { "high" }));
+                }
+            }
+            if ctx.frames > 12 && ctx.t > ctx.vars["tq_t0"] + if low { 22.0 } else { 12.0 } {
+                let maxy = ctx.vars.get("tq_maxy").copied().unwrap_or(0.0);
+                let stalled = ctx.vars.contains_key("tq_stalled");
+                if low {
+                    ctx.check("with the reduction gear it climbs the 30° ramp without stalling", maxy > 2.6 && !stalled, format!("rose {maxy:.2} m, stalled {stalled}"));
+                } else {
+                    ctx.check("direct drive: overloaded on the 30° ramp, the diesel chokes", stalled && maxy < 2.6, format!("rose {maxy:.2} m, stalled {stalled}"));
+                }
+                for k in ["tq_maxy", "tq_stalled", "tq_y0", "tq_t0"] {
+                    ctx.vars.remove(k);
+                }
+                clear_bodies(world);
+                teleport(world, Vec3::new(0.5, 0.0, 0.5));
+                return Step::Next;
+            }
+            Step::Wait
+        }));
+    }
 }

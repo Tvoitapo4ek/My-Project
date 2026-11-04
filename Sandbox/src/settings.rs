@@ -85,6 +85,14 @@ fn refresh(editing: Res<Editing>, blocks: Query<(&BlockEntity, &Params, &Spin, &
         if net.conflict {
             s.push_str(" · конфликт скоростей");
         }
+        if net.capacity > 0.0 || net.stress > 0.0 {
+            s.push_str(&format!("\nНагрузка: {:.0} / {:.0} SU", net.stress, net.capacity));
+            if net.overstressed {
+                s.push_str(" · перегрузка, стоит");
+            } else if net.k < 1.0 {
+                s.push_str(&format!(" · перегрузка, {:.0}% скорости", net.k * 100.0));
+            }
+        }
         if t.0 != s {
             t.0 = s;
         }

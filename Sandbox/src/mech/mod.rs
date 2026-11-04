@@ -63,12 +63,49 @@ pub struct Spin {
     pub angle: f32,
 }
 
-/// Displayed speed of a speed controller / conflicts (settings panel).
+/// State of the network a block is in (settings panel, telemetry, wheels).
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct NetState {
     pub conflict: bool,
     /// Part of a network with a source (see `NetInfo::driven`).
     pub driven: bool,
+    /// Stress / capacity of its networks (joined through speed controllers).
+    pub load: f32,
+    pub stress: f32,
+    pub capacity: f32,
+    /// Speed factor from overload (1 = full speed, 0 = stopped).
+    pub k: f32,
+    pub overstressed: bool,
+}
+
+/// Flywheel: kinetic energy kept to cover short overloads (SU·s).
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct Flywheel {
+    pub energy: f32,
+}
+/// Up to `FLY_RATE` SU for `FLY_MAX / FLY_RATE` seconds.
+pub const FLY_MAX: f32 = 2000.0;
+pub const FLY_RATE: f32 = 1000.0;
+/// Recharge (SU of spare capacity) per flywheel.
+const FLY_CHARGE: f32 = 500.0;
+/// A stalled diesel starts again when its network would run at this
+/// speed factor (throttle released or a lower gear).
+pub const RESTART: f32 = 0.5;
+
+/// Extra stress of a driven wheel on the ground (roll and slope) at
+/// 32 RPM, from `contraption`.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct WheelLoad(pub f32);
+
+/// Stress of a block at 32 RPM (SU).
+pub fn base_stress(m: Mech) -> f32 {
+    match m {
+        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Clutch | Mech::Gearshift => 0.5,
+        Mech::Cog | Mech::MechanicalDisplay | Mech::SpeedController | Mech::Flywheel => 1.0,
+        Mech::LargeCog | Mech::Gearbox | Mech::Bearing | Mech::Piston => 2.0,
+        Mech::Pump => 12.0,
+        _ => 0.0,
+    }
 }
 
 pub fn transform_for(cell: IVec3, id: BlockId, facing: u8) -> Transform {
@@ -123,6 +160,15 @@ fn sync_block_entities(
                     ChildOf(ge),
                 ))
                 .id();
+            match m {
+                Mech::Flywheel => {
+                    commands.entity(e).insert(Flywheel::default());
+                }
+                Mech::Wheel => {
+                    commands.entity(e).insert(WheelLoad::default());
+                }
+                _ => {}
+            }
             spawn_parts(&mut commands, e, &models::block_model(m), &mut meshes, &mut cache, &mats, true);
             grid.entities.insert(c, e);
         }
@@ -143,20 +189,21 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
     let axis = Axis::of(d);
     let s = (d.x + d.y + d.z) as f32;
     let on = signal.abs() > 0.5;
-    Some(match b.mech()? {
+    let m = b.mech()?;
+    let node = Some(match m {
         Mech::Motor => {
             let speed = p.get(b.id, "speed");
             let ccw = p.get(b.id, "direction") >= 0.5;
-            Node::new(Role::Shaft, axis).one_port(d).source(if ccw { s * speed } else { -s * speed })
+            Node::new(Role::Shaft, axis).one_port(d).source(if ccw { s * speed } else { -s * speed }).capacity(p.get(b.id, "capacity"))
         }
-        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel => Node::new(Role::Shaft, axis),
+        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Flywheel => Node::new(Role::Shaft, axis),
         // Pumps mesh like cogwheels around their pipe axis.
         Mech::Pump => Node::new(Role::Cog, axis),
         Mech::DieselEngine => {
             let speed = if running { p.get(b.id, "speed") } else { 0.0 };
             let ccw = p.get(b.id, "direction") >= 0.5;
             let n = Node::new(Role::Shaft, axis).one_port(d);
-            if running { n.source(if ccw { s * speed } else { -s * speed }) } else { n }
+            if running { n.source(if ccw { s * speed } else { -s * speed }).capacity(crate::engine::POWER) } else { n }
         }
         // Powered from the side: it is a cog whose axis runs left–right, so
         // a shaft or cogwheel on its side (or a cog meshing in its plane)
@@ -183,11 +230,13 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
             }
         },
         _ => return None,
-    })
+    });
+    node.map(|n| n.stress(base_stress(m)))
 }
 
-#[allow(clippy::type_complexity)]
-fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &Signal, &mut Spin, &mut NetState, Option<&crate::engine::Engine>)>) {
+type NetBlock<'a> = (&'a BlockEntity, &'a Params, &'a Signal, &'a mut Spin, &'a mut NetState, Option<&'a mut crate::engine::Engine>, Option<&'a mut Flywheel>, Option<&'a WheelLoad>);
+
+fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<NetBlock>) {
     let dt = time.delta_secs();
     for grid in &grids {
         if grid.entities.is_empty() {
@@ -195,20 +244,27 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
         }
         let mut nodes: HashMap<IVec3, Node> = HashMap::new();
         let mut controllers = Vec::new();
+        let mut engines = Vec::new();
+        let mut flywheels = Vec::new();
         for (&c, &e) in &grid.entities {
-            let Ok((b, p, sig, _, _, eng)) = blocks.get(e) else { continue };
-            if let Some(n) = node_for(b, p, sig.0, None, eng.is_some_and(|e| e.running)) {
+            let Ok((b, p, sig, _, _, eng, fly, wl)) = blocks.get(e) else { continue };
+            // A stalled diesel counts as running here: is it worth restarting?
+            if let Some(mut n) = node_for(b, p, sig.0, None, eng.as_ref().is_some_and(|e| e.ready)) {
+                n.stress += wl.map(|w| w.0).unwrap_or(0.0);
                 nodes.insert(c, n);
-                if b.mech() == Some(Mech::SpeedController) {
-                    controllers.push((c, e));
+                match b.mech() {
+                    Some(Mech::SpeedController) => controllers.push((c, e, b.dir())),
+                    Some(Mech::DieselEngine) => engines.push((c, e)),
+                    _ if fly.is_some() => flywheels.push((c, e)),
+                    _ => {}
                 }
             }
         }
         let mut sol = network::solve(&nodes);
         if !controllers.is_empty() {
-            for &(c, e) in &controllers {
+            for &(c, e, _) in &controllers {
                 let running = sol.speed.get(&c).is_some_and(|v| v.abs() > 1e-3);
-                if let Ok((b, p, sig, _, _, _)) = blocks.get(e)
+                if let Ok((b, p, sig, _, _, _, _, _)) = blocks.get(e)
                     && let Some(n) = node_for(b, p, sig.0, Some(running), false)
                 {
                     nodes.insert(c, n);
@@ -216,13 +272,93 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
             }
             sol = network::solve(&nodes);
         }
+        // Networks joined through speed controllers share power and stress.
+        let mut root: Vec<usize> = (0..sol.nets.len()).collect();
+        fn find(r: &mut [usize], x: usize) -> usize {
+            let mut x = x;
+            while r[x] != x {
+                r[x] = r[r[x]];
+                x = r[x];
+            }
+            x
+        }
+        for &(c, _, d) in &controllers {
+            if let (Some(&a), Some(&b)) = (sol.net_of.get(&c), sol.net_of.get(&(c - d))) {
+                let (ra, rb) = (find(&mut root, a), find(&mut root, b));
+                root[ra] = rb;
+            }
+        }
+        let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+        for n in 0..sol.nets.len() {
+            let r = find(&mut root, n);
+            groups.entry(r).or_default().push(n);
+        }
+        let mut per_net: HashMap<usize, (f32, f32, f32)> = HashMap::new();
+        for nets in groups.values() {
+            let cap: f32 = nets.iter().map(|n| sol.nets[*n].capacity).sum();
+            let stress: f32 = nets.iter().map(|n| sol.nets[*n].stress).sum();
+            let in_group = |c: &IVec3| sol.net_of.get(c).is_some_and(|n| nets.contains(n));
+            // Flywheels cover a short overload, and recharge from spare power.
+            let flys: Vec<Entity> = flywheels.iter().filter(|(c, _)| in_group(c)).map(|(_, e)| *e).collect();
+            let deficit = (stress - cap).max(0.0);
+            let mut boost = 0.0;
+            if !flys.is_empty() && dt > 0.0 {
+                let avail: Vec<f32> = flys.iter().map(|e| blocks.get(*e).ok().and_then(|x| x.6.map(|f| (f.energy / dt).min(FLY_RATE))).unwrap_or(0.0)).collect();
+                let total: f32 = avail.iter().sum();
+                boost = deficit.min(total);
+                for (e, a) in flys.iter().zip(&avail) {
+                    if let Ok((.., Some(mut f), _)) = blocks.get_mut(*e) {
+                        if boost > 0.0 && total > 0.0 {
+                            f.energy = (f.energy - boost * dt * a / total).max(0.0);
+                        } else if cap > stress {
+                            f.energy = (f.energy + (cap - stress).min(FLY_CHARGE) * dt).min(FLY_MAX);
+                        }
+                    }
+                }
+            }
+            let mut k = network::factor(cap + boost, stress);
+            let group_engines: Vec<Entity> = engines.iter().filter(|(c, _)| in_group(c)).map(|(_, e)| *e).collect();
+            let stalled = group_engines.iter().any(|e| blocks.get(*e).is_ok_and(|x| x.5.as_ref().is_some_and(|g| g.overload)));
+            if stalled {
+                // Stays dead until it would run comfortably.
+                if network::factor(cap, stress) >= RESTART {
+                    for e in &group_engines {
+                        if let Ok((.., Some(mut g), _, _)) = blocks.get_mut(*e) {
+                            g.overload = false;
+                        }
+                    }
+                } else {
+                    k = 0.0;
+                }
+            } else if k == 0.0 && cap > 0.0 {
+                for e in &group_engines {
+                    if let Ok((.., Some(mut g), _, _)) = blocks.get_mut(*e)
+                        && g.ready
+                    {
+                        g.overload = true;
+                        g.burst = true;
+                    }
+                }
+            }
+            network::scale(&mut sol, nets, k);
+            for n in nets {
+                per_net.insert(*n, (k, stress, cap));
+            }
+        }
         for (&c, &e) in &grid.entities {
-            let Ok((_, _, _, mut spin, mut st, _)) = blocks.get_mut(e) else { continue };
+            let Ok((_, _, _, mut spin, mut st, ..)) = blocks.get_mut(e) else { continue };
             let rpm = sol.speed.get(&c).copied().unwrap_or(0.0);
             spin.rpm = rpm;
             spin.angle = (spin.angle + rpm / 60.0 * std::f32::consts::TAU * dt).rem_euclid(std::f32::consts::TAU * 64.0);
-            st.conflict = sol.net_of.get(&c).is_some_and(|n| sol.nets[*n].conflict);
-            st.driven = sol.net_of.get(&c).is_some_and(|n| sol.nets[*n].driven);
+            let net = sol.net_of.get(&c);
+            st.conflict = net.is_some_and(|n| sol.nets[*n].conflict);
+            st.driven = net.is_some_and(|n| sol.nets[*n].driven);
+            let (k, stress, cap) = net.and_then(|n| per_net.get(n).copied()).unwrap_or((1.0, 0.0, 0.0));
+            st.k = k;
+            st.stress = stress;
+            st.capacity = cap;
+            st.load = if cap > 0.0 { stress / cap } else if stress > 0.0 { f32::INFINITY } else { 0.0 };
+            st.overstressed = k == 0.0 && stress > cap;
         }
     }
 }

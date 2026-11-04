@@ -60,7 +60,12 @@
      params: [
         (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
         (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
+        // Stress units it can drive (like Create's capacity).
+        (key: "capacity", label: "Мощность", kind: Number(min: 1024.0, max: 65536.0, step: 1024.0, unit: "SU"), default: 16384.0),
      ]),
+    // Stores energy: covers up to 1000 SU of overload for 2 s.
+    (key: "flywheel", name: "Маховик", category: "mechanisms", mech: Some(Flywheel), placement: Face,
+     collision: Box(0.9, 0.5, 0.9), mass: 150.0),
     (key: "shaft", name: "Вал", category: "mechanisms", mech: Some(Shaft), placement: Face,
      collision: Box(0.375, 1.0, 0.375), mass: 15.0),
     (key: "cogwheel", name: "Шестерня", category: "mechanisms", mech: Some(Cog), placement: Face,

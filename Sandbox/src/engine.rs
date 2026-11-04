@@ -7,7 +7,10 @@
 //!   of the water. Otherwise it stalls.
 //! * While running it is a source in the kinetic network (speed and
 //!   direction with the wrench, like the creative motor), puffs exhaust
-//!   smoke and rumbles (`sound`).
+//!   smoke and rumbles (`sound`). Its power is `POWER` SU: overloaded
+//!   below the stall factor (a steep climb in a high gear) it chokes with a
+//!   cloud of black smoke and stays dead until its network would run again
+//!   comfortably (throttle released, a lower gear) — see `mech`.
 
 use bevy::{light::NotShadowCaster, prelude::*};
 
@@ -22,6 +25,8 @@ use crate::{
 
 /// Diesel burnt while running (mB/s).
 pub const BURN: f32 = 10.0;
+/// Power (stress units it can drive).
+pub const POWER: f32 = 2048.0;
 
 /// Why an engine is not running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,18 +34,26 @@ pub enum Stall {
     Off,
     NoFuel,
     NoAir,
+    /// Choked by overload (stress far above its power).
+    Overload,
 }
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Engine {
     pub running: bool,
+    /// Has fuel, air and a speed (would run if not choked).
+    pub ready: bool,
+    /// Choked by overload (set and cleared by the kinetic network).
+    pub overload: bool,
+    /// Just choked: black smoke and a cough (once).
+    pub burst: bool,
     pub stall: Option<Stall>,
     puff: f32,
 }
 
 impl Default for Engine {
     fn default() -> Self {
-        Self { running: false, stall: Some(Stall::NoFuel), puff: 0.0 }
+        Self { running: false, ready: false, overload: false, burst: false, stall: Some(Stall::NoFuel), puff: 0.0 }
     }
 }
 
@@ -76,7 +89,14 @@ fn run(time: Res<Time>, water: Res<Water>, grids: Query<(&VoxelGrid, &GlobalTran
         let Ok((grid, gt)) = grids.get(b.grid) else { continue };
         let diesel = if fuel.fluid == Some(Fluid::Diesel) { fuel.amount } else { 0.0 };
         let free = grid.get(b.cell + IVec3::Y).is_air();
-        let stall = state(p.get(b.id, "speed"), diesel, free, water.depth(exhaust(gt, b)));
+        let mut stall = state(p.get(b.id, "speed"), diesel, free, water.depth(exhaust(gt, b)));
+        eng.ready = stall.is_none();
+        if !eng.ready {
+            // Switched off / out of fuel or air: the choke is forgotten.
+            eng.overload = false;
+        } else if eng.overload {
+            stall = Some(Stall::Overload);
+        }
         eng.running = stall.is_none();
         eng.stall = stall;
         if eng.running {
@@ -100,6 +120,7 @@ fn smoke(
     grids: Query<&GlobalTransform, With<VoxelGrid>>,
     mut engines: Query<(&BlockEntity, &mut Engine)>,
     mut puffs: Query<(Entity, &mut Smoke, &mut Transform)>,
+    mut sounds: MessageWriter<crate::sound::Sfx>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cache: ResMut<BoxCache>,
     mats: Option<Res<Materials>>,
@@ -108,6 +129,23 @@ fn smoke(
     let dt = time.delta_secs();
     let count = puffs.iter().count();
     for (b, mut eng) in &mut engines {
+        if eng.burst {
+            // Choked: a big cloud of black smoke and a cough.
+            eng.burst = false;
+            let Ok(gt) = grids.get(b.grid) else { continue };
+            let at = exhaust(gt, b);
+            sounds.write(crate::sound::sfx_at("engine_stall", at));
+            for i in 0..14 {
+                let a = i as f32 * 2.39;
+                commands.spawn((
+                    Smoke { age: 0.0, vel: Vec3::new(a.cos() * 0.9, 1.6 + (i % 3) as f32 * 0.4, a.sin() * 0.9) },
+                    Mesh3d(cache.get(&mut meshes, Vec3::splat(0.34))),
+                    MeshMaterial3d(mats.get("smoke_black")),
+                    Transform::from_translation(at),
+                    NotShadowCaster,
+                ));
+            }
+        }
         if !eng.running {
             continue;
         }

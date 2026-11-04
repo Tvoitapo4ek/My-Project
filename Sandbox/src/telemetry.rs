@@ -28,6 +28,14 @@ use crate::{
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct Shown(pub f32);
 
+/// The display shows a network load (%): the dial ends at the red zone at
+/// 100 %, digits turn red when overloaded.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct LoadShown(pub bool);
+
+/// Dial / bar maximum for a load: 100 % sits where the red ticks start.
+pub const LOAD_MAX: f32 = 800.0 / 7.0;
+
 /// What a telemetry sensor reads from the block it faces.
 pub fn read_value(target: Option<Mech>, rpm: f32, steer_deg: f32, kmh: f32) -> f32 {
     match target {
@@ -71,11 +79,12 @@ pub fn segments(d: u8) -> [bool; 7] {
 fn read_sensors(
     sensors: Query<(&BlockEntity, &Linked)>,
     grids: Query<(&VoxelGrid, Option<&LinearVelocity>)>,
-    blocks: Query<(&BlockEntity, &Spin, Option<&Steer>, Option<&crate::fluids::FluidStore>)>,
-    mut displays: Query<&mut Shown>,
+    blocks: Query<(&BlockEntity, &Spin, Option<&Steer>, Option<&crate::fluids::FluidStore>, Option<&crate::mech::NetState>)>,
+    mut displays: Query<(&mut Shown, &mut LoadShown)>,
 ) {
-    for mut s in &mut displays {
+    for (mut s, mut l) in &mut displays {
         s.0 = 0.0;
+        l.0 = false;
     }
     for (b, link) in &sensors {
         if b.mech() != Some(Mech::TelemetrySensor) {
@@ -83,18 +92,25 @@ fn read_sensors(
         }
         let Some(target_ref) = link.0 else { continue };
         let Ok((grid, vel)) = grids.get(b.grid) else { continue };
+        let mut load = false;
         let value = match grid.entities.get(&(b.cell + b.dir())).and_then(|e| blocks.get(*e).ok()) {
             // A tank: how full it is (%).
-            Some((t, _, _, Some(store))) if t.mech() == Some(Mech::FluidTank) => store.amount / store.cap.max(1.0) * 100.0,
-            Some((t, spin, steer, _)) => {
+            Some((t, _, _, Some(store), _)) if t.mech() == Some(Mech::FluidTank) => store.amount / store.cap.max(1.0) * 100.0,
+            // An engine or a motor: the load of its network (%).
+            Some((t, _, _, _, Some(net))) if matches!(t.mech(), Some(Mech::Motor | Mech::DieselEngine)) => {
+                load = true;
+                if net.capacity > 0.0 { net.stress / net.capacity * 100.0 } else if net.stress > 0.0 { 999.0 } else { 0.0 }
+            }
+            Some((t, spin, steer, _, _)) => {
                 let kmh = vel.map(|v| v.0.length() * 3.6).unwrap_or(0.0);
                 read_value(t.mech(), spin.rpm, steer.map(|s| s.0.to_degrees()).unwrap_or(0.0), kmh)
             }
             None => 0.0,
         };
         let Some(&d) = grids.get(target_ref.grid).ok().and_then(|(g, _)| g.entities.get(&target_ref.cell)) else { continue };
-        if let Ok(mut s) = displays.get_mut(d) {
+        if let Ok((mut s, mut l)) = displays.get_mut(d) {
             s.0 = s.0.max(value);
+            l.0 |= load;
         }
     }
 }
@@ -134,7 +150,7 @@ fn attach_face(mut commands: Commands, added: Query<(Entity, &BlockEntity), Adde
         if b.mech() != Some(Mech::MechanicalDisplay) {
             continue;
         }
-        commands.entity(e).insert(Shown::default());
+        commands.entity(e).insert((Shown::default(), LoadShown::default()));
         let off = mats.get("seg_off");
         let mut bx = |x: f32, y: f32| cache.get(&mut meshes, Vec3::new(x, y, 0.03));
         let (hseg, vseg) = (bx(0.13, 0.035), bx(0.035, 0.13));
@@ -170,7 +186,7 @@ fn attach_face(mut commands: Commands, added: Query<(Entity, &BlockEntity), Adde
 }
 
 fn set_lit(lit: &mut Lit, mat: &mut MeshMaterial3d<StandardMaterial>, want: bool, on: &Handle<StandardMaterial>, off: &Handle<StandardMaterial>) {
-    if lit.0 != want {
+    if lit.0 != want || (want && mat.0 != *on) {
         lit.0 = want;
         mat.0 = if want { on.clone() } else { off.clone() };
     }
@@ -180,7 +196,7 @@ fn set_lit(lit: &mut Lit, mat: &mut MeshMaterial3d<StandardMaterial>, want: bool
 fn draw_faces(
     time: Res<Time>,
     mats: Option<Res<Materials>>,
-    displays: Query<(Entity, &BlockEntity, &Params, &Spin, &Shown)>,
+    displays: Query<(Entity, &BlockEntity, &Params, &Spin, &Shown, &LoadShown)>,
     mut faces: ParamSet<(Query<(&ChildOf, &mut Visibility), With<DigitsFace>>, Query<(&ChildOf, &mut Visibility), With<DialFace>>)>,
     mut lamps: Query<(&ChildOf, &mut Lit, &mut MeshMaterial3d<StandardMaterial>, Option<&Segment>, Option<&BarCell>, Option<&Tick>, Has<PowerLed>)>,
     mut needles: Query<(&ChildOf, &mut Needle, &mut Transform)>,
@@ -189,7 +205,7 @@ fn draw_faces(
     let Some(mats) = mats else { return };
     let (cyan, amber, red, green, off) = (mats.get("glow_cyan"), mats.get("glow_amber"), mats.get("glow_red"), mats.get("glow_green"), mats.get("seg_off"));
     let dt = time.delta_secs();
-    for (e, b, p, _, _) in &displays {
+    for (e, b, p, ..) in &displays {
         let needle_mode = p.get(b.id, "style") >= 0.5;
         for (c, mut v) in faces.p0().iter_mut() {
             if c.parent() == e {
@@ -205,14 +221,15 @@ fn draw_faces(
     // Lamps: find their display through the parent chain.
     for (c, mut lit, mut mat, seg, bar, tick, led) in &mut lamps {
         let display = if led { Some(c.parent()) } else { parents.get(c.parent()).ok().map(|pc| pc.parent()) };
-        let Some(Ok((_, b, p, spin, shown))) = display.map(|d| displays.get(d)) else { continue };
+        let Some(Ok((_, b, p, spin, shown, load))) = display.map(|d| displays.get(d)) else { continue };
         let on = powered(spin.rpm);
-        let max = p.get(b.id, "max_val");
+        let max = if load.0 { LOAD_MAX } else { p.get(b.id, "max_val") };
+        let digit = if load.0 && shown.0 > 100.0 { &red } else { &cyan };
         if led {
             set_lit(&mut lit, &mut mat, on, &green, &off);
         } else if let Some(s) = seg {
             let want = on && digits(shown.0)[s.digit].is_some_and(|d| segments(d)[s.seg]);
-            set_lit(&mut lit, &mut mat, want, &cyan, &off);
+            set_lit(&mut lit, &mut mat, want, digit, &off);
         } else if let Some(bc) = bar {
             let n = ((shown.0 / max.max(1.0)).clamp(0.0, 1.0) * BAR as f32).round() as usize;
             set_lit(&mut lit, &mut mat, on && bc.0 < n, &amber, &off);
@@ -223,8 +240,9 @@ fn draw_faces(
     }
     for (c, mut n, mut t) in &mut needles {
         // needle → dial → display
-        let Some(Ok((_, b, p, spin, shown))) = parents.get(c.parent()).ok().map(|d| displays.get(d.parent())) else { continue };
-        let target = needle_angle(shown.0, p.get(b.id, "max_val"), powered(spin.rpm));
+        let Some(Ok((_, b, p, spin, shown, load))) = parents.get(c.parent()).ok().map(|d| displays.get(d.parent())) else { continue };
+        let max = if load.0 { LOAD_MAX } else { p.get(b.id, "max_val") };
+        let target = needle_angle(shown.0, max, powered(spin.rpm));
         n.0 += (target - n.0) * (dt * 8.0).min(1.0);
         t.rotation = Quat::from_rotation_z(-n.0.to_radians());
     }
@@ -275,13 +293,13 @@ mod tests {
         put(&mut w, IVec3::new(0, 0, 0), "speedometer", 2, 0.0);
         let s1 = put(&mut w, IVec3::new(0, 0, 1), "telemetry_sensor", into_z, 0.0);
         let d1 = put(&mut w, IVec3::new(2, 0, 0), "mechanical_display", 2, 32.0);
-        let motor = put(&mut w, IVec3::new(5, 0, 0), "creative_motor", 2, -64.0);
+        let motor = put(&mut w, IVec3::new(5, 0, 0), "shaft", 2, -64.0);
         let s2 = put(&mut w, IVec3::new(5, 0, 1), "telemetry_sensor", into_z, 0.0);
         let d2 = put(&mut w, IVec3::new(7, 0, 0), "mechanical_display", 2, 32.0);
         w.entity_mut(s1).insert(Linked(Some(PanelRef { grid: g, cell: IVec3::new(2, 0, 0) })));
         w.entity_mut(s2).insert(Linked(Some(PanelRef { grid: g, cell: IVec3::new(7, 0, 0) })));
-        w.entity_mut(d1).insert(Shown::default());
-        w.entity_mut(d2).insert(Shown::default());
+        w.entity_mut(d1).insert((Shown::default(), LoadShown::default()));
+        w.entity_mut(d2).insert((Shown::default(), LoadShown::default()));
         w.run_system_once(read_sensors).unwrap();
         assert!((w.get::<Shown>(d1).unwrap().0 - 54.0).abs() < 1e-3, "15 m/s = 54 km/h");
         assert_eq!(w.get::<Shown>(d2).unwrap().0, 64.0);
@@ -298,6 +316,18 @@ mod tests {
         let (shown, rpm) = (w.get::<Shown>(d2).unwrap().0, w.get::<Spin>(d2).unwrap().rpm);
         assert_eq!(shown, 64.0);
         assert_eq!(needle_angle(shown, 128.0, powered(rpm)), -120.0);
+        // On a diesel engine: the load of its network, in %.
+        let eng = put(&mut w, IVec3::new(10, 0, 0), "diesel_engine", 2, 64.0);
+        w.entity_mut(eng).insert(crate::mech::NetState { stress: 3072.0, capacity: 2048.0, ..default() });
+        let s3 = put(&mut w, IVec3::new(10, 0, 1), "telemetry_sensor", into_z, 0.0);
+        let d3 = put(&mut w, IVec3::new(12, 0, 0), "mechanical_display", 2, 32.0);
+        w.entity_mut(s3).insert(Linked(Some(PanelRef { grid: g, cell: IVec3::new(12, 0, 0) })));
+        w.entity_mut(d3).insert((Shown::default(), LoadShown::default()));
+        w.run_system_once(read_sensors).unwrap();
+        assert_eq!(w.get::<Shown>(d3).unwrap().0, 150.0, "overloaded: 150 %");
+        assert!(w.get::<LoadShown>(d3).unwrap().0);
+        // 100 % sits at the start of the red zone of the dial.
+        assert!((needle_angle(100.0, LOAD_MAX, true) - (-120.0 + 240.0 * 7.0 / 8.0)).abs() < 1e-3);
     }
 
     #[test]

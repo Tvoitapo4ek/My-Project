@@ -65,6 +65,8 @@ pub enum Mech {
     FluidPort,
     /// Burns diesel, gives rotation; needs air at its exhaust.
     DieselEngine,
+    /// Heavy disc: covers short overloads with its stored energy.
+    Flywheel,
     /// Logic (`logic`): a wire on a block face, coloured.
     Wire,
     /// Short pulse when pressed (RMB).

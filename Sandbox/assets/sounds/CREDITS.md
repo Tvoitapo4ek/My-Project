@@ -8,6 +8,7 @@ All sounds are CC0 (public domain). Credit is not required but given here.
 | ui_click.ogg (select_001), ui_open.ogg (open_001), ui_close.ogg (close_001), toggle.ogg (toggle_001), link.ogg (confirmation_001), glue.ogg (drop_002) | Interface Sounds 1.0 — https://opengameart.org/content/interface-sounds | Kenney (kenney.nl) | CC0 |
 | break.ogg (metal-small2), place_wood.ogg (wood-small), seat.ogg (cloth) | RPG Sound Pack — https://opengameart.org/content/rpg-sound-pack | artisticdude | CC0 |
 | engine_loop.ogg (steamboat_engine) — diesel engine | Steamboat Engine Sound — https://opengameart.org/content/steamboat-engine-sound | Spring Spring | CC0 |
+| engine_stall.ogg (car_engine_turning_off) — choking diesel | Car Sound Effects Pack — https://opengameart.org/content/car-sound-effects-pack-low-quality | GGBotNet | CC0 |
 | rotate.ogg (lightclunk1) | Mechanical Sounds — https://opengameart.org/content/mechanical-sounds | BMacZero | CC0 |
 
 WAV files were converted to OGG Vorbis (mono, 44.1 kHz).

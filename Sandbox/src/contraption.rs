@@ -145,7 +145,7 @@ fn drive(
     spatial: SpatialQuery,
     gravity: Res<Gravity>,
     mut bodies: Query<(Entity, &VoxelGrid, &ChunkViews, &GlobalTransform, &ComputedMass, Forces)>,
-    mut wheels: Query<(&BlockEntity, &mut Spin, Option<&mut WheelDrop>, &crate::mech::NetState), Without<Steer>>,
+    mut wheels: Query<(&BlockEntity, &mut Spin, Option<&mut WheelDrop>, &crate::mech::NetState, Option<&mut crate::mech::WheelLoad>), Without<Steer>>,
     mut commands: Commands,
     susp: Query<(&BlockEntity, &Steer, &Spin, &crate::mech::Params)>,
 ) {
@@ -166,7 +166,10 @@ fn drive(
         let t = gt.compute_transform();
         let up = t.rotation * Vec3::Y;
         for e in list {
-            let Ok((wb, mut spin, drop, net)) = wheels.get_mut(e) else { continue };
+            let Ok((wb, mut spin, drop, net, mut load)) = wheels.get_mut(e) else { continue };
+            if let Some(l) = load.as_mut() {
+                l.0 = 0.0;
+            }
             // The suspension holding this wheel (on its axle side).
             let s = grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).filter(|(b, ..)| b.mech() == Some(Mech::Suspension));
             let Some((sb, steer, _, params)) = s else { continue };
@@ -215,6 +218,12 @@ fn drive(
             let driven = net.driven;
             if driven {
                 let target = rpm / 60.0 * std::f32::consts::TAU * WHEEL_RADIUS;
+                // Stress on the drivetrain (per 32 RPM): rolling, plus the
+                // climb when it drives uphill (not when it brakes downhill).
+                if let Some(l) = load.as_mut() {
+                    let uphill = if target != 0.0 { (forward * target.signum()).y.max(0.0) } else { 0.0 };
+                    l.0 = wheel_stress(mass.value(), uphill);
+                }
                 let f = ((target - v_long) * per_wheel / dt * 0.2).clamp(-grip, grip);
                 forces.apply_force_at_point(forward * f, contact);
             } else {
@@ -227,6 +236,12 @@ fn drive(
             forces.apply_force_at_point(axle * f_lat, contact);
         }
     }
+}
+
+/// Stress of a driven wheel at 32 RPM: rolling (mass/4 × 0.08) and the
+/// slope (mass × sin θ uphill).
+pub fn wheel_stress(mass: f32, sin_uphill: f32) -> f32 {
+    mass / 4.0 * 0.08 + mass * sin_uphill.max(0.0)
 }
 
 pub struct ContraptionPlugin;
@@ -252,6 +267,14 @@ mod tests {
         assert_eq!(glued_group(&g, None, IVec3::ZERO), vec![IVec3::ZERO]);
         let glue = Glue(vec![(IVec3::ZERO, IVec3::new(2, 0, 0))]);
         assert_eq!(glued_group(&g, Some(&glue), IVec3::ZERO).len(), 3);
+    }
+
+    #[test]
+    fn wheels_load_the_engine_on_a_climb() {
+        // A 4 t car: 80 SU rolling per wheel, a 30° climb adds 2000 SU.
+        assert_eq!(wheel_stress(4000.0, 0.0), 80.0);
+        assert!((wheel_stress(4000.0, 0.5) - 2080.0).abs() < 1e-3);
+        assert_eq!(wheel_stress(4000.0, -0.5), 80.0, "downhill: no extra load");
     }
 
     #[test]
