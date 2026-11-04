@@ -2118,17 +2118,11 @@ fn torque(steps: &mut Vec<(String, StepFn)>) {
                 if engine_at(world, eng_cell).is_some_and(|e| e.stall == Some(crate::engine::Stall::Overload)) {
                     ctx.vars.insert("tq_stalled".into(), 1.0);
                 }
-                if ctx.frames % 3 == 0
-                    && let Some((_, com)) = body_center(world)
-                {
-                    let k = car_block(world, o + IVec3::new(3, 0, -26)).and_then(|e| world.get::<crate::mech::NetState>(e).copied());
-                    info!("[TRACE] low {low} f{} com {com:.2} k {:?} load {:?}", ctx.frames, k.map(|k| k.k), k.map(|k| k.load));
-                }
                 if ctx.frames == 30 {
                     screenshot(world, &format!("98_torque_{}", if low { "low" } else { "high" }));
                 }
             }
-            if ctx.frames > 12 && ctx.t > ctx.vars["tq_t0"] + if low { 22.0 } else { 12.0 } {
+            if ctx.frames > 12 && ctx.t > ctx.vars["tq_t0"] + if low { 50.0 } else { 12.0 } {
                 let maxy = ctx.vars.get("tq_maxy").copied().unwrap_or(0.0);
                 let stalled = ctx.vars.contains_key("tq_stalled");
                 if low {

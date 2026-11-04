@@ -167,9 +167,6 @@ fn drive(
         let up = t.rotation * Vec3::Y;
         for e in list {
             let Ok((wb, mut spin, drop, net, mut load)) = wheels.get_mut(e) else { continue };
-            if let Some(l) = load.as_mut() {
-                l.0 = 0.0;
-            }
             // The suspension holding this wheel (on its axle side).
             let s = grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).filter(|(b, ..)| b.mech() == Some(Mech::Suspension));
             let Some((sb, steer, _, params)) = s else { continue };
@@ -199,6 +196,10 @@ fn drive(
             }
             let compression = rest - ground;
             if hit.is_none() || compression <= 0.0 {
+                // In the air: no load on the drivetrain.
+                if let Some(l) = load.as_mut() {
+                    l.0 = 0.0;
+                }
                 continue;
             }
             let contact = center - up * ground;
@@ -220,13 +221,19 @@ fn drive(
                 let target = rpm / 60.0 * std::f32::consts::TAU * WHEEL_RADIUS;
                 // Stress on the drivetrain (per 32 RPM): rolling, plus the
                 // climb when it drives uphill (not when it brakes downhill).
-                if let Some(l) = load.as_mut() {
-                    let uphill = if target != 0.0 { (forward * target.signum()).y.max(0.0) } else { 0.0 };
-                    l.0 = wheel_stress(mass.value(), uphill);
+                // Stopped (a choked engine): the last load is kept, so the
+                // engine does not restart into the same climb.
+                if let Some(l) = load.as_mut()
+                    && target != 0.0
+                {
+                    l.0 = wheel_stress(mass.value(), (forward * target.signum()).y.max(0.0));
                 }
                 let f = ((target - v_long) * per_wheel / dt * 0.2).clamp(-grip, grip);
                 forces.apply_force_at_point(forward * f, contact);
             } else {
+                if let Some(l) = load.as_mut() {
+                    l.0 = 0.0;
+                }
                 // Free wheel: roll with the ground (visual).
                 spin.angle += v_long / WHEEL_RADIUS * dt * (d.x + d.y + d.z) as f32;
             }
