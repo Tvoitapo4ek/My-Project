@@ -28,8 +28,9 @@ fn open(mut commands: Commands, editing: Res<Editing>, blocks: Query<&BlockEntit
     commands
         .spawn((Window, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }))
         .with_children(|root| {
-            root.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(10), padding: UiRect::all(px(16)), border: UiRect::all(px(2)), min_width: px(380), ..default() }, BackgroundColor(Color::srgba(0.08, 0.09, 0.11, 0.94)), BorderColor::all(Color::srgb(0.95, 0.76, 0.33))))
+            root.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(10), padding: UiRect::all(px(16)), border: UiRect::all(px(2)), min_width: px(380), ..default() }, BackgroundColor(Color::srgba(0.08, 0.09, 0.11, 0.94)), BorderColor::all(crate::ui::FRAME)))
                 .with_children(|p| {
+                    crate::ui::rivets(p);
                     p.spawn((Text::new(def.name.clone()), font(20.0), TextColor(Color::srgb(0.95, 0.76, 0.33))));
                     for (i, param) in def.params.iter().enumerate() {
                         p.spawn(Node { column_gap: px(8), align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {

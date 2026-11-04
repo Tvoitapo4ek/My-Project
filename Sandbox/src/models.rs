@@ -62,25 +62,39 @@ fn through_shaft() -> Vec<Part> {
 
 /// Tyre, rim and hub around local Y (the axle).
 pub fn wheel_parts(layer: Layer) -> Vec<Part> {
+    // Chunky tyre with offset tread lugs, a wide brass rim, a dark steel
+    // disc and a bolted hub (the style of the references).
     let mut v = Vec::new();
-    let n = 12;
+    let n = 16;
     for i in 0..n {
         let a = i as f32 / n as f32 * TAU;
-        v.push(part([0.3, 0.42, 0.24], "rubber", [a.cos() * 0.47, 0.0, a.sin() * 0.47]).rot(Quat::from_rotation_y(-a)).layer(layer));
+        let r = Quat::from_rotation_y(-a);
+        v.push(part([0.22, 0.46, 0.2], "rubber", [a.cos() * 0.49, 0.0, a.sin() * 0.49]).rot(r).layer(layer));
+        // Tread lugs, alternating sides.
+        let side = if i % 2 == 0 { 0.11 } else { -0.11 };
+        v.push(part([0.08, 0.2, 0.16], "rubber", [a.cos() * 0.6, side, a.sin() * 0.6]).rot(r).layer(layer));
     }
-    v.push(part([0.7, 0.36, 0.7], "brass", [0.0, 0.0, 0.0]).layer(layer));
-    v.push(part([0.7, 0.36, 0.7], "brass", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(layer));
-    v.push(part([0.3, 0.44, 0.3], "steel", [0.0, 0.0, 0.0]).layer(layer));
-    v.push(part([0.12, 0.48, 0.12], "brass", [0.0, 0.0, 0.0]).layer(layer));
+    for i in 0..12 {
+        let a = i as f32 / 12.0 * TAU;
+        v.push(part([0.12, 0.4, 0.2], "brass", [a.cos() * 0.34, 0.0, a.sin() * 0.34]).rot(Quat::from_rotation_y(-a)).layer(layer));
+    }
+    v.push(part([0.5, 0.34, 0.5], "steel", [0.0, 0.0, 0.0]).layer(layer));
+    v.push(part([0.5, 0.34, 0.5], "steel", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(layer));
+    v.push(part([0.24, 0.44, 0.24], "brass", [0.0, 0.0, 0.0]).layer(layer));
+    v.push(part([0.12, 0.5, 0.12], "steel", [0.0, 0.0, 0.0]).layer(layer));
+    for (x, z) in [(0.12f32, 0.0f32), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
+        v.push(part([0.05, 0.4, 0.05], "brass", [x, 0.0, z]).layer(layer));
+    }
     v
 }
 
 pub fn block_model(mech: Mech) -> Vec<Part> {
     match mech {
         Mech::Shaft => {
+            // A clean faceted andesite bar, brass collars only at the ends.
             let mut v = shaft(1.0);
-            v.push(part([0.3, 0.07, 0.3], "brass", [0.0, 0.36, 0.0]).layer(Layer::Rotor));
-            v.push(part([0.3, 0.07, 0.3], "brass", [0.0, -0.36, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.3, 0.06, 0.3], "brass", [0.0, 0.47, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.3, 0.06, 0.3], "brass", [0.0, -0.47, 0.0]).layer(Layer::Rotor));
             v
         }
         Mech::Cog => cog(0.38, 8, 0.62),
@@ -91,6 +105,17 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
                 let r = Quat::from_rotation_arc(Vec3::Y, d);
                 v.push(part([0.4, 0.06, 0.4], "brass", (d * 0.47).to_array()).rot(r));
                 v.push(part([0.2, 0.08, 0.2], "shaft", (d * 0.5).to_array()).rot(r));
+            }
+            // A brass gear behind a window on both axis faces, turning.
+            for y in [0.47f32, -0.47] {
+                v.push(part([0.6, 0.03, 0.6], "screen", [0.0, y, 0.0]));
+                v.push(part([0.42, 0.05, 0.42], "brass", [0.0, y, 0.0]).layer(Layer::Rotor));
+                v.push(part([0.42, 0.05, 0.42], "brass", [0.0, y, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(Layer::Rotor));
+                for i in 0..8 {
+                    let a = i as f32 / 8.0 * TAU;
+                    v.push(part([0.09, 0.05, 0.08], "brass", [a.cos() * 0.25, y, a.sin() * 0.25]).rot(Quat::from_rotation_y(-a)).layer(Layer::Rotor));
+                }
+                v.push(part([0.14, 0.07, 0.14], "steel", [0.0, y, 0.0]).layer(Layer::Rotor));
             }
             v
         }
@@ -115,17 +140,30 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             v
         }
         Mech::Motor => {
+            // Engine block: steel base with brass bolts, cased body with
+            // copper cooling fins, exhaust stubs, a glowing status window and
+            // the output shaft with a flywheel (+Y).
             let mut v = vec![
-                part([0.8, 0.62, 0.8], "steel", [0.0, -0.16, 0.0]),
-                part([0.8, 0.62, 0.8], "steel", [0.0, -0.16, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)),
-                part([0.9, 0.1, 0.9], "brass", [0.0, -0.4, 0.0]),
-                part([0.86, 0.08, 0.86], "brass", [0.0, 0.1, 0.0]),
-                part([0.84, 0.16, 0.24], "copper", [0.0, -0.16, 0.0]),
-                part([0.24, 0.16, 0.84], "copper", [0.0, -0.16, 0.0]),
-                part([0.3, 0.2, 0.06], "glow_amber", [0.0, -0.16, 0.42]),
+                part([0.92, 0.16, 0.92], "steel", [0.0, -0.42, 0.0]),
+                part([0.74, 0.5, 0.74], "steel_casing", [0.0, -0.1, 0.0]),
+                part([0.6, 0.1, 0.6], "brass", [0.0, 0.18, 0.0]),
+                part([0.3, 0.18, 0.06], "glow_amber", [0.0, -0.12, 0.38]),
+                part([0.36, 0.24, 0.04], "brass", [0.0, -0.12, 0.37]),
             ];
-            v.push(part([0.22, 0.4, 0.22], "shaft", [0.0, 0.3, 0.0]).layer(Layer::Rotor));
-            v.push(part([0.34, 0.08, 0.34], "brass", [0.0, 0.2, 0.0]).layer(Layer::Rotor));
+            for y in [-0.22f32, 0.02] {
+                v.push(part([0.8, 0.035, 0.8], "copper", [0.0, y, 0.0]));
+            }
+            for (x, z) in [(0.4f32, 0.4f32), (-0.4, 0.4), (0.4, -0.4), (-0.4, -0.4)] {
+                v.push(part([0.08, 0.06, 0.08], "brass", [x, -0.33, z]));
+            }
+            for x in [0.26f32, -0.26] {
+                v.push(part([0.1, 0.36, 0.1], "copper", [x, 0.02, -0.33]));
+                v.push(part([0.14, 0.06, 0.14], "steel", [x, 0.22, -0.33]));
+            }
+            v.push(part([0.22, 0.34, 0.22], "shaft", [0.0, 0.33, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.46, 0.08, 0.46], "brass", [0.0, 0.27, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.46, 0.08, 0.46], "brass", [0.0, 0.27, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(Layer::Rotor));
+            v.push(part([0.3, 0.06, 0.3], "brass", [0.0, 0.47, 0.0]).layer(Layer::Rotor));
             v
         }
         Mech::Suspension => {

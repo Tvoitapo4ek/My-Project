@@ -35,6 +35,9 @@ fn spawn_camera(mut commands: Commands) {
         IsDefaultUiCamera,
         Projection::Perspective(PerspectiveProjection { fov: 70f32.to_radians(), near: 0.05, far: 800.0, ..default() }),
         Tonemapping::TonyMcMapface,
+        // Soft contact shadows where parts meet (needs MSAA off).
+        bevy::pbr::ScreenSpaceAmbientOcclusion { quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::Medium, ..default() },
+        Msaa::Off,
         bevy::camera::Hdr,
         bevy::post_process::bloom::Bloom { intensity: 0.15, ..bevy::post_process::bloom::Bloom::NATURAL },
         Transform::from_xyz(0.0, 3.0, 6.0),

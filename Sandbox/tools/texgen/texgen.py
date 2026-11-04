@@ -96,6 +96,19 @@ def bevel(img, k=0.10):
     return out
 
 
+def edge_bevel(img, k=0.15, w=2):
+    """Inner chamfer: the top and left `w` pixels 15 % lighter, the bottom and
+    right ones 15 % darker, plus a soft top-left → bottom-right gradient."""
+    out = img.astype(np.float32).copy()
+    yy, xx = np.mgrid[0:N, 0:N] / (N - 1)
+    out *= (1.06 - (xx + yy) * 0.06)[..., None]
+    out[:w, :] *= 1 + k
+    out[:, :w] *= 1 + k * 0.7
+    out[-w:, :] *= 1 - k
+    out[:, -w:] *= 1 - k * 0.8
+    return out
+
+
 def rgba(rgb, alpha=None):
     a = np.full((N, N), 255.0) if alpha is None else alpha
     return np.dstack([np.clip(rgb, 0, 255), np.clip(a, 0, 255)]).astype(np.uint8)
@@ -139,10 +152,10 @@ def stone_like(seed, palette, points=7, crack=1.0):
 # --- palettes (see docs/STYLE.md) ----------------------------------------------
 
 WHITE = pal("#c9ccd1", "#d6d9dd", "#e2e4e7", "#eceef0", "#f6f7f8")
-STEEL = pal("#26282d", "#33363c", "#43474e", "#555a62", "#6b7079")
+STEEL = pal("#2b2e35", "#3a3e47", "#4a4f59", "#5d636e", "#767d89")
 ANDESITE = pal("#5c615e", "#6f7570", "#848a84", "#9aa099", "#b2b7b0")
-BRASS = pal("#6e4a1a", "#966827", "#bf8c36", "#dfb04f", "#f4d483")
-COPPER = pal("#6a3220", "#8c4429", "#b05b33", "#cf7746", "#e8996a")
+BRASS = pal("#6b4816", "#9a6a22", "#c4903a", "#d4a84f", "#f2d58c")
+COPPER = pal("#6e3018", "#9a4522", "#c4612f", "#dd7d42", "#f0a066")
 DARKWOOD = pal("#3b2414", "#4f321b", "#664225", "#7d5430", "#94673c")
 RUBBER = pal("#17171a", "#202024", "#2a2a2f", "#36363c")
 RED = pal("#4a1512", "#64201a", "#7f2c22", "#9a3a2c", "#b44c38")
@@ -172,7 +185,7 @@ def t_planks():
     for b in range(4):
         for nx in (3, 28):
             img[b * 8 + 3, nx] = hexc("#8a8f98")
-    return rgba(bevel(img))
+    return rgba(edge_bevel(img))
 
 
 def t_glass():
@@ -213,11 +226,12 @@ def t_steel():
     y, x = np.mgrid[0:N, 0:N]
     img = riveted(STEEL, 21)
     img[(x % 16 == 15) | (y % 16 == 15)] = STEEL[0]
+    img[(x % 16 == 0) | (y % 16 == 0)] = STEEL[-2]
     for cx in (8, 24):
         for cy in (8, 24):
             img[cy, cx] = STEEL[-1]
             img[cy + 1, cx + 1] = STEEL[0]
-    return rgba(img)
+    return rgba(edge_bevel(img))
 
 
 def t_steel_frame():
@@ -247,7 +261,7 @@ def plate(palette, seed):
     img = shade(palette, np.clip(t, 0, 0.999))
     img[(x % 16 == 15) | (y % 16 == 15)] = palette[0]
     img[(x % 16 == 0) | (y % 16 == 0)] = palette[-2]
-    return rgba(bevel(img))
+    return rgba(edge_bevel(img))
 
 
 def t_andesite():
@@ -256,21 +270,21 @@ def t_andesite():
     t = lit(tone + (fbm(303, 16) - 0.5) * 0.3)
     img = shade(ANDESITE, np.clip(t, 0, 0.999))
     img[edge < 0.9] = ANDESITE[1]
-    return rgba(bevel(img))
+    return rgba(edge_bevel(img))
 
 
 def t_shaft():
+    """Clean faceted andesite bar (no rings: brass collars sit at the ends)."""
     y, x = np.mgrid[0:N, 0:N]
-    t = 0.45 + 0.3 * np.cos((x - N / 2) / N * 3.0) + (fbm(321, 16) - 0.5) * 0.15
+    t = 0.5 + 0.28 * np.cos((x - N / 2) / N * 3.0) + (fbm(321, 16) - 0.5) * 0.1
     img = shade(ANDESITE, np.clip(t, 0, 0.999))
-    img[(y % 8 == 0)] = ANDESITE[1]
     return rgba(img)
 
 
 def t_cogwood():
     y, x = np.mgrid[0:N, 0:N]
     t = 0.5 + np.sin(y * 0.5 + fbm(331, 4) * 4) * 0.15 + (fbm(332, 16) - 0.5) * 0.25
-    return rgba(bevel(shade(DARKWOOD, lit(np.clip(t + 0.15, 0, 0.999))), 0.14))
+    return rgba(edge_bevel(shade(DARKWOOD, lit(np.clip(t + 0.15, 0, 0.999)))))
 
 
 def t_rubber():

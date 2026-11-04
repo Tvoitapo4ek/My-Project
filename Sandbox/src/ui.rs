@@ -25,9 +25,23 @@ const BG: Color = Color::srgba(0.08, 0.09, 0.11, 0.92);
 const SLOT_BG: Color = Color::srgba(0.18, 0.19, 0.22, 0.95);
 const SLOT_HOVER: Color = Color::srgba(0.28, 0.3, 0.34, 0.95);
 const BORDER: Color = Color::srgb(0.32, 0.33, 0.37);
+/// Window frames: forged steel with brass rivets in the corners.
+pub const FRAME: Color = Color::srgb(0.227, 0.243, 0.278);
+pub const RIVET: Color = Color::srgb(0.831, 0.659, 0.31);
+const RIVET_DARK: Color = Color::srgb(0.45, 0.32, 0.12);
 const ACCENT: Color = Color::srgb(0.95, 0.76, 0.33);
 const TEXT: Color = Color::srgb(0.92, 0.92, 0.9);
 const DIM: Color = Color::srgb(0.6, 0.6, 0.62);
+
+/// Brass rivets in the four corners of a framed window.
+pub fn rivets(p: &mut ChildSpawnerCommands) {
+    for (l, t) in [(true, true), (false, true), (true, false), (false, false)] {
+        let mut n = Node { position_type: PositionType::Absolute, width: px(8), height: px(8), border: UiRect::all(px(1)), ..default() };
+        if l { n.left = px(-5) } else { n.right = px(-5) }
+        if t { n.top = px(-5) } else { n.bottom = px(-5) }
+        p.spawn((n, BackgroundColor(RIVET), BorderColor::all(RIVET_DARK), Pickable::IGNORE));
+    }
+}
 
 pub fn font(size: f32) -> TextFont {
     TextFont::from_font_size(size)
@@ -72,6 +86,8 @@ struct HotbarSlot(usize);
 struct HeldName;
 #[derive(Component)]
 struct ToastText(f32);
+#[derive(Component)]
+struct ToastPlate;
 
 /// The stack on the mouse cursor (inventory screen).
 #[derive(Resource, Default)]
@@ -221,7 +237,7 @@ fn spawn_hud(mut commands: Commands) {
         .spawn((Node { position_type: PositionType::Absolute, bottom: px(8), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }, Pickable::IGNORE))
         .with_children(|c| {
             c.spawn((HeldName, Text::new(""), font(16.0), TextColor(TEXT), TextShadow::default(), Pickable::IGNORE));
-            c.spawn((Node { column_gap: px(2), padding: UiRect::all(px(3)), ..default() }, BackgroundColor(BG), Pickable::IGNORE)).with_children(|row| {
+            c.spawn((Node { column_gap: px(2), padding: UiRect::all(px(3)), border: UiRect::all(px(2)), ..default() }, BackgroundColor(BG), BorderColor::all(FRAME), Pickable::IGNORE)).with_children(|row| {
                 for i in 0..HOTBAR {
                     row.spawn((HotbarSlot(i), SlotSrc::Inv(i), Node { width: px(52), height: px(52), border: UiRect::all(px(2)), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }, BackgroundColor(SLOT_BG), BorderColor::all(BORDER), Pickable::IGNORE))
                         .with_children(|s| {
@@ -232,7 +248,14 @@ fn spawn_hud(mut commands: Commands) {
             });
         });
     // Toasts.
-    commands.spawn((ToastText(0.0), Text::new(""), font(18.0), TextColor(TEXT), TextShadow::default(), Node { position_type: PositionType::Absolute, top: px(60), width: percent(100), justify_content: JustifyContent::Center, ..default() }, TextLayout::justify(Justify::Center), Pickable::IGNORE));
+    // Toasts sit on a dark plate so they read against a bright sky.
+    commands
+        .spawn((Node { position_type: PositionType::Absolute, top: px(54), width: percent(100), justify_content: JustifyContent::Center, ..default() }, Pickable::IGNORE))
+        .with_children(|c| {
+            c.spawn((ToastPlate, Node { padding: UiRect::axes(px(14), px(6)), border: UiRect::all(px(2)), ..default() }, BackgroundColor(Color::NONE), BorderColor::all(Color::NONE), Pickable::IGNORE)).with_children(|p| {
+                p.spawn((ToastText(0.0), Text::new(""), font(17.0), TextColor(TEXT), TextLayout::justify(Justify::Center), Pickable::IGNORE));
+            });
+        });
 }
 
 fn held_name(inv: Query<&Inventory, With<Player>>, mut q: Query<&mut Text, With<HeldName>>) {
@@ -243,14 +266,19 @@ fn held_name(inv: Query<&Inventory, With<Player>>, mut q: Query<&mut Text, With<
     }
 }
 
-fn toasts(time: Res<Time>, mut msgs: MessageReader<Toast>, mut q: Query<(&mut Text, &mut ToastText, &mut TextColor)>) {
+fn toasts(time: Res<Time>, mut msgs: MessageReader<Toast>, mut q: Query<(&mut Text, &mut ToastText, &mut TextColor)>, mut plate: Query<(&mut BackgroundColor, &mut BorderColor), With<ToastPlate>>) {
     let Ok((mut t, mut life, mut col)) = q.single_mut() else { return };
     if let Some(m) = msgs.read().last() {
         t.0 = m.0.clone();
         life.0 = 3.0;
     }
     life.0 -= time.delta_secs();
-    col.0 = TEXT.with_alpha(life.0.clamp(0.0, 1.0));
+    let a = life.0.clamp(0.0, 1.0);
+    col.0 = TEXT.with_alpha(a);
+    if let Ok((mut bg, mut border)) = plate.single_mut() {
+        bg.0 = BG.with_alpha(0.85 * a);
+        *border = BorderColor::all(FRAME.with_alpha(a));
+    }
 }
 
 // ------------------------------------------------------------ inventory screen
@@ -303,7 +331,8 @@ fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>) {
             let _ = &mut carried;
         })
         .with_children(|root| {
-            root.spawn((Node { flex_direction: FlexDirection::Column, padding: UiRect::all(px(14)), row_gap: px(10), border: UiRect::all(px(2)), ..default() }, BackgroundColor(BG), BorderColor::all(BORDER))).with_children(|panel| {
+            root.spawn((Node { flex_direction: FlexDirection::Column, padding: UiRect::all(px(14)), row_gap: px(10), border: UiRect::all(px(2)), ..default() }, BackgroundColor(BG), BorderColor::all(FRAME))).with_children(|panel| {
+                rivets(panel);
                 // Header: title of the hovered item + view switch.
                 panel.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: px(20), ..default() }).with_children(|h| {
                     h.spawn((HoverName, Text::new("Инвентарь"), font(18.0), TextColor(ACCENT)));

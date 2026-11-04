@@ -122,10 +122,11 @@ fn update_sky(
         let light_dir = if dir.y > -0.05 { dir } else { Vec3::new(-dir.x, -dir.y, dir.z) };
         *t = Transform::from_translation(light_dir * 100.0).looking_at(Vec3::ZERO, Vec3::Y);
         l.illuminance = 300.0 + day * 9500.0;
-        let c = if dir.y > -0.05 { lerp3(Vec3::new(1.0, 0.98, 0.93), Vec3::new(1.0, 0.65, 0.4), warm) } else { Vec3::new(0.55, 0.65, 0.95) };
+        let c = if dir.y > -0.05 { lerp3(Vec3::new(1.0, 0.94, 0.84), Vec3::new(1.0, 0.64, 0.38), warm) } else { Vec3::new(0.55, 0.65, 0.95) };
         l.color = Color::srgb(c.x, c.y, c.z);
     }
-    let amb = lerp3(Vec3::new(0.3, 0.35, 0.6), Vec3::new(0.85, 0.9, 1.0), day);
+    // Shadows lean cool blue-violet, sunlight warm.
+    let amb = lerp3(Vec3::new(0.3, 0.32, 0.62), Vec3::new(0.82, 0.84, 0.97), day);
     ambient.color = Color::srgb(amb.x, amb.y, amb.z);
     ambient.brightness = 120.0 + day * 700.0;
     // Zenith (clear colour) and horizon (dome).

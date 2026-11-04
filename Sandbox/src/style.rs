@@ -89,6 +89,7 @@ pub fn pixel_box(size: Vec3) -> Mesh {
     let mut pos = Vec::new();
     let mut nor = Vec::new();
     let mut uv = Vec::new();
+    let mut col = Vec::new();
     let mut idx: Vec<u32> = Vec::new();
     for (n, u, v) in faces {
         let (du, dv) = ((u * size).abs().max_element(), (v * size).abs().max_element());
@@ -98,6 +99,7 @@ pub fn pixel_box(size: Vec3) -> Mesh {
             pos.push((centre + u * (su * du / 2.0) + v * (sv * dv / 2.0)).to_array());
             nor.push(n.to_array());
             uv.push([(su + 1.0) / 2.0 * du, (sv + 1.0) / 2.0 * dv]);
+            col.push(bake(n, centre + u * (su * du / 2.0) + v * (sv * dv / 2.0), h));
         }
         if u.cross(v).dot(n) > 0.0 {
             idx.extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
@@ -109,8 +111,24 @@ pub fn pixel_box(size: Vec3) -> Mesh {
     m.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
     m.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nor);
     m.insert_attribute(Mesh::ATTRIBUTE_UV_0, uv);
+    m.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
     m.insert_indices(Indices::U32(idx));
     m
+}
+
+/// Baked light of a box vertex (Hytale-like readable volume): top faces
+/// brightest, bottoms darkest, side faces fade from light at the top to
+/// darker at the bottom.
+fn bake(n: Vec3, p: Vec3, h: Vec3) -> [f32; 4] {
+    let k = if n.y > 0.5 {
+        1.06
+    } else if n.y < -0.5 {
+        0.8
+    } else {
+        let t = if h.y > 1e-4 { (p.y / h.y).clamp(-1.0, 1.0) } else { 0.0 };
+        0.9 + 0.09 * t
+    };
+    [k, k, k, 1.0]
 }
 
 /// Meshes shared by size.
