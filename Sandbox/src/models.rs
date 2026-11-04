@@ -266,6 +266,44 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             part([0.62, 0.08, 0.62], "brass", [0.0, -0.05, 0.0]),
             part([0.1, 0.2, 0.1], "copper", [0.3, -0.3, 0.3]),
         ],
+        Mech::Bearing => {
+            // Casing with the input shaft at the back (−Y); a brass turntable
+            // on the face (+Y) follows the structure's angle.
+            let mut v = vec![
+                part([0.92, 0.66, 0.92], "steel_casing", [0.0, -0.13, 0.0]),
+                part([0.96, 0.08, 0.96], "brass", [0.0, 0.18, 0.0]),
+                part([0.22, 0.12, 0.22], "shaft", [0.0, -0.47, 0.0]).layer(Layer::Rotor),
+                part([0.32, 0.05, 0.32], "brass", [0.0, -0.45, 0.0]).layer(Layer::Rotor),
+            ];
+            v.push(part([0.86, 0.14, 0.86], "planks", [0.0, 0.31, 0.0]).layer(Layer::Mount));
+            v.push(part([0.9, 0.06, 0.16], "steel", [0.0, 0.4, 0.0]).layer(Layer::Mount));
+            v.push(part([0.16, 0.06, 0.9], "steel", [0.0, 0.4, 0.0]).layer(Layer::Mount));
+            v.push(part([0.26, 0.08, 0.26], "brass", [0.0, 0.43, 0.0]).layer(Layer::Mount));
+            for (x, z) in [(0.32f32, 0.32f32), (-0.32, 0.32), (0.32, -0.32), (-0.32, -0.32)] {
+                v.push(part([0.08, 0.06, 0.08], "brass", [x, 0.4, z]).layer(Layer::Mount));
+            }
+            v
+        }
+        Mech::Piston => {
+            // Casing with brass bands, input shaft at the back; the head
+            // plate moves out with the extension, the pole stretches.
+            let mut v = vec![
+                part([0.92, 0.78, 0.92], "steel_casing", [0.0, -0.07, 0.0]),
+                part([0.96, 0.08, 0.96], "brass", [0.0, -0.3, 0.0]),
+                part([0.96, 0.08, 0.96], "brass", [0.0, 0.18, 0.0]),
+                part([0.22, 0.12, 0.22], "shaft", [0.0, -0.47, 0.0]).layer(Layer::Rotor),
+                part([0.32, 0.05, 0.32], "brass", [0.0, -0.45, 0.0]).layer(Layer::Rotor),
+            ];
+            v.push(part([0.9, 0.12, 0.9], "planks", [0.0, 0.44, 0.0]).layer(Layer::Mount));
+            v.push(part([0.5, 0.08, 0.5], "steel", [0.0, 0.36, 0.0]).layer(Layer::Mount));
+            for (x, z) in [(0.34f32, 0.34f32), (-0.34, 0.34), (0.34, -0.34), (-0.34, -0.34)] {
+                v.push(part([0.08, 0.06, 0.08], "brass", [x, 0.5, z]).layer(Layer::Mount));
+            }
+            v.push(part([0.3, 1.0, 0.3], "shaft", [0.0, 0.0, 0.0]).layer(Layer::Pole));
+            v
+        }
+        // Drawn by the piston (its pole stretches through these cells).
+        Mech::PistonPole => Vec::new(),
         Mech::PhysicsToggle => vec![
             part([0.96, 0.96, 0.96], "steel_casing", [0.0, 0.0, 0.0]),
             part([1.0, 0.12, 0.3], "brass", [0.0, 0.42, 0.0]),

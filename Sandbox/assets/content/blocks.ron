@@ -75,6 +75,22 @@
         // when speed = 0).
         (key: "signal_speed", label: "Скорость по сигналу", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 128.0),
      ]),
+    // Turns the structure glued on its face (a separate body on a hinge):
+    // speed from the shaft at its back; a signal holds «Угол фиксации».
+    (key: "mechanical_bearing", name: "Механический подшипник", category: "mechanisms", mech: Some(Bearing),
+     placement: Face, mass: 60.0,
+     params: [
+        (key: "hold_angle", label: "Угол фиксации", kind: Number(min: 0.0, max: 345.0, step: 15.0, unit: "°"), default: 90.0),
+     ]),
+    // Pushes / pulls the structure glued in front: one block per turn of
+    // the shaft at its back, up to «Ход» blocks.
+    (key: "mechanical_piston", name: "Механический поршень", category: "mechanisms", mech: Some(Piston),
+     placement: Face, mass: 80.0,
+     params: [
+        (key: "length", label: "Ход", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: "бл."), default: 4.0),
+     ]),
+    (key: "piston_pole", name: "Шток поршня", category: "mechanisms", mech: Some(PistonPole),
+     placement: Face, collision: Box(0.34, 1.0, 0.34), mass: 20.0, hidden: true),
     // Measures the speed of the physical contraption it stands on (km/h);
     // 0 in the world grid. Read it with a telemetry sensor.
     (key: "speedometer", name: "Спидометр", category: "mechanisms", mech: Some(Speedometer),

@@ -229,6 +229,9 @@ pub fn build() -> Scenario {
     if want("ground") {
         ground(&mut steps);
     }
+    if want("mounts") {
+        mounts(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -1452,4 +1455,178 @@ impl Plugin for AutotestPlugin {
             app.insert_resource(build()).add_systems(PreUpdate, run.after(bevy::input::InputSystems));
         }
     }
+}
+
+/// Moving parts (bearing / piston): (grid, joint body1, angle about the
+/// mount axis or offset along it).
+fn moving_parts(world: &mut World) -> Vec<(Entity, Entity, Quat, Vec3)> {
+    let mut q = world.query::<(Entity, &crate::mounts::MountedOn, &GlobalTransform)>();
+    let list: Vec<(Entity, crate::mounts::MountedOn, Transform)> = q.iter(world).map(|(e, m, t)| (e, *m, t.compute_transform())).collect();
+    list.into_iter()
+        .map(|(e, m, t)| {
+            let b1 = world.get::<avian3d::prelude::RevoluteJoint>(m.joint).map(|j| j.body1).or_else(|| world.get::<avian3d::prelude::PrismaticJoint>(m.joint).map(|j| j.body1)).unwrap_or(Entity::PLACEHOLDER);
+            (e, b1, t.rotation, t.translation)
+        })
+        .collect()
+}
+
+fn mounts(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("bearing: the motor turns a glued platform", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                set_block(world, IVec3::new(24, 0, -24), "creative_motor", 2);
+                set_block(world, IVec3::new(24, 1, -24), "mechanical_bearing", 2);
+                for x in 22..=26 {
+                    set_block(world, IVec3::new(x, 2, -24), "steel_block", 2);
+                }
+                let g = world_grid(world);
+                let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                glue.push((IVec3::new(22, 2, -24), IVec3::new(26, 2, -24)));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+                teleport(world, Vec3::new(24.5, 0.0, -17.5));
+            }
+            4 => {
+                set_param(world, IVec3::new(24, 0, -24), "speed", 16.0);
+                look_at(world, Vec3::new(24.5, 2.0, -24.0));
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 4 && !ctx.vars.contains_key("done") && ctx.t > ctx.vars["t0"] + 3.0 {
+            let parts = moving_parts(world);
+            let wg = world_grid(world);
+            let turned = parts.first().map(|p| p.2.angle_between(Quat::IDENTITY).to_degrees()).unwrap_or(0.0);
+            ctx.check("the platform is a separate body hinged to the world", parts.len() == 1 && parts[0].1 == wg, format!("{} parts", parts.len()));
+            ctx.check("it turns about the bearing axis", turned > 20.0 && parts.first().is_some_and(|p| (p.2 * Vec3::Y).y > 0.99), format!("{turned:.0}°"));
+            ctx.check("its blocks left the world grid", get_block(world, IVec3::new(22, 2, -24)).is_air() || turned < 1.0, "");
+            screenshot(world, "70_bearing");
+            ctx.vars.insert("done".into(), ctx.t);
+        }
+        if ctx.vars.get("done").is_some_and(|t| ctx.t > t + 0.5) {
+            // Clean up: the platform stopped at an odd angle stays a body.
+            for (e, ..) in moving_parts(world) {
+                world.entity_mut(e).despawn();
+            }
+            clear_area(world, IVec3::new(22, 0, -24), IVec3::new(26, 2, -24));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("piston: pushes out 2 blocks and pulls back", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                // Motor (+X) → piston (+X) → a glued 2-block column.
+                set_block(world, IVec3::new(28, 0, -30), "creative_motor", 0);
+                set_block(world, IVec3::new(29, 0, -30), "mechanical_piston", 0);
+                set_block(world, IVec3::new(30, 0, -30), "steel_block", 2);
+                set_block(world, IVec3::new(30, 1, -30), "steel_block", 2);
+                let g = world_grid(world);
+                let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                glue.push((IVec3::new(30, 0, -30), IVec3::new(30, 1, -30)));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+                teleport(world, Vec3::new(31.5, 0.0, -24.5));
+            }
+            4 => {
+                look_at(world, Vec3::new(32.0, 1.0, -30.0));
+                set_param(world, IVec3::new(29, 0, -30), "length", 2.0);
+                set_param(world, IVec3::new(28, 0, -30), "speed", 60.0);
+                // Counter-clockwise from the output face = turning +X.
+                set_param(world, IVec3::new(28, 0, -30), "direction", 1.0);
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames == 12 {
+            screenshot(world, "71_piston_moving");
+        }
+        if ctx.frames > 4 && !ctx.vars.contains_key("out") && ctx.t > ctx.vars["t0"] + 4.5 {
+            let at = |world: &World, x: i32, y: i32| get_block(world, IVec3::new(x, y, -30)).id;
+            let steel = BlockId::k("steel_block");
+            let pole = BlockId::k("piston_pole");
+            let ok = at(world, 32, 0) == steel && at(world, 32, 1) == steel && at(world, 30, 0) == pole && at(world, 31, 0) == pole;
+            ctx.check("extended by its stroke: the column is back in the grid 2 blocks out, poles behind it", ok && moving_parts(world).is_empty(), format!("{:?} {:?} parts {}", at(world, 32, 0), at(world, 30, 0), moving_parts(world).len()));
+            screenshot(world, "72_piston_out");
+            set_param(world, IVec3::new(28, 0, -30), "direction", 0.0);
+            ctx.vars.insert("out".into(), ctx.t);
+        }
+        if ctx.vars.get("out").is_some_and(|t| ctx.t > t + 4.5) {
+            let at = |world: &World, x: i32, y: i32| get_block(world, IVec3::new(x, y, -30)).id;
+            let ok = at(world, 30, 0) == BlockId::k("steel_block") && at(world, 31, 0).is_air() && at(world, 32, 0).is_air();
+            ctx.check("the other way: pulled back, poles gone", ok, format!("{:?} {:?}", at(world, 30, 0), at(world, 31, 0)));
+            set_param(world, IVec3::new(28, 0, -30), "speed", 0.0);
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("bearing on a physical body: a crane arm", |world, ctx| {
+        let base = IVec3::new(40, 0, -40);
+        match ctx.frames {
+            1 => {
+                for x in 0..3 {
+                    for z in 0..3 {
+                        set_block(world, base + IVec3::new(x, 0, z), "steel_block", 2);
+                    }
+                }
+                set_block(world, base + IVec3::new(1, 1, 1), "creative_motor", 2);
+                for x in 1..=4 {
+                    set_block(world, base + IVec3::new(x, 3, 1), "steel_block", 2);
+                }
+                set_block(world, base + IVec3::new(0, 1, 0), "physics_toggle", 2);
+                let g = world_grid(world);
+                let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                glue.push((base, base + IVec3::new(4, 3, 2)));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+                ctx.vars.insert("cells0".into(), world_cells(world) as f32);
+                teleport(world, Vec3::new(42.0, 0.0, -32.0));
+            }
+            3 => {
+                // Stopped while it becomes physical, then turned on.
+                set_param(world, base + IVec3::new(1, 1, 1), "speed", 0.0);
+                set_block(world, base + IVec3::new(1, 2, 1), "mechanical_bearing", 2);
+                ctx.vars.insert("cells0".into(), world_cells(world) as f32);
+                look_at(world, Vec3::new(42.0, 2.0, -39.0));
+            }
+            6 => {
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: base + IVec3::new(0, 1, 0), mech: crate::content::Mech::PhysicsToggle });
+            }
+            12 => {
+                let c = contraptions(world);
+                ctx.check("the base with the crane becomes one body", c.len() == 1 && c[0].3 >= 15, format!("{:?}", c.iter().map(|c| c.3).collect::<Vec<_>>()));
+                if let Some(m) = car_block(world, base + IVec3::new(1, 1, 1))
+                    && let Some(mut p) = world.get_mut::<crate::mech::Params>(m)
+                {
+                    p.0[0] = 16.0;
+                }
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 12 && !ctx.vars.contains_key("checked") && ctx.t > ctx.vars["t0"] + 3.0 {
+            let parts = moving_parts(world);
+            let c = contraptions(world);
+            let body = c.iter().find(|c| parts.iter().all(|p| p.0 != c.0)).map(|c| c.0);
+            ctx.check("the arm is hinged to the physical base", parts.len() == 1 && Some(parts[0].1) == body, format!("{} parts", parts.len()));
+            screenshot(world, "73_crane");
+            if let Some(b) = body
+                && let Some(m) = world.get::<VoxelGrid>(b).and_then(|g| g.entities.get(&(base + IVec3::new(1, 1, 1))).copied())
+                && let Some(mut p) = world.get_mut::<crate::mech::Params>(m)
+            {
+                p.0[0] = 0.0;
+            }
+            ctx.vars.insert("checked".into(), 1.0);
+            ctx.vars.insert("toggle".into(), body.map(|b| b.to_bits() as f32).unwrap_or(0.0));
+            if let Some(b) = body {
+                let toggle_cell = base + IVec3::new(0, 1, 0);
+                world.write_message(crate::interact::UseBlock { grid: b, cell: toggle_cell, mech: crate::content::Mech::PhysicsToggle });
+            }
+            ctx.vars.insert("t1".into(), ctx.t);
+        }
+        if ctx.vars.get("t1").is_some_and(|t| ctx.t > t + 1.0) {
+            let n = contraptions(world).len();
+            ctx.check("physics off: the arm and the base go back into the grid", n == 0 && (world_cells(world) as f32 - ctx.vars["cells0"]).abs() < 0.5, format!("{n} bodies, {} vs {}", world_cells(world), ctx.vars["cells0"]));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
 }

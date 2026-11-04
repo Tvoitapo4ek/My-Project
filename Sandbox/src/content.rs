@@ -43,6 +43,14 @@ pub enum Mech {
     MechanicalDisplay,
     /// A lamp shining along its facing; a signal press switches it on/off.
     Headlight,
+    /// Turns the glued structure on its face (a separate body on a hinge)
+    /// with the shaft speed from its back; a signal holds a set angle.
+    Bearing,
+    /// Pushes / pulls the glued structure in front of it: one block per
+    /// turn of the shaft at its back, up to its stroke.
+    Piston,
+    /// Extension pole left by an extended piston (placed automatically).
+    PistonPole,
 }
 
 /// How a block's orientation is chosen when placed.
@@ -124,6 +132,9 @@ pub struct BlockDef {
     /// Mass when it becomes physical (kg).
     #[serde(default = "default_mass")]
     pub mass: f32,
+    /// Not shown in the catalogue (placed by the game itself).
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 fn default_mass() -> f32 {
@@ -197,6 +208,7 @@ pub struct ItemDef {
     pub category: String,
     pub kind: ItemKind,
     pub max_stack: u32,
+    pub hidden: bool,
 }
 
 impl ItemId {
@@ -270,6 +282,7 @@ impl Registry {
             mech: None,
             params: vec![],
             mass: 0.0,
+            hidden: true,
         });
         for b in blocks {
             if r.block_index.contains_key(&b.key) {
@@ -282,12 +295,12 @@ impl Registry {
         for (i, b) in r.blocks.iter().enumerate().skip(1) {
             let id = r.items.len() as u16;
             r.item_index.insert(b.key.clone(), id);
-            r.items.push(ItemDef { key: b.key.clone(), name: b.name.clone(), category: b.category.clone(), kind: ItemKind::Block(BlockId(i as u16)), max_stack: 64 });
+            r.items.push(ItemDef { key: b.key.clone(), name: b.name.clone(), category: b.category.clone(), kind: ItemKind::Block(BlockId(i as u16)), max_stack: 64, hidden: b.hidden });
         }
         for t in tools {
             let id = r.items.len() as u16;
             r.item_index.insert(t.key.clone(), id);
-            r.items.push(ItemDef { key: t.key, name: t.name, category: t.category, kind: ItemKind::Tool(t.tool), max_stack: 1 });
+            r.items.push(ItemDef { key: t.key, name: t.name, category: t.category, kind: ItemKind::Tool(t.tool), max_stack: 1, hidden: false });
         }
         for b in &r.blocks {
             if let Some((a, s, d)) = &b.textures {

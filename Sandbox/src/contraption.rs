@@ -20,12 +20,11 @@ use bevy::prelude::*;
 
 use crate::{
     content::Mech,
-    core::{Toast, toast},
-    grid::{Cell, DIRS, VoxelGrid, WorldGrid, facing_dir, facing_of, render::ChunkViews},
+    core::toast,
+    grid::{DIRS, VoxelGrid, WorldGrid, render::ChunkViews},
     interact::UseBlock,
     mech::{BlockEntity, Spin},
-    signal::Linked,
-    tools::glue::{Glue, inside},
+    tools::glue::Glue,
     vehicle::Steer,
 };
 
@@ -39,13 +38,22 @@ pub struct Contraption {
 /// Cells connected to `start` through glue (face neighbours inside a
 /// common glue box). Without glue: only `start`.
 pub fn glued_group(grid: &VoxelGrid, glue: Option<&Glue>, start: IVec3) -> Vec<IVec3> {
+    glued_group_except(grid, glue, start, &HashSet::new())
+}
+
+/// Like `glued_group`, but never enters the `except` cells (the bearing or
+/// piston a moving part sits on).
+pub fn glued_group_except(grid: &VoxelGrid, glue: Option<&Glue>, start: IVec3, except: &HashSet<IVec3>) -> Vec<IVec3> {
+    if grid.get(start).is_air() || except.contains(&start) {
+        return Vec::new();
+    }
     let mut seen = HashSet::from([start]);
     let mut q = VecDeque::from([start]);
     while let Some(c) = q.pop_front() {
         let Some(g) = glue else { break };
         for d in DIRS {
             let n = c + d;
-            if !seen.contains(&n) && !grid.get(n).is_air() && g.contains(c, n) {
+            if !seen.contains(&n) && !except.contains(&n) && !grid.get(n).is_air() && g.contains(c, n) {
                 seen.insert(n);
                 q.push_back(n);
             }
@@ -79,150 +87,39 @@ pub fn snap_rotation(q: Quat) -> Quat {
     Quat::from_mat3(&Mat3::from_cols(x, y, z)).normalize()
 }
 
-#[allow(clippy::too_many_arguments)]
-fn toggle(
-    mut commands: Commands,
-    mut used: MessageReader<UseBlock>,
-    mut grids: Query<(&mut VoxelGrid, &GlobalTransform, Option<&Glue>, Has<WorldGrid>, Option<&Contraption>)>,
-    mut blocks: Query<(&mut BlockEntity, &mut Transform)>,
-    mut links: Query<&mut Linked>,
-    world_e: Res<crate::world::WorldEntity>,
-    mut toasts: MessageWriter<Toast>,
-    mut sounds: MessageWriter<crate::sound::Sfx>,
-) {
-    for u in used.read() {
-        if u.mech != Mech::PhysicsToggle {
+/// RMB on a physics toggle: assemble its glued group into a body, or put
+/// the body back into the world grid.
+fn toggle(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCursor<UseBlock>>) {
+    let uses: Vec<UseBlock> = cursor.read(world.resource::<Messages<UseBlock>>()).copied().filter(|u| u.mech == Mech::PhysicsToggle).collect();
+    for u in uses {
+        let Some(gt) = world.get::<GlobalTransform>(u.grid).copied() else { continue };
+        let is_world = world.get::<WorldGrid>(u.grid).is_some();
+        if world.get::<crate::mounts::MountedOn>(u.grid).is_some() {
+            world.write_message(toast("Это подвижная часть подшипника или поршня"));
             continue;
         }
-        let Ok((_, gt, _, is_world, contraption)) = grids.get(u.grid) else { continue };
         if is_world {
             // ---- assemble
-            let gt = *gt;
-            let (cells, moved_cells, glue_boxes, mass) = {
-                let (grid, _, glue, _, _) = grids.get(u.grid).unwrap();
-                let group = glued_group(&grid, glue, u.cell);
-                let cells: Vec<(IVec3, Cell)> = group.iter().map(|c| (*c, grid.get(*c))).collect();
-                let boxes: Vec<(IVec3, IVec3)> = glue.map(|g| g.0.iter().copied().filter(|(lo, hi)| group.iter().any(|c| inside(*c, *lo, *hi))).collect()).unwrap_or_default();
-                let mass: f32 = cells.iter().map(|(_, c)| c.id.def().mass).sum();
-                (cells, group, boxes, mass)
+            let (cells, mass) = {
+                let grid = world.get::<VoxelGrid>(u.grid).unwrap();
+                let group = glued_group(grid, world.get::<Glue>(u.grid), u.cell);
+                let mass = crate::assembly::mass_of(grid, &group);
+                (group, mass)
             };
-            let body = commands
-                .spawn((
-                    Name::new("Contraption"),
-                    Contraption { mass },
-                    VoxelGrid::default(),
-                    Glue(glue_boxes.clone()),
-                    gt.compute_transform(),
-                    Visibility::default(),
-                    RigidBody::Dynamic,
-                    LinearDamping(0.05),
-                    AngularDamping(0.3),
-                ))
-                .id();
-            let mut new_grid = VoxelGrid::default();
-            let mut moved_entities = Vec::new();
-            {
-                let (mut world_grid, _, _, _, _) = grids.get_mut(u.grid).unwrap();
-                for (c, cell) in &cells {
-                    if let Some(e) = world_grid.entities.remove(c) {
-                        new_grid.entities.insert(*c, e);
-                        moved_entities.push(e);
-                    }
-                    world_grid.set(*c, Cell::AIR);
-                    new_grid.set(*c, *cell);
-                }
-            }
-            // Remove the glue that went with it from the world.
-            if let Ok((_, _, Some(g), _, _)) = grids.get(u.grid) {
-                let left: Vec<(IVec3, IVec3)> = g.0.iter().copied().filter(|b| !glue_boxes.contains(b)).collect();
-                commands.entity(u.grid).insert(Glue(left));
-            }
-            for e in moved_entities {
-                if let Ok((mut b, _)) = blocks.get_mut(e) {
-                    b.grid = body;
-                }
-                commands.entity(e).insert(ChildOf(body));
-            }
-            for mut l in &mut links {
-                if let Some(p) = l.0.as_mut()
-                    && p.grid == u.grid
-                    && moved_cells.contains(&p.cell)
-                {
-                    p.grid = body;
-                }
-            }
-            commands.entity(body).insert(new_grid);
-            toasts.write(toast(format!("Физика включена: блоков {}, масса {:.0} кг", cells.len(), mass)));
-            sounds.write(crate::sound::sfx_at("physics_on", gt.translation() + u.cell.as_vec3()));
-        } else if contraption.is_some() {
+            let body = crate::assembly::split_off(world, u.grid, &cells, true);
+            world.entity_mut(body).insert((Contraption { mass }, RigidBody::Dynamic, LinearDamping(0.05), AngularDamping(0.3)));
+            world.write_message(toast(format!("Физика включена: блоков {}, масса {:.0} кг", cells.len(), mass)));
+            world.write_message(crate::sound::sfx_at("physics_on", gt.translation() + u.cell.as_vec3()));
+        } else if world.get::<Contraption>(u.grid).is_some() {
             // ---- disassemble
-            let world = world_e.0;
-            let t = gt.compute_transform();
-            let rot = snap_rotation(t.rotation);
-            let to_world = |c: IVec3| {
-                let p = t.translation + rot * (c.as_vec3() + Vec3::splat(0.5));
-                p.floor().as_ivec3()
-            };
-            let (cells, glue_boxes) = {
-                let (grid, _, glue, _, _) = grids.get(u.grid).unwrap();
-                (grid.cells(), glue.map(|g| g.0.clone()).unwrap_or_default())
-            };
-            let blocked = {
-                let (wg, _, _, _, _) = grids.get(world).unwrap();
-                cells.iter().any(|(c, _)| !wg.get(to_world(*c)).is_air())
-            };
-            if blocked {
-                toasts.write(toast("Нет места, чтобы вернуть блоки в сетку"));
-                continue;
+            let world_e = world.resource::<crate::world::WorldEntity>().0;
+            let at = gt.translation();
+            if crate::assembly::merge_into(world, u.grid, world_e) {
+                world.write_message(toast("Физика выключена: блоки вернулись в сетку"));
+                world.write_message(crate::sound::sfx_at("physics_off", at));
+            } else {
+                world.write_message(toast("Нет места, чтобы вернуть блоки в сетку"));
             }
-            let entities: Vec<(IVec3, Entity)> = grids.get(u.grid).unwrap().0.entities.iter().map(|(c, e)| (*c, *e)).collect();
-            {
-                let (mut wg, _, _, _, _) = grids.get_mut(world).unwrap();
-                for (c, cell) in &cells {
-                    let f = facing_of((rot * facing_dir(cell.facing).as_vec3()).round().as_ivec3());
-                    let wc = to_world(*c);
-                    if let Some((_, e)) = entities.iter().find(|(ec, _)| ec == c) {
-                        wg.entities.insert(wc, *e);
-                    }
-                    wg.set(wc, Cell::new(cell.id, f));
-                }
-            }
-            for (c, e) in &entities {
-                if let Ok((mut b, mut tr)) = blocks.get_mut(*e) {
-                    b.grid = world;
-                    b.cell = to_world(*c);
-                    b.facing = facing_of((rot * facing_dir(b.facing).as_vec3()).round().as_ivec3());
-                    *tr = crate::mech::transform_for(b.cell, b.id, b.facing);
-                }
-                commands.entity(*e).insert(ChildOf(world));
-            }
-            for mut l in &mut links {
-                if let Some(p) = l.0.as_mut()
-                    && p.grid == u.grid
-                {
-                    p.grid = world;
-                    p.cell = to_world(p.cell);
-                }
-            }
-            let mapped: Vec<(IVec3, IVec3)> = glue_boxes
-                .iter()
-                .map(|(lo, hi)| {
-                    let (a, b) = (to_world(*lo), to_world(*hi));
-                    (a.min(b), a.max(b))
-                })
-                .collect();
-            if let Ok((_, _, g, _, _)) = grids.get(world) {
-                let mut all = g.map(|g| g.0.clone()).unwrap_or_default();
-                all.extend(mapped);
-                commands.entity(world).insert(Glue(all));
-            }
-            {
-                let (mut cg, _, _, _, _) = grids.get_mut(u.grid).unwrap();
-                cg.entities.clear();
-            }
-            commands.entity(u.grid).despawn();
-            toasts.write(toast("Физика выключена: блоки вернулись в сетку"));
-            sounds.write(crate::sound::sfx_at("physics_off", t.translation));
         }
     }
 }
@@ -343,7 +240,7 @@ impl Plugin for ContraptionPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::content::BlockId;
+    use crate::{content::BlockId, grid::Cell};
 
     #[test]
     fn only_glued_blocks_join() {

@@ -410,7 +410,7 @@ fn close_screen(mut commands: Commands, q: Query<Entity, Or<(With<Screen>, With<
 
 fn matches(item: ItemId, cat: &Catalog) -> bool {
     let d = item.def();
-    cat.category.as_ref().is_none_or(|c| *c == d.category) && (cat.search.is_empty() || d.name.to_lowercase().contains(&cat.search.to_lowercase()) || d.key.contains(&cat.search.to_lowercase()))
+    !d.hidden && cat.category.as_ref().is_none_or(|c| *c == d.category) && (cat.search.is_empty() || d.name.to_lowercase().contains(&cat.search.to_lowercase()) || d.key.contains(&cat.search.to_lowercase()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -531,7 +531,7 @@ mod tests {
     fn catalogue_filters() {
         let mut cat = Catalog::default();
         let all = (0..registry().items.len() as u16).filter(|i| matches(ItemId(*i), &cat)).count();
-        assert_eq!(all, registry().items.len());
+        assert_eq!(all, registry().items.iter().filter(|i| !i.hidden).count());
         cat.category = Some("tools".into());
         assert!((0..registry().items.len() as u16).all(|i| !matches(ItemId(i), &cat) || ItemId(i).tool().is_some()));
         cat.category = None;

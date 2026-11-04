@@ -5,6 +5,7 @@
 //! Every feature is its own plugin; content (blocks, tools, categories)
 //! is data in `assets/content/`. See README.md and docs/.
 
+mod assembly;
 mod autotest;
 mod content;
 mod contraption;
@@ -17,6 +18,7 @@ mod inventory;
 mod lights;
 mod mech;
 mod models;
+mod mounts;
 mod player;
 mod settings;
 mod signal;
@@ -66,6 +68,7 @@ fn main() {
         telemetry::TelemetryPlugin,
         lights::LightsPlugin,
         sound::SoundPlugin,
+        mounts::MountsPlugin,
     ))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();

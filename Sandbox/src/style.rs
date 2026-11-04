@@ -155,6 +155,10 @@ pub enum Layer {
     RotorX,
     /// Turned by steering (suspension knuckle + wheel).
     Steer,
+    /// Follows a bearing's angle / a piston's extension (`mounts`).
+    Mount,
+    /// Piston pole: stretched along local Y with the extension.
+    Pole,
 }
 
 /// One box of a model.

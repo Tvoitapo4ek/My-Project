@@ -153,6 +153,8 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) ->
         // a shaft or cogwheel on its side (or a cog meshing in its plane)
         // turns it.
         Mech::MechanicalDisplay => Node::new(Role::Cog, Axis::of(side_axis(b))),
+        // Driven from the back; the face carries the moving part.
+        Mech::Bearing | Mech::Piston => Node::new(Role::Shaft, axis).one_port(-d),
         Mech::Cog => Node::new(Role::Cog, axis),
         Mech::LargeCog => Node::new(Role::LargeCog, axis),
         Mech::Gearbox => Node::new(Role::Gearbox, axis),
