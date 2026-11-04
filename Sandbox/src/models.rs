@@ -112,7 +112,13 @@ pub fn wheel_parts(layer: Layer) -> Vec<Part> {
     v
 }
 
+/// The model of a mechanism: `assets/models/<key>.bbmodel` if present,
+/// otherwise the built-in one.
 pub fn block_model(mech: Mech) -> Vec<Part> {
+    crate::bbmodel::block_override(mech).unwrap_or_else(|| builtin_model(mech))
+}
+
+pub fn builtin_model(mech: Mech) -> Vec<Part> {
     match mech {
         Mech::Shaft => {
             // A clean faceted andesite bar, brass collars only at the ends.

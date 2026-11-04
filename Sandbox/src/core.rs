@@ -28,6 +28,8 @@ pub enum Ui {
     Debug,
     /// Block settings (wrench).
     Settings,
+    /// Texture editor (from the pause).
+    Paint,
 }
 
 /// Keys a control-panel channel can use (index 0 = none). Shift leaves

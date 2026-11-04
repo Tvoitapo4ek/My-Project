@@ -2533,6 +2533,61 @@ fn help(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+    steps.push(step("texture editor: paint, see it on the blocks, undo", |world, ctx| {
+        let atlas_px = |world: &mut World| -> Option<[u8; 4]> {
+            let atlas = world.resource::<crate::grid::render::BlockAtlas>().image.clone();
+            let i = crate::content::registry().textures.iter().position(|t| t == "concrete")?;
+            let img = world.resource::<Assets<Image>>().get(&atlas)?;
+            let w = img.width() as usize;
+            let n = crate::grid::render::TILE as usize;
+            let (c, r) = (i % (w / n), i / (w / n));
+            let d = img.data.as_ref()?;
+            let o = ((r * n + 3) * w + c * n + 3) * 4;
+            Some([d[o], d[o + 1], d[o + 2], d[o + 3]])
+        };
+        match ctx.frames {
+            1 => world.resource_mut::<NextState<Ui>>().set(Ui::Pause),
+            4 => world.resource_mut::<NextState<Ui>>().set(Ui::Paint),
+            8 => {
+                let before = atlas_px(world);
+                ctx.vars.insert("tx_r".into(), before.map(|c| c[0] as f32).unwrap_or(-1.0));
+                let mut p = world.resource_mut::<crate::paint::Paint>();
+                p.select("concrete");
+                p.snapshot();
+                p.color = [0xd4, 0xa8, 0x4f, 255];
+                for i in 0..32 {
+                    p.set(i, i, [0xd4, 0xa8, 0x4f, 255]);
+                    p.set(31 - i, i, [0xd4, 0xa8, 0x4f, 255]);
+                }
+                p.tool = crate::paint::Tool::Fill;
+                p.apply(3, 3);
+            }
+            12 => {
+                let now = atlas_px(world);
+                ctx.check("the stroke is in the block atlas at once", now == Some([0xd4, 0xa8, 0x4f, 255]), format!("{now:?}"));
+                screenshot(world, "9l_paint");
+                let path = world.resource::<Shots>().0.clone().map(|d| format!("{d}/paint_concrete.png"));
+                if let Some(path) = path {
+                    let r = world.resource::<crate::paint::Paint>().save_to(std::path::Path::new(&path));
+                    ctx.check("saves a 32×32 png", r.is_ok() && image::open(&path).is_ok_and(|i| i.width() == 32), format!("{r:?}"));
+                }
+            }
+            16 => world.resource_mut::<NextState<Ui>>().set(Ui::Game),
+            19 => screenshot(world, "9m_painted_world"),
+            20 => {
+                world.resource_mut::<crate::paint::Paint>().undo();
+            }
+            21 => world.resource_mut::<NextState<Ui>>().set(Ui::Paint),
+            25 => {
+                let now = atlas_px(world).map(|c| c[0] as f32).unwrap_or(-2.0);
+                ctx.check("undo brings the old pixels back", now == ctx.vars["tx_r"], format!("{now}"));
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
     steps.push(step("render scale: the 3D view at 60 %", |world, ctx| {
         match ctx.frames {
             1 => world.resource_mut::<crate::menu::GameSettings>().render_scale = 0.6,

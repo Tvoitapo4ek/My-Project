@@ -253,6 +253,7 @@ enum MenuButton {
     Resume,
     Options,
     ToMenu,
+    Paint,
     Quit,
     Done,
     Tab(usize),
@@ -326,6 +327,7 @@ fn open_pause(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                 p.spawn((Text::new("Пауза"), font(26.0), TextColor(ACCENT), Node { margin: UiRect::bottom(px(8)), ..default() }));
                 button(p, "Продолжить", MenuButton::Resume, 250.0);
                 button(p, "Настройки", MenuButton::Options, 250.0);
+                button(p, "Текстуры", MenuButton::Paint, 250.0);
                 button(p, "В главное меню", MenuButton::ToMenu, 250.0);
                 button(p, "Выход", MenuButton::Quit, 250.0);
             });
@@ -409,6 +411,7 @@ fn on_button(ev: On<PointerClick>, buttons: Query<&MenuButton>, ui: Res<State<Ui
             next.set(Ui::Options);
         }
         MenuButton::ToMenu => next.set(Ui::Menu),
+        MenuButton::Paint => next.set(Ui::Paint),
         MenuButton::Quit => {
             exit.write(AppExit::Success);
         }
@@ -484,6 +487,7 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<
         Ui::Game => next.set(Ui::Pause),
         Ui::Pause => next.set(Ui::Game),
         Ui::Ponder => next.set(Ui::Inventory),
+        Ui::Paint => next.set(Ui::Pause),
         Ui::Options => {
             if state.rebinding.take().is_none() {
                 next.set(state.back.take().unwrap_or(Ui::Menu));

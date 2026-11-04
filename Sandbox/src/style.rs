@@ -19,7 +19,7 @@ use bevy::{
 use crate::grid::render::{load_texture, pixel_image, TILE};
 
 /// (name, metallic, roughness)
-const MATERIALS: [(&str, f32, f32); 19] = [
+pub const MATERIALS: [(&str, f32, f32); 19] = [
     ("white", 0.0, 0.9),
     ("concrete", 0.0, 0.92),
     ("steel", 0.55, 0.55),
@@ -65,6 +65,13 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mats: Re
                 ..default()
             }),
         );
+    }
+    // Every other texture as a plain material too (custom models use any).
+    for name in &crate::content::registry().textures {
+        if !m.contains_key(name) {
+            let tex = images.add(pixel_image(TILE, TILE, load_texture(name)));
+            m.insert(name.clone(), mats.add(StandardMaterial { base_color_texture: Some(tex), perceptual_roughness: 0.85, alpha_mode: AlphaMode::Mask(0.5), ..default() }));
+        }
     }
     // Glowing cores (HDR colour → bloom).
     for (name, c) in [("glow_amber", LinearRgba::rgb(4.0, 1.9, 0.3)), ("glow_cyan", LinearRgba::rgb(0.5, 2.6, 4.0)), ("glow_green", LinearRgba::rgb(0.4, 3.0, 0.8)), ("glow_red", LinearRgba::rgb(3.5, 0.4, 0.3))] {

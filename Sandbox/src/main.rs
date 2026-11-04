@@ -7,6 +7,7 @@
 
 mod assembly;
 mod autotest;
+mod bbmodel;
 mod belts;
 mod chains;
 mod content;
@@ -26,6 +27,7 @@ mod menu;
 mod logic;
 mod mech;
 mod models;
+mod paint;
 mod ponder;
 mod mounts;
 mod player;
@@ -86,7 +88,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

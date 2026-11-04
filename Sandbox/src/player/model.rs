@@ -46,22 +46,44 @@ fn attach(mut commands: Commands, players: Query<Entity, Added<Player>>, mut mes
         let mut bx = |w: f32, h: f32, d: f32| cache.get(&mut meshes, Vec3::new(w, h, d) * PX);
         let (head, body, limb) = (bx(8.0, 8.0, 8.0), bx(8.0, 12.0, 4.0), bx(4.0, 12.0, 4.0));
         let root = commands.spawn((Limb::Root, Walk::default(), Transform::default(), Visibility::default(), ChildOf(p))).id();
+        let custom = crate::bbmodel::player_override();
+        // A Blockbench player (assets/models/player.bbmodel): its cubes hang
+        // on the same pivots, in model pixels.
+        let skin = |commands: &mut Commands, bone: usize, pivot: Entity, meshes: &mut Assets<Mesh>, cache: &mut BoxCache, default: &dyn Fn(&mut Commands, Entity)| match custom {
+            Some(c) => {
+                let node = commands.spawn((Transform::from_scale(Vec3::splat(PX)), Visibility::default(), ChildOf(pivot))).id();
+                crate::style::spawn_parts(commands, node, &c[bone], meshes, cache, &mats, true);
+            }
+            None => default(commands, pivot),
+        };
         // Legs hang from the hips.
-        for (limb_kind, x) in [(Limb::LegR, 2.0), (Limb::LegL, -2.0)] {
+        for (limb_kind, x, bone) in [(Limb::LegR, 2.0, 4), (Limb::LegL, -2.0, 5)] {
             let pivot = commands.spawn((limb_kind, Transform::from_xyz(x * PX, 12.0 * PX, 0.0), Visibility::default(), ChildOf(root))).id();
-            commands.spawn((Mesh3d(limb.clone()), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, -6.0 * PX, 0.0), ChildOf(pivot)));
+            let (mesh, mat) = (limb.clone(), m.clone());
+            skin(&mut commands, bone, pivot, &mut meshes, &mut cache, &move |c, pv| {
+                c.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), Transform::from_xyz(0.0, -6.0 * PX, 0.0), ChildOf(pv)));
+            });
         }
         // Torso pivots at the hips (crouch lean).
         let torso = commands.spawn((Limb::Torso, Transform::from_xyz(0.0, 12.0 * PX, 0.0), Visibility::default(), ChildOf(root))).id();
-        commands.spawn((Mesh3d(body), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, 6.0 * PX, 0.0), ChildOf(torso)));
+        let (mesh, mat) = (body.clone(), m.clone());
+        skin(&mut commands, 1, torso, &mut meshes, &mut cache, &move |c, pv| {
+            c.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), Transform::from_xyz(0.0, 6.0 * PX, 0.0), ChildOf(pv)));
+        });
         let neck = commands.spawn((Limb::Head, Transform::from_xyz(0.0, 12.0 * PX, 0.0), Visibility::default(), ChildOf(torso))).id();
-        commands.spawn((Mesh3d(head), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, 4.0 * PX, 0.0), ChildOf(neck)));
+        let (mesh, mat) = (head.clone(), m.clone());
+        skin(&mut commands, 0, neck, &mut meshes, &mut cache, &move |c, pv| {
+            c.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), Transform::from_xyz(0.0, 4.0 * PX, 0.0), ChildOf(pv)));
+        });
         // Engineer's goggles on the forehead (shown while worn).
         let gear = commands.spawn((HeadGear, Transform::from_xyz(0.0, 5.5 * PX, -4.0 * PX - 0.02), Visibility::Hidden, ChildOf(neck))).id();
         crate::style::spawn_parts(&mut commands, gear, &crate::models::goggles_parts(), &mut meshes, &mut cache, &mats, true);
-        for (limb_kind, x) in [(Limb::ArmR, 6.0), (Limb::ArmL, -6.0)] {
+        for (limb_kind, x, bone) in [(Limb::ArmR, 6.0, 2), (Limb::ArmL, -6.0, 3)] {
             let pivot = commands.spawn((limb_kind, Transform::from_xyz(x * PX, 10.0 * PX, 0.0), Visibility::default(), ChildOf(torso))).id();
-            commands.spawn((Mesh3d(limb.clone()), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, -4.0 * PX, 0.0), ChildOf(pivot)));
+            let (mesh, mat) = (limb.clone(), m.clone());
+            skin(&mut commands, bone, pivot, &mut meshes, &mut cache, &move |c, pv| {
+                c.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), Transform::from_xyz(0.0, -4.0 * PX, 0.0), ChildOf(pv)));
+            });
         }
     }
 }
