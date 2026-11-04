@@ -304,6 +304,19 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
         }
         // Drawn by the piston (its pole stretches through these cells).
         Mech::PistonPole => Vec::new(),
+        Mech::SlidingDoor => vec![
+            // Front = local +Z. A steel frame post on each side; the panel
+            // (planks with steel bands, a brass handle and a window up top)
+            // slides along local +X (`doors`).
+            part([0.08, 1.0, 0.26], "steel", [-0.46, 0.0, 0.0]),
+            part([0.08, 1.0, 0.26], "steel", [0.46, 0.0, 0.0]),
+            part([0.86, 1.0, 0.12], "planks", [0.0, 0.0, 0.0]).layer(Layer::Mount),
+            part([0.88, 0.07, 0.14], "steel", [0.0, 0.3, 0.0]).layer(Layer::Mount),
+            part([0.88, 0.07, 0.14], "steel", [0.0, -0.3, 0.0]).layer(Layer::Mount),
+            part([0.5, 0.36, 0.14], "glass_lens", [0.0, 0.0, 0.0]).layer(Layer::Mount),
+            part([0.06, 0.16, 0.06], "brass", [-0.32, 0.0, 0.1]).layer(Layer::Mount),
+            part([0.06, 0.16, 0.06], "brass", [-0.32, 0.0, -0.1]).layer(Layer::Mount),
+        ],
         Mech::Flywheel => {
             // A heavy brass disc with a steel rim and counterweights on the
             // shaft (everything turns).

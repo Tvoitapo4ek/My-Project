@@ -11,6 +11,7 @@ mod content;
 mod contraption;
 mod core;
 mod debug;
+mod doors;
 mod engine;
 mod fluids;
 mod grid;
@@ -80,6 +81,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
+    .add_plugins(doors::DoorsPlugin)
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

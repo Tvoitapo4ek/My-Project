@@ -246,6 +246,7 @@ pub fn build() -> Scenario {
     }
     if want("shapes") {
         shapes(&mut steps);
+        doors(&mut steps);
     }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
@@ -2186,6 +2187,59 @@ fn shapes(steps: &mut Vec<(String, StepFn)>) {
             }
             24 => {
                 screenshot(world, "99_shapes");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn doors(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("sliding door: placed with its top, RMB and a lever open it", |world, ctx| {
+        let d = IVec3::new(10, 0, -62);
+        let open = |world: &World, c: IVec3| crate::doors::part(get_block(world, c).id).map(|p| p.1);
+        let door_use = |world: &mut World| {
+            let g = world_grid(world);
+            world.write_message(crate::interact::UseBlock { grid: g, cell: d, mech: crate::content::Mech::SlidingDoor });
+        };
+        match ctx.frames {
+            1 => {
+                select(world, "sliding_door");
+                teleport(world, Vec3::new(10.5, 0.0, -57.5));
+            }
+            4 => look_at(world, Vec3::new(10.5, 0.0, -61.5)),
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the floor for the door", a.is_some_and(|a| a.cell + a.normal == d), format!("{:?}", a.map(|a| a.cell + a.normal)));
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            14 => {
+                ctx.check("the door stands two blocks tall, closed", open(world, d) == Some(false) && open(world, d + IVec3::Y) == Some(false), format!("{:?} {:?}", open(world, d), open(world, d + IVec3::Y)));
+                select(world, "white_block");
+                door_use(world);
+            }
+            20 => {
+                ctx.check("RMB: both halves open, nothing blocks the way", open(world, d) == Some(true) && open(world, d + IVec3::Y) == Some(true) && crate::grid::cell_boxes(d, get_block(world, d)).is_none(), "");
+                screenshot(world, "9a_door_open");
+            }
+            23 => door_use(world),
+            29 => {
+                ctx.check("RMB again: closed", open(world, d) == Some(false), "");
+                set_block(world, d + IVec3::X, "lever", 3);
+            }
+            32 => {
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: d + IVec3::X, mech: crate::content::Mech::Lever });
+            }
+            38 => {
+                ctx.check("a lever beside it: open while on", open(world, d) == Some(true), "");
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: d + IVec3::X, mech: crate::content::Mech::Lever });
+            }
+            46 => {
+                ctx.check("lever off: closed again", open(world, d) == Some(false), "");
                 return Step::Next;
             }
             _ => {}

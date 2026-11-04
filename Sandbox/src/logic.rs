@@ -504,13 +504,17 @@ fn animate(
     }
 }
 
+/// Logic: after the control panels, before the machines (signals are set).
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LogicSystems;
+
 /// Logic runs after the control panels, before the machines.
 pub struct LogicPlugin;
 
 impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WireColor>()
-            .add_systems(Update, (add_state, use_switches, run).chain().after(crate::signal::SignalSet).before(MechSet))
+            .add_systems(Update, (add_state, use_switches, run).chain().in_set(LogicSystems).after(crate::signal::SignalSet).before(MechSet))
             .add_systems(Update, (pick_color, add_lamps, wire_looks, animate));
     }
 }

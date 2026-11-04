@@ -28,6 +28,15 @@
      textures: Some(("steel_frame", "steel_frame", "steel_frame")), transparent: true, mass: 60.0, buoyancy: Some(800.0)),
     (key: "steel_casing", name: "Стальной корпус", category: "building",
      textures: Some(("steel_casing", "steel_casing", "steel_casing")), mass: 120.0),
+    // Sliding door, two blocks tall: RMB or a signal opens it.
+    (key: "sliding_door", name: "Раздвижная дверь", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: Box(1.0, 0.2, 1.0), mass: 60.0),
+    (key: "sliding_door_top", name: "Раздвижная дверь (верх)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: Box(1.0, 0.2, 1.0), mass: 60.0, hidden: true),
+    (key: "sliding_door_open", name: "Раздвижная дверь (открыта)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: None, mass: 60.0, hidden: true),
+    (key: "sliding_door_top_open", name: "Раздвижная дверь (верх, открыта)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: None, mass: 60.0, hidden: true),
     // RMB with a casing on a shaft / pipe puts it in a casing.
     (key: "copper_casing", name: "Медный корпус", category: "building",
      textures: Some(("copper_casing", "copper_casing", "copper_casing")), mass: 120.0),

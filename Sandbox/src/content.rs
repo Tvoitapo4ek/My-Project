@@ -67,6 +67,8 @@ pub enum Mech {
     DieselEngine,
     /// Heavy disc: covers short overloads with its stored energy.
     Flywheel,
+    /// Sliding door half (`doors`): closed / open is the block itself.
+    SlidingDoor,
     /// Logic (`logic`): a wire on a block face, coloured.
     Wire,
     /// Short pulse when pressed (RMB).
