@@ -60,6 +60,30 @@ fn through_shaft() -> Vec<Part> {
     ]
 }
 
+/// Gearbox: a casing with a turning shaft stub on each of its four ports
+/// (around its axis, local Y turned by `turn`) and brass gears showing in
+/// windows on the axis faces.
+fn gearbox_parts(turn: Quat) -> Vec<Part> {
+    let mut v = casing("steel_casing");
+    for d in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z] {
+        let d = turn * d;
+        let r = Quat::from_rotation_arc(Vec3::Y, d);
+        v.push(part([0.4, 0.06, 0.4], "brass", (d * 0.47).to_array()).rot(r));
+        // The stub turns about the port's own axis (`Layer::Port`).
+        let port = crate::grid::DIRS.iter().position(|x| x.as_vec3() == d.round()).unwrap_or(0) as u8;
+        v.push(part([0.2, 0.12, 0.2], "shaft", [0.0, 0.0, 0.0]).layer(Layer::Port(port)));
+        v.push(part([0.3, 0.04, 0.3], "brass", [0.0, -0.02, 0.0]).layer(Layer::Port(port)));
+    }
+    for y in [0.47f32, -0.47] {
+        let at = turn * Vec3::new(0.0, y, 0.0);
+        v.push(part([0.6, 0.03, 0.6], "screen", at.to_array()).rot(turn));
+        v.push(part([0.42, 0.05, 0.42], "brass", at.to_array()).rot(turn));
+        v.push(part([0.42, 0.05, 0.42], "brass", at.to_array()).rot(turn * Quat::from_rotation_y(FRAC_PI_4)));
+        v.push(part([0.14, 0.07, 0.14], "steel", at.to_array()).rot(turn));
+    }
+    v
+}
+
 /// Tyre, rim and hub around local Y (the axle).
 pub fn wheel_parts(layer: Layer) -> Vec<Part> {
     // Chunky tyre with offset tread lugs, a wide brass rim, a dark steel
@@ -97,28 +121,12 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             v.push(part([0.3, 0.06, 0.3], "brass", [0.0, -0.47, 0.0]).layer(Layer::Rotor));
             v
         }
-        Mech::Cog => cog(0.38, 8, 0.62),
-        Mech::LargeCog => cog(0.84, 16, 1.36),
-        Mech::Gearbox => {
-            let mut v = casing("steel_casing");
-            for d in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z] {
-                let r = Quat::from_rotation_arc(Vec3::Y, d);
-                v.push(part([0.4, 0.06, 0.4], "brass", (d * 0.47).to_array()).rot(r));
-                v.push(part([0.2, 0.08, 0.2], "shaft", (d * 0.5).to_array()).rot(r));
-            }
-            // A brass gear behind a window on both axis faces, turning.
-            for y in [0.47f32, -0.47] {
-                v.push(part([0.6, 0.03, 0.6], "screen", [0.0, y, 0.0]));
-                v.push(part([0.42, 0.05, 0.42], "brass", [0.0, y, 0.0]).layer(Layer::Rotor));
-                v.push(part([0.42, 0.05, 0.42], "brass", [0.0, y, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(Layer::Rotor));
-                for i in 0..8 {
-                    let a = i as f32 / 8.0 * TAU;
-                    v.push(part([0.09, 0.05, 0.08], "brass", [a.cos() * 0.25, y, a.sin() * 0.25]).rot(Quat::from_rotation_y(-a)).layer(Layer::Rotor));
-                }
-                v.push(part([0.14, 0.07, 0.14], "steel", [0.0, y, 0.0]).layer(Layer::Rotor));
-            }
-            v
-        }
+        // Teeth reach just past the cell so neighbours interleave.
+        Mech::Cog => cog(0.44, 8, 0.72),
+        Mech::LargeCog => cog(0.92, 16, 1.5),
+        Mech::Gearbox => gearbox_parts(Quat::IDENTITY),
+        // Axis across the player's view: ports up, down and to the sides.
+        Mech::VerticalGearbox => gearbox_parts(Quat::from_rotation_arc(Vec3::Y, Vec3::Z)),
         Mech::Clutch => {
             let mut v = vec![part([0.86, 0.6, 0.86], "steel_casing", [0.0, 0.0, 0.0]), part([0.9, 0.12, 0.9], "red_grip", [0.0, 0.0, 0.0])];
             v.extend(through_shaft());
@@ -180,7 +188,11 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             v.push(part([0.2, 0.36, 0.2], "shaft", [0.0, 0.36, 0.0]).layer(Layer::Rotor));
             v
         }
-        Mech::Wheel => wheel_parts(Layer::Rotor),
+        // Pulled in towards the suspension (local −Y), no gap at the axle.
+        Mech::Wheel => wheel_parts(Layer::Rotor).into_iter().map(|mut p| {
+            p.at.y -= 0.24;
+            p
+        }).collect(),
         Mech::Seat => vec![
             part([0.86, 0.12, 0.86], "steel", [0.0, -0.4, 0.0]),
             part([0.1, 0.3, 0.1], "steel", [0.34, -0.25, 0.34]),

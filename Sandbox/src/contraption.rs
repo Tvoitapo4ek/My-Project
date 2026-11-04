@@ -198,7 +198,8 @@ fn drive(
             let ground = hit.map(|h| h.distance + PROBE - TRAVEL).unwrap_or(rest + TRAVEL);
             let hang = (ground - radius).clamp(-TRAVEL, RIDE + eq);
             match drop {
-                Some(mut d) => d.0 = hang,
+                // Smoothed: the probe's tiny hops do not shake the wheel.
+                Some(mut d) => d.0 += (hang - d.0) * (dt * 12.0).min(1.0),
                 None if !track => {
                     commands.entity(e).insert(WheelDrop(hang));
                 }

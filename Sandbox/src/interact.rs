@@ -150,6 +150,22 @@ pub fn encased(casing: &str, on: Option<Mech>) -> Option<&'static str> {
     }
 }
 
+/// A cogwheel here would overlap another one in its plane without
+/// meshing: a large cog right beside any cog with the same axis.
+pub fn cog_clash(grid: &VoxelGrid, cell: IVec3, mech: Option<Mech>, facing: u8) -> bool {
+    let large = match mech {
+        Some(Mech::LargeCog) => true,
+        Some(Mech::Cog) => false,
+        _ => return false,
+    };
+    let axis = crate::grid::facing_dir(facing).abs();
+    crate::grid::DIRS.iter().filter(|d| d.dot(axis) == 0).any(|d| {
+        let n = grid.get(cell + *d);
+        let other = n.id.def().mech;
+        !n.is_air() && crate::grid::facing_dir(n.facing).abs() == axis && (other == Some(Mech::LargeCog) || (large && other == Some(Mech::Cog)))
+    })
+}
+
 /// Orientation of a new block from its placement rule.
 pub fn place_facing(rule: Placement, normal: IVec3, look: Vec3) -> u8 {
     match rule {
@@ -249,6 +265,10 @@ fn edit_blocks(
     }
     let look_local = inv_t.transform_vector3(eye.dir);
     let facing = place_facing(block.def().placement, a.normal, look_local);
+    if cog_clash(&grid, cell, block.def().mech, facing) {
+        toasts.write(toast("Шестерни заденут друг друга: большую ставят по диагонали к малой или через клетку от большой"));
+        return;
+    }
     grid.set(cell, Cell::new(block, facing));
     body.swing = 1.0;
     edited.write(Edited { grid: a.grid, cell, placed: true, block });
@@ -312,5 +332,12 @@ mod tests {
         assert_eq!(encased("copper_casing", Some(Mech::Pipe)), Some("cased_pipe"));
         assert_eq!(encased("stone", Some(Mech::Pipe)), None);
         assert_eq!(encased("copper_casing", Some(Mech::Cog)), None);
+        // A large cog may not sit right beside a cog in its plane.
+        let mut g = VoxelGrid::default();
+        g.set(IVec3::ZERO, Cell::new(crate::content::BlockId::k("cogwheel"), 2));
+        assert!(cog_clash(&g, IVec3::X, Some(Mech::LargeCog), 2));
+        assert!(!cog_clash(&g, IVec3::new(1, 0, 1), Some(Mech::LargeCog), 2), "diagonal meshes");
+        assert!(!cog_clash(&g, IVec3::X, Some(Mech::Cog), 2), "small beside small meshes");
+        assert!(!cog_clash(&g, IVec3::Y, Some(Mech::LargeCog), 2), "along the axis: a shaft link");
     }
 }

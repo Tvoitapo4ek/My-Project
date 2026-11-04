@@ -249,6 +249,7 @@ pub fn build() -> Scenario {
     }
     if want("shapes") {
         shapes(&mut steps);
+        showcase(&mut steps);
         doors(&mut steps);
         goggles(&mut steps);
     }
@@ -2445,6 +2446,48 @@ fn links(steps: &mut Vec<(String, StepFn)>) {
             screenshot(world, "9g_tracks_moving");
             clear_bodies(world);
             return Step::Next;
+        }
+        Step::Wait
+    }));
+}
+
+fn showcase(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("mechanisms showcase: wheel on its suspension, cogs, gearboxes", |world, ctx| {
+        let o = IVec3::new(-12, 0, -30);
+        match ctx.frames {
+            1 => {
+                set_block(world, o, "steel_frame", 2);
+                set_block(world, o + IVec3::X, "suspension", 0);
+                set_block(world, o + IVec3::new(2, 0, 0), "wheel", 0);
+                // Motor → small, small; large diagonal to the second small.
+                set_block(world, o + IVec3::new(5, 0, 0), "creative_motor", 2);
+                set_block(world, o + IVec3::new(5, 1, 0), "cogwheel", 2);
+                set_block(world, o + IVec3::new(6, 1, 0), "cogwheel", 2);
+                set_block(world, o + IVec3::new(7, 1, 1), "large_cogwheel", 2);
+                // Motor → gearbox → shafts on its ports.
+                set_block(world, o + IVec3::new(10, 0, 0), "creative_motor", 0);
+                set_block(world, o + IVec3::new(11, 0, 0), "gearbox", 2);
+                set_block(world, o + IVec3::new(11, 0, 1), "shaft", 4);
+                set_block(world, o + IVec3::new(12, 0, 0), "shaft", 0);
+                set_block(world, o + IVec3::new(14, 0, 0), "vertical_gearbox", 4);
+                set_block(world, o + IVec3::new(13, 0, 0), "creative_motor", 0);
+                set_block(world, o + IVec3::new(14, 1, 0), "shaft", 2);
+                teleport(world, Vec3::new(-4.0, 0.0, -24.0));
+            }
+            4 => look_at(world, Vec3::new(-4.0, 0.5, -30.0)),
+            10 => {
+                let up = rpm(world, o + IVec3::new(14, 1, 0));
+                ctx.check("the vertical gearbox turns the shaft on its top port", up != 0.0, format!("{up}"));
+                let side = rpm(world, o + IVec3::new(11, 0, 1));
+                ctx.check("the gearbox turns the shaft on its side port", side != 0.0, format!("{side}"));
+                let big = rpm(world, o + IVec3::new(7, 1, 1)).abs();
+                ctx.check("the large cog meshes diagonally at half speed", big == 16.0, format!("{big}"));
+            }
+            16 => {
+                screenshot(world, "9h_showcase");
+                return Step::Next;
+            }
+            _ => {}
         }
         Step::Wait
     }));

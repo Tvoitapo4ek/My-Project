@@ -50,6 +50,16 @@ fn move_toward(cur: Vec3, target: Vec3, max: f32) -> Vec3 {
     if d.length() <= max { target } else { cur + d.normalize() * max }
 }
 
+/// Swimming speed (m/s) and the share of the body the water carries.
+const SWIM: f32 = 2.6;
+const FLOAT: f32 = 0.72;
+
+/// Share of the body under water (0..1), if in water at all.
+fn submerged(water: &crate::water::Water, pos: Vec3, height: f32) -> Option<f32> {
+    let d = water.depth(pos - Vec3::Y * height * 0.5);
+    (d > 0.05).then(|| (d / height).clamp(0.0, 1.0))
+}
+
 /// Is there something to stand on under a capsule centred at `pos`?
 fn ground_under(spatial: &SpatialQuery, me: Entity, pos: Vec3, height: f32) -> bool {
     let feet = pos.y - height * 0.5;
@@ -111,12 +121,23 @@ fn step(
             let speed = if body.sprinting { FLY * 2.0 } else { FLY };
             let up = (input.jump as i32 - input.crouch as i32) as f32;
             vel.0 = move_toward(vel.0, wish * speed + Vec3::Y * up * speed * 0.7, 60.0 * dt);
-        } else if water.depth(pos.0) > 0.0 {
-            // Swimming: slow sinking, Space swims up, Shift dives.
-            grav.0 = 0.15;
+        } else if let Some(k) = submerged(&water, pos.0, h).filter(|k| *k > 0.35) {
+            // Swimming: the water carries you (you float with the head out),
+            // slows you down, Space swims up, Shift dives, sprint swims
+            // faster; at a wall Space climbs out.
+            grav.0 = 0.0;
             let up = (input.jump as i32 - input.crouch as i32) as f32;
-            let target = wish * WALK * 0.6 + Vec3::Y * up * 3.0;
-            vel.0 = move_toward(vel.0, Vec3::new(target.x, if up != 0.0 { target.y } else { vel.y.max(-1.0) }, target.z), 20.0 * dt);
+            let mut vy = vel.y;
+            vy += (k - FLOAT) * 22.0 * dt;
+            vy += up * 11.0 * dt;
+            vy -= vy * 2.2 * dt;
+            vy = vy.clamp(-3.0, 3.4);
+            let speed = if body.sprinting { SWIM * 1.5 } else { SWIM };
+            let h_new = move_toward(Vec3::new(vel.x, 0.0, vel.z), wish * speed, 7.0 * dt);
+            if input.jump && k < 0.9 && wish != Vec3::ZERO && !spatial.shape_intersections(&Collider::sphere(RADIUS * 0.8), pos.0 + wish * 0.45, Quat::IDENTITY, &filter).is_empty() {
+                vy = JUMP_SPEED;
+            }
+            vel.0 = Vec3::new(h_new.x, vy, h_new.z);
         } else {
             grav.0 = 2.6;
             let speed = if body.crouching { CROUCH } else if body.sprinting { SPRINT } else { WALK };
@@ -125,8 +146,10 @@ fn step(
             let target = wish * speed + Vec3::new(belt.0.x, 0.0, belt.0.z);
             let h_now = Vec3::new(vel.x, 0.0, vel.z);
             let mut h_new = move_toward(h_now, target, accel * dt);
-            // Sneak edge guard: never step off into the void while crouching.
-            if body.crouching && body.grounded {
+            // Sneak edge guard: never step off an edge while crouching —
+            // per axis, then the diagonal, and back to the last supported
+            // spot if the capsule slid off anyway.
+            if body.crouching && (body.grounded || body.safe.is_some()) {
                 let look = 0.12;
                 if h_new.x != 0.0 && !ground_under(&spatial, e, pos.0 + Vec3::X * h_new.x.signum() * look, h) {
                     h_new.x = 0.0;
@@ -134,6 +157,21 @@ fn step(
                 if h_new.z != 0.0 && !ground_under(&spatial, e, pos.0 + Vec3::Z * h_new.z.signum() * look, h) {
                     h_new.z = 0.0;
                 }
+                if h_new.x != 0.0 && h_new.z != 0.0 && !ground_under(&spatial, e, pos.0 + Vec3::new(h_new.x.signum(), 0.0, h_new.z.signum()) * look, h) {
+                    h_new = Vec3::ZERO;
+                }
+                if ground_under(&spatial, e, pos.0, h) {
+                    body.safe = Some(pos.0);
+                } else if let Some(safe) = body.safe
+                    && !input.jump
+                    && vel.y > -4.0
+                {
+                    let back = Vec3::new(safe.x, pos.0.y.max(safe.y), safe.z);
+                    commands.entity(e).insert(Position(back));
+                    h_new = Vec3::ZERO;
+                }
+            } else {
+                body.safe = None;
             }
             vel.x = h_new.x;
             vel.z = h_new.z;

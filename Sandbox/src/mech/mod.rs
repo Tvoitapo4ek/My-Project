@@ -103,7 +103,7 @@ pub fn base_stress(m: Mech) -> f32 {
         Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Clutch | Mech::Gearshift | Mech::TrackDrive | Mech::TrackRoller => 0.5,
         Mech::BeltPulley => 1.0,
         Mech::Cog | Mech::MechanicalDisplay | Mech::SpeedController | Mech::Flywheel => 1.0,
-        Mech::LargeCog | Mech::Gearbox | Mech::Bearing | Mech::Piston => 2.0,
+        Mech::LargeCog | Mech::Gearbox | Mech::VerticalGearbox | Mech::Bearing | Mech::Piston => 2.0,
         Mech::Pump => 12.0,
         _ => 0.0,
     }
@@ -214,7 +214,7 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
         Mech::Bearing | Mech::Piston => Node::new(Role::Shaft, axis).one_port(-d),
         Mech::Cog => Node::new(Role::Cog, axis),
         Mech::LargeCog => Node::new(Role::LargeCog, axis),
-        Mech::Gearbox => Node::new(Role::Gearbox, axis),
+        Mech::Gearbox | Mech::VerticalGearbox => Node::new(Role::Gearbox, axis),
         Mech::Clutch => Node { toggled: on, ..Node::new(Role::Clutch, axis) },
         Mech::Gearshift => Node { toggled: on, ..Node::new(Role::Gearshift, axis) },
         Mech::SpeedController => match out_pass {
@@ -388,6 +388,12 @@ fn spin_rotors(blocks: Query<(&BlockEntity, &Spin, &Children)>, mut nodes: Query
                     Layer::Rotor => t.rotation = Quat::from_rotation_y(spin.angle * s + offset),
                     Layer::RotorX => t.rotation = Quat::from_rotation_x(spin.angle * sx),
                     Layer::RotorZ => t.rotation = Quat::from_rotation_z(spin.angle * s),
+                    Layer::Port(i) => {
+                        // Each port turns the way its shaft does: about the
+                        // port by the gearbox's angle.
+                        let d = crate::grid::facing_dir(i).as_vec3();
+                        *t = Transform::from_translation(d * 0.47).with_rotation(Quat::from_rotation_arc(Vec3::Y, d) * Quat::from_rotation_y(spin.angle));
+                    }
                     _ => {}
                 }
             }

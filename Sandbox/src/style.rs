@@ -167,6 +167,9 @@ pub enum Layer {
     RotorX,
     /// Spins about local Z (the output of upright engines).
     RotorZ,
+    /// A gearbox port stub: placed at the port `DIRS[i]` (block-local),
+    /// turning about it.
+    Port(u8),
     /// Turned by steering (suspension knuckle + wheel).
     Steer,
     /// Follows a bearing's angle / a piston's extension (`mounts`).

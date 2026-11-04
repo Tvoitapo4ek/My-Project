@@ -84,6 +84,8 @@
     (key: "large_cogwheel", name: "Большая шестерня", category: "mechanisms", mech: Some(LargeCog), placement: Face,
      collision: Box(0.9, 0.35, 0.9), mass: 40.0),
     (key: "gearbox", name: "Коробка передач", category: "mechanisms", mech: Some(Gearbox), placement: Face, mass: 80.0),
+    // Ports up, down, left and right (as seen when placing it).
+    (key: "vertical_gearbox", name: "Вертикальная коробка передач", category: "mechanisms", mech: Some(VerticalGearbox), placement: Horizontal, mass: 80.0),
     (key: "clutch", name: "Муфта (стоп по сигналу)", category: "mechanisms", mech: Some(Clutch), placement: Face, mass: 60.0),
     (key: "gearshift", name: "Реверс (по сигналу)", category: "mechanisms", mech: Some(Gearshift), placement: Face, mass: 60.0),
     (key: "speed_controller", name: "Регулятор скорости", category: "mechanisms", mech: Some(SpeedController),

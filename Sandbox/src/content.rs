@@ -18,6 +18,9 @@ pub enum Mech {
     LargeCog,
     /// Turns rotation by 90° (four ports around its axis).
     Gearbox,
+    /// A gearbox whose axis lies across the player's view: ports up, down
+    /// and to the left and right.
+    VerticalGearbox,
     /// Shaft that disconnects while it gets a signal.
     Clutch,
     /// Shaft that reverses its output side while it gets a signal.

@@ -37,11 +37,13 @@ pub struct Body {
     pub swing: f32,
     /// Time since the last Space press (double-tap → flight).
     pub last_jump_press: f32,
+    /// Last position with ground under it while sneaking (edge guard).
+    pub safe: Option<Vec3>,
 }
 
 impl Default for Body {
     fn default() -> Self {
-        Self { yaw: 0.0, pitch: 0.0, grounded: false, crouching: false, sprinting: false, flying: false, speed: 0.0, swing: 0.0, last_jump_press: 10.0 }
+        Self { yaw: 0.0, pitch: 0.0, grounded: false, crouching: false, sprinting: false, flying: false, speed: 0.0, swing: 0.0, last_jump_press: 10.0, safe: None }
     }
 }
 
