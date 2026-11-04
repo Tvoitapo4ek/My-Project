@@ -649,7 +649,10 @@ fn mechanisms(steps: &mut Vec<(String, StepFn)>) {
             12 => {
                 let a = shown(world, IVec3::new(2, 0, z));
                 let b = shown(world, IVec3::new(4, 0, z));
-                ctx.check("telemetry: motor RPM on the digital display", a == 96.0, format!("{a}"));
+                // On a motor the sensor reads the load of its network (%).
+                let net = block_entity(world, IVec3::new(0, 0, z)).and_then(|e| world.get::<crate::mech::NetState>(e).copied()).unwrap_or_default();
+                let want = net.stress / net.capacity.max(1.0) * 100.0;
+                ctx.check("telemetry: motor network load (%) on the digital display", net.stress > 0.0 && (a - want).abs() < 1e-3, format!("{a:.3}% ({:.1} / {:.0} SU)", net.stress, net.capacity));
                 ctx.check("telemetry: shaft RPM on the needle display", b == 96.0, format!("{b}"));
             }
             22 => {
