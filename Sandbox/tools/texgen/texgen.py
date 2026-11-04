@@ -283,6 +283,21 @@ def t_brass_casing():
     return rgba(riveted(BRASS, 24, frame=4, inner=inner))
 
 
+def t_copper_casing():
+    inner = np.array(t_planks()[..., :3], dtype=np.float32) * 0.9
+    return rgba(riveted(COPPER, 25, frame=4, inner=inner))
+
+
+DIESEL = pal("#2a1a08", "#4a2e0c", "#6e4812", "#8f611a")
+
+
+def t_fluid(palette, seed):
+    """Fluid surface: soft ripples in 3-4 tones (no bevel)."""
+    y, x = np.mgrid[0:N, 0:N]
+    t = 0.45 + (fbm(seed, 4) - 0.5) * 0.5 + np.sin((x * 0.6 + y * 0.25)) * 0.06
+    return rgba(shade(palette, np.clip(t, 0, 0.999)))
+
+
 def plate(palette, seed):
     y, x = np.mgrid[0:N, 0:N]
     t = lit(0.5 + (fbm(seed, 4) - 0.5) * 0.25 + np.sin((x + y) * 0.25) * 0.05)
@@ -345,7 +360,8 @@ TEXTURES = {
     "white": t_white, "concrete": t_concrete, "concrete_line": t_concrete_line, "stone": t_stone, "planks": t_planks, "glass": t_glass,
     "steel": t_steel, "steel_frame": t_steel_frame,
     # machine materials (also used as block faces)
-    "steel_casing": t_steel_casing, "brass_casing": t_brass_casing,
+    "steel_casing": t_steel_casing, "brass_casing": t_brass_casing, "copper_casing": t_copper_casing,
+    "water": lambda: t_fluid(WATER, 331), "diesel": lambda: t_fluid(DIESEL, 332),
     "brass": lambda: plate(BRASS, 314), "copper": lambda: plate(COPPER, 315),
     "andesite": t_andesite, "shaft": t_shaft, "cogwood": t_cogwood,
     "rubber": t_rubber, "red_grip": t_red_grip, "leather": t_leather,

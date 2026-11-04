@@ -44,18 +44,20 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-fn mouse_look(motion: Res<AccumulatedMouseMotion>, ui: Res<State<Ui>>, locked: Res<LookLocked>, mut q: Query<&mut Body, With<Player>>) {
+fn mouse_look(motion: Res<AccumulatedMouseMotion>, ui: Res<State<Ui>>, locked: Res<LookLocked>, s: Res<crate::menu::GameSettings>, mut q: Query<&mut Body, With<Player>>) {
     if *ui.get() != Ui::Game || locked.0 {
         return;
     }
+    let k = 0.0025 * s.sensitivity;
+    let y = if s.invert_y { -1.0 } else { 1.0 };
     for mut b in &mut q {
-        b.yaw -= motion.delta.x * 0.0025;
-        b.pitch = (b.pitch - motion.delta.y * 0.0025).clamp(-1.55, 1.55);
+        b.yaw -= motion.delta.x * k;
+        b.pitch = (b.pitch - motion.delta.y * k * y).clamp(-1.55, 1.55);
     }
 }
 
-fn toggle_view(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut view: ResMut<CameraView>) {
-    if *ui.get() == Ui::Game && keys.just_pressed(KeyCode::F5) {
+fn toggle_view(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, s: Res<crate::menu::GameSettings>, mut view: ResMut<CameraView>) {
+    if *ui.get() == Ui::Game && keys.just_pressed(s.key(crate::menu::Action::View)) {
         view.0 = match view.0 {
             View::First => View::Behind,
             View::Behind => View::Front,
@@ -64,8 +66,16 @@ fn toggle_view(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut view: Re
     }
 }
 
-fn follow(view: Res<CameraView>, players: Query<(Entity, &GlobalTransform, &Body), With<Player>>, mut cams: Query<&mut Transform, With<MainCamera>>, spatial: avian3d::prelude::SpatialQuery) {
+#[allow(clippy::too_many_arguments)]
+fn follow(view: Res<CameraView>, ui: Res<State<Ui>>, time: Res<Time<Real>>, players: Query<(Entity, &GlobalTransform, &Body), With<Player>>, mut cams: Query<&mut Transform, With<MainCamera>>, spatial: avian3d::prelude::SpatialQuery) {
     let (Ok((me, pt, body)), Ok(mut cam)) = (players.single(), cams.single_mut()) else { return };
+    if *ui.get() == Ui::Menu {
+        // Main menu: a slow flight around the proving ground.
+        let a = time.elapsed_secs() * 0.05;
+        let p = Vec3::new(a.cos() * 46.0, 22.0, a.sin() * 46.0);
+        *cam = Transform::from_translation(p).looking_at(Vec3::new(-6.0, 0.0, 4.0), Vec3::Y);
+        return;
+    }
     let feet = pt.translation() - Vec3::Y * body.height() * 0.5;
     let eye = feet + Vec3::Y * body.eye();
     let rot = Quat::from_euler(EulerRot::YXZ, body.yaw, body.pitch, 0.0);

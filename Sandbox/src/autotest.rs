@@ -232,6 +232,15 @@ pub fn build() -> Scenario {
     if want("mounts") {
         mounts(&mut steps);
     }
+    if want("fluids") {
+        fluids(&mut steps);
+    }
+    if want("logic") {
+        logic(&mut steps);
+    }
+    if want("menu") {
+        menu(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -1452,7 +1461,10 @@ impl Plugin for AutotestPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Shots(self.shots.clone()));
         if self.on {
-            app.insert_resource(build()).add_systems(PreUpdate, run.after(bevy::input::InputSystems));
+            // Straight into the game (no main menu).
+            app.insert_resource(build())
+                .add_systems(Startup, |mut next: ResMut<NextState<Ui>>| next.set(Ui::Game))
+                .add_systems(PreUpdate, run.after(bevy::input::InputSystems));
         }
     }
 }
@@ -1626,6 +1638,365 @@ fn mounts(steps: &mut Vec<(String, StepFn)>) {
             let n = contraptions(world).len();
             ctx.check("physics off: the arm and the base go back into the grid", n == 0 && (world_cells(world) as f32 - ctx.vars["cells0"]).abs() < 0.5, format!("{n} bodies, {} vs {}", world_cells(world), ctx.vars["cells0"]));
             return Step::Next;
+        }
+        Step::Wait
+    }));
+}
+
+fn store_at(world: &mut World, grid: Entity, c: IVec3) -> Option<crate::fluids::FluidStore> {
+    let e = world.get::<VoxelGrid>(grid)?.entities.get(&c).copied()?;
+    world.get::<crate::fluids::FluidStore>(e).copied()
+}
+
+fn glue_box(world: &mut World, lo: IVec3, hi: IVec3) {
+    let g = world_grid(world);
+    let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+    glue.push((lo, hi));
+    world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+}
+
+fn fluids(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("diesel engine: fuel through a port and a pipe starts it", |world, ctx| {
+        let o = IVec3::new(-20, 0, 26);
+        let eng = o + IVec3::new(4, 0, 0);
+        match ctx.frames {
+            1 => {
+                set_block(world, o, "fluid_port", 2);
+                set_block(world, o + IVec3::X, "fluid_pipe", 0);
+                set_block(world, o + IVec3::new(2, 0, 0), "fluid_tank", 2);
+                set_block(world, o + IVec3::new(3, 0, 0), "fluid_pipe", 0);
+                // Output to +X, fuel in from the pipe at its back.
+                set_block(world, eng, "diesel_engine", 0);
+                set_block(world, eng + IVec3::X, "shaft", 0);
+                select(world, "bucket_diesel");
+                teleport(world, Vec3::new(-18.0, 0.0, 30.5));
+            }
+            4 => {
+                let ok = block_entity(world, eng).and_then(|e| world.get::<crate::engine::Engine>(e).copied()).is_some_and(|e| !e.running);
+                ctx.check("without diesel the engine stands", ok && rpm(world, eng + IVec3::X) == 0.0, "");
+                look_at(world, Vec3::new(-19.5, 1.0, 26.5));
+            }
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the filling port", a.is_some_and(|a| a.cell == o), format!("{:?}", a.map(|a| a.cell)));
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            12 => click(world, MouseButton::Right, true),
+            13 => click(world, MouseButton::Right, false),
+            16 => {
+                let g = world_grid(world);
+                let port = store_at(world, g, o).map(|s| s.amount).unwrap_or(0.0);
+                let tank = store_at(world, g, o + IVec3::new(2, 0, 0)).map(|s| s.amount).unwrap_or(0.0);
+                let engine = store_at(world, g, eng).map(|s| s.amount).unwrap_or(0.0);
+                ctx.check("two buckets: 2000 mB of diesel in the network", (port + tank + engine - 2000.0).abs() < 60.0, format!("port {port:.0}, tank {tank:.0}, engine {engine:.0}"));
+                ctx.vars.insert("t0".into(), ctx.t);
+                look_at(world, Vec3::new(-15.5, 0.8, 26.5));
+            }
+            _ => {}
+        }
+        if ctx.frames > 16 && !ctx.vars.contains_key("ran") && ctx.t > ctx.vars["t0"] + 3.0 {
+            let g = world_grid(world);
+            let running = block_entity(world, eng).and_then(|e| world.get::<crate::engine::Engine>(e).copied()).is_some_and(|e| e.running);
+            let r = rpm(world, eng + IVec3::X).abs();
+            ctx.check("the engine runs and turns its shaft", running && r == 64.0, format!("running {running}, {r} RPM"));
+            let total = [o, o + IVec3::new(2, 0, 0), eng].iter().map(|c| store_at(world, g, *c).map(|s| s.amount).unwrap_or(0.0)).sum::<f32>();
+            ctx.check("it burns diesel", total < 1990.0 && total > 1500.0, format!("{total:.0} mB left"));
+            let smoke = world.query::<&Mesh3d>().iter(world).count();
+            ctx.vars.insert("smoke".into(), smoke as f32);
+            screenshot(world, "80_diesel_engine");
+            // Block the exhaust: no air.
+            set_block(world, eng + IVec3::Y, "stone", 2);
+            ctx.vars.insert("ran".into(), ctx.t);
+        }
+        if ctx.vars.get("ran").is_some_and(|t| ctx.t > t + 1.5) {
+            let stall = block_entity(world, eng).and_then(|e| world.get::<crate::engine::Engine>(e).copied()).and_then(|e| e.stall);
+            ctx.check("exhaust blocked: it stalls for lack of air", stall == Some(crate::engine::Stall::NoAir) && rpm(world, eng + IVec3::X) == 0.0, format!("{stall:?}"));
+            set_block(world, eng + IVec3::Y, "air", 2);
+            select(world, "white_block");
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("pump: moves fluid from one tank to another", |world, ctx| {
+        let o = IVec3::new(-20, 0, 32);
+        let (a, b) = (o, o + IVec3::new(4, 0, 0));
+        match ctx.frames {
+            1 => {
+                set_block(world, a, "fluid_tank", 2);
+                set_block(world, o + IVec3::X, "fluid_pipe", 0);
+                set_block(world, o + IVec3::new(2, 0, 0), "mechanical_pump", 0);
+                set_block(world, o + IVec3::new(3, 0, 0), "fluid_pipe", 0);
+                set_block(world, b, "fluid_tank", 2);
+                // Motor → cogwheel above the pump: it meshes with the pump.
+                set_block(world, o + IVec3::new(2, 1, 0), "cogwheel", 0);
+                set_block(world, o + IVec3::new(1, 1, 0), "creative_motor", 0);
+                teleport(world, Vec3::new(-17.5, 0.0, 38.5));
+            }
+            4 => {
+                let g = world_grid(world);
+                if let Some(e) = world.get::<VoxelGrid>(g).and_then(|gr| gr.entities.get(&a).copied()) {
+                    world.get_mut::<crate::fluids::FluidStore>(e).unwrap().add(crate::fluids::Fluid::Water, 8000.0);
+                }
+                set_param(world, o + IVec3::new(1, 1, 0), "speed", 64.0);
+                look_at(world, Vec3::new(-17.5, 0.5, 32.5));
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 4 && !ctx.vars.contains_key("fwd") && ctx.t > ctx.vars["t0"] + 3.0 {
+            let g = world_grid(world);
+            let (sa, sb) = (store_at(world, g, a).map(|s| s.amount).unwrap_or(0.0), store_at(world, g, b).map(|s| s.amount).unwrap_or(0.0));
+            let pr = rpm(world, o + IVec3::new(2, 0, 0)).abs();
+            ctx.check("the cogwheel turns the pump", pr == 64.0, format!("{pr} RPM"));
+            ctx.check("it pumps water forward into the second tank", sb > 1000.0 && (sa + sb - 8000.0).abs() < 1.0, format!("{sa:.0} → {sb:.0} mB"));
+            screenshot(world, "81_pump");
+            set_param(world, o + IVec3::new(2, 0, 0), "direction", 1.0);
+            ctx.vars.insert("sb".into(), sb);
+            ctx.vars.insert("fwd".into(), ctx.t);
+        }
+        if ctx.vars.get("fwd").is_some_and(|t| ctx.t > t + 2.0) {
+            let g = world_grid(world);
+            let sb = store_at(world, g, b).map(|s| s.amount).unwrap_or(0.0);
+            ctx.check("direction «Назад»: it pumps back", sb < ctx.vars["sb"], format!("{:.0} → {sb:.0} mB", ctx.vars["sb"]));
+            set_param(world, o + IVec3::new(1, 1, 0), "speed", 0.0);
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("water: a raft floats, ballast sinks a submarine", |world, ctx| {
+        // Raft of planks and a small submarine, both under water at first.
+        let raft = IVec3::new(44, -4, 24);
+        let sub = IVec3::new(52, -6, 30);
+        match ctx.frames {
+            1 => {
+                for x in 0..3 {
+                    for z in 0..3 {
+                        set_block(world, raft + IVec3::new(x, 0, z), "planks", 2);
+                    }
+                }
+                set_block(world, raft + IVec3::new(1, 1, 1), "physics_toggle", 2);
+                glue_box(world, raft, raft + IVec3::new(2, 1, 2));
+                // Submarine: pump (+Y, its back open to the water) under a
+                // 2-block ballast column; motor → cogwheel beside the pump.
+                set_block(world, sub, "mechanical_pump", 2);
+                set_block(world, sub + IVec3::Y, "fluid_tank", 2);
+                set_block(world, sub + IVec3::Y * 2, "fluid_tank", 2);
+                set_block(world, sub + IVec3::X, "cogwheel", 2);
+                set_block(world, sub + IVec3::new(1, -1, 0), "creative_motor", 2);
+                for y in 1..=2 {
+                    set_block(world, sub + IVec3::new(1, y, 0), "steel_block", 2);
+                    set_block(world, sub + IVec3::new(-1, y, 0), "steel_block", 2);
+                }
+                set_block(world, sub + IVec3::new(0, 3, 0), "physics_toggle", 2);
+                glue_box(world, sub + IVec3::new(-1, -1, 0), sub + IVec3::new(1, 3, 0));
+                console(world, "fly");
+                teleport(world, Vec3::new(48.0, 2.0, 18.0));
+            }
+            3 => {
+                set_param(world, sub + IVec3::new(1, -1, 0), "speed", 0.0);
+                for c in [sub + IVec3::Y, sub + IVec3::Y * 2] {
+                    set_param(world, c, "mode", 1.0);
+                }
+            }
+            5 => {
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: raft + IVec3::new(1, 1, 1), mech: crate::content::Mech::PhysicsToggle });
+                world.write_message(crate::interact::UseBlock { grid: g, cell: sub + IVec3::new(0, 3, 0), mech: crate::content::Mech::PhysicsToggle });
+                look_at(world, Vec3::new(48.0, -1.0, 28.0));
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        let bodies = |world: &mut World| -> Vec<(Entity, Vec3, usize)> {
+            let mut q = world.query_filtered::<(Entity, &VoxelGrid, &avian3d::prelude::ComputedCenterOfMass, &GlobalTransform), With<crate::contraption::Contraption>>();
+            q.iter(world).map(|(e, g, c, t)| (e, t.transform_point(c.0), g.cells().len())).collect()
+        };
+        if ctx.frames > 5 && !ctx.vars.contains_key("float") && ctx.t > ctx.vars["t0"] + 5.0 {
+            let b = bodies(world);
+            let raft_y = b.iter().find(|x| x.1.x < 49.0).map(|x| x.1.y).unwrap_or(-99.0);
+            let sub_y = b.iter().find(|x| x.1.x >= 49.0).map(|x| x.1.y).unwrap_or(-99.0);
+            ctx.check("the planks raft floats up to the surface", raft_y > -2.0, format!("y {raft_y:.2}"));
+            ctx.check("the submarine with empty ballast floats too", sub_y > -4.0, format!("y {sub_y:.2}"));
+            screenshot(world, "82_floating");
+            // Fill the ballast from the water outside.
+            if let Some(m) = b.iter().find(|x| x.1.x >= 49.0).and_then(|x| world.get::<VoxelGrid>(x.0).and_then(|g| g.entities.get(&(sub + IVec3::new(1, -1, 0))).copied()))
+                && let Some(mut p) = world.get_mut::<crate::mech::Params>(m)
+            {
+                p.0[0] = 256.0;
+            }
+            ctx.vars.insert("sub_y".into(), sub_y);
+            ctx.vars.insert("float".into(), ctx.t);
+        }
+        if ctx.vars.get("float").is_some_and(|t| ctx.t > t + 14.0) {
+            let b = bodies(world);
+            let sub = b.iter().find(|x| x.1.x >= 49.0).copied();
+            let water = sub.map(|s| {
+                let g = world.get::<VoxelGrid>(s.0).unwrap().clone();
+                g.entities.values().filter_map(|e| world.get::<crate::fluids::FluidStore>(*e)).map(|f| f.amount).sum::<f32>()
+            });
+            let y = sub.map(|s| s.1.y).unwrap_or(0.0);
+            ctx.check("the pump fills the ballast tanks with water from outside", water.unwrap_or(0.0) > 15000.0, format!("{:.0} mB", water.unwrap_or(0.0)));
+            ctx.check("heavier than the water it displaces: it sinks", y < ctx.vars["sub_y"] - 1.0, format!("y {:.2} → {y:.2}", ctx.vars["sub_y"]));
+            teleport(world, Vec3::new(48.0, 2.0, 18.0));
+            look_at(world, Vec3::new(52.0, -6.0, 30.0));
+            screenshot(world, "83_submarine_sinks");
+            for (e, ..) in b {
+                world.entity_mut(e).despawn();
+            }
+            console(world, "fly");
+            teleport(world, Vec3::new(0.5, 0.0, 0.5));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+}
+
+fn logic_state(world: &mut World, c: IVec3) -> crate::logic::LogicState {
+    block_entity(world, c).and_then(|e| world.get::<crate::logic::LogicState>(e).copied()).unwrap_or_default()
+}
+
+fn logic(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("logic: lever → red wire → flasher; the blue line stays off", |world, ctx| {
+        let l = IVec3::new(0, 0, 44);
+        match ctx.frames {
+            1 => {
+                set_block(world, l, "lever", 3);
+                for x in 1..=4 {
+                    set_block(world, l + IVec3::new(x, 0, 0), "wire", 3);
+                    set_block(world, l + IVec3::new(x, 0, 1), "wire", 3);
+                }
+                set_block(world, l + IVec3::new(5, 0, 0), "flasher_light", 2);
+                set_block(world, l + IVec3::new(5, 0, 1), "flasher_light", 2);
+                // Timer → flasher.
+                set_block(world, l + IVec3::new(8, 0, 0), "timer_block", 4);
+                set_block(world, l + IVec3::new(9, 0, 0), "flasher_light", 2);
+                select(world, "white_block");
+                teleport(world, Vec3::new(0.5, 0.0, 47.5));
+            }
+            3 => {
+                for x in 1..=4 {
+                    set_param(world, l + IVec3::new(x, 0, 1), "color", 1.0);
+                }
+                look_at(world, Vec3::new(0.5, 0.15, 44.5));
+            }
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the lever", a.is_some_and(|a| a.cell == l), format!("{:?}", a.map(|a| a.cell)));
+                let off = !logic_state(world, l + IVec3::new(5, 0, 0)).out && !logic_state(world, l + IVec3::new(2, 0, 0)).input;
+                ctx.check("lever off: wire and flasher are off", off, "");
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            14 => {
+                let red = (1..=4).all(|x| logic_state(world, l + IVec3::new(x, 0, 0)).input);
+                let blue = (1..=4).any(|x| logic_state(world, l + IVec3::new(x, 0, 1)).input);
+                let f1 = logic_state(world, l + IVec3::new(5, 0, 0));
+                let f2 = logic_state(world, l + IVec3::new(5, 0, 1));
+                ctx.check("RMB on the lever: the red line is on", red && logic_state(world, l).memory, "");
+                ctx.check("the flasher at its end gets the signal", f1.input, "");
+                ctx.check("the blue line beside it does not join: off", !blue && !f2.input, "");
+                look_at(world, Vec3::new(4.0, 0.0, 44.5));
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            18 => screenshot(world, "90_logic_wires"),
+            _ => {}
+        }
+        if ctx.frames > 14 {
+            let f = logic_state(world, l + IVec3::new(9, 0, 0)).out;
+            let k = if f { "timer_on" } else { "timer_off" };
+            ctx.vars.insert(k.into(), 1.0);
+            let held = logic_state(world, l + IVec3::new(5, 0, 0)).out;
+            ctx.vars.insert(if held { "blink_on" } else { "blink_off" }.into(), 1.0);
+        }
+        if ctx.frames > 14 && ctx.t > ctx.vars["t0"] + 4.0 {
+            ctx.check("the timer flashes its lamp on and off", ctx.vars.contains_key("timer_on") && ctx.vars.contains_key("timer_off"), "");
+            ctx.check("held on, the flasher blinks", ctx.vars.contains_key("blink_on") && ctx.vars.contains_key("blink_off"), "");
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("logic: a NOT gate drives a clutch; the wrench recolours a wire", |world, ctx| {
+        let m = IVec3::new(0, 0, 50);
+        let gate = m + IVec3::new(1, 0, 1);
+        let lever = m + IVec3::new(1, 0, 2);
+        match ctx.frames {
+            1 => {
+                set_block(world, m, "creative_motor", 0);
+                set_block(world, m + IVec3::X, "clutch", 0);
+                set_block(world, m + IVec3::new(2, 0, 0), "shaft", 0);
+                // Facing −Z: its output (front) is the clutch; the lever at its back.
+                set_block(world, gate, "logic_gate", 5);
+                set_block(world, lever, "lever", 3);
+            }
+            3 => set_param(world, gate, "mode", 2.0),
+            10 => {
+                ctx.check("NOT with no input is on: the clutch is open", rpm(world, m + IVec3::new(2, 0, 0)) == 0.0 && logic_state(world, gate).out, format!("{} RPM", rpm(world, m + IVec3::new(2, 0, 0))));
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: lever, mech: crate::content::Mech::Lever });
+            }
+            18 => {
+                let r = rpm(world, m + IVec3::new(2, 0, 0)).abs();
+                ctx.check("lever at its back: NOT is off, the clutch closes, the shaft turns", r == 32.0 && !logic_state(world, gate).out, format!("{r} RPM"));
+                select(world, "wrench");
+                teleport(world, Vec3::new(2.5, 0.0, 41.0));
+            }
+            22 => look_at(world, Vec3::new(2.5, 0.05, 44.5)),
+            26 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at a red wire", a.is_some_and(|a| a.cell == IVec3::new(2, 0, 44)), format!("{:?}", a.map(|a| a.cell)));
+                click(world, MouseButton::Left, true);
+            }
+            27 => click(world, MouseButton::Left, false),
+            32 => {
+                let c = block_entity(world, IVec3::new(2, 0, 44)).and_then(|e| world.get::<crate::mech::Params>(e).map(|p| p.0[0])).unwrap_or(-1.0);
+                ctx.check("LMB with the wrench: the wire turns blue (next colour)", c == 1.0, format!("{c}"));
+                // That cut the red line: x=3,4 lost their link to the lever.
+                select(world, "white_block");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn menu(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("main menu, settings and pause", |world, ctx| {
+        match ctx.frames {
+            1 => world.resource_mut::<NextState<Ui>>().set(Ui::Menu),
+            12 => {
+                ctx.check("the main menu is open", *world.resource::<State<Ui>>().get() == Ui::Menu, "");
+                screenshot(world, "95_main_menu");
+            }
+            16 => {
+                world.resource_mut::<crate::menu::MenuState>().back = Some(Ui::Menu);
+                world.resource_mut::<NextState<Ui>>().set(Ui::Options);
+            }
+            20 => {
+                screenshot(world, "96_settings");
+                let mut s = world.resource_mut::<crate::menu::GameSettings>();
+                crate::menu::step(&mut s, crate::menu::Setting::Fov, 1);
+            }
+            24 => {
+                let fov = world.query_filtered::<&Projection, With<crate::player::camera::MainCamera>>().iter(world).next().and_then(|p| if let Projection::Perspective(p) = p { Some(p.fov.to_degrees()) } else { None }).unwrap_or(0.0);
+                ctx.check("a setting applies at once (field of view 75°)", (fov - 75.0).abs() < 0.1, format!("{fov:.1}°"));
+                let mut s = world.resource_mut::<crate::menu::GameSettings>();
+                crate::menu::step(&mut s, crate::menu::Setting::Fov, -1);
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+            }
+            28 => world.resource_mut::<NextState<Ui>>().set(Ui::Pause),
+            34 => {
+                let paused = world.resource::<Time<Virtual>>().is_paused();
+                ctx.check("Esc menu: the game is paused", paused && *world.resource::<State<Ui>>().get() == Ui::Pause, "");
+                screenshot(world, "97_pause");
+            }
+            38 => world.resource_mut::<NextState<Ui>>().set(Ui::Game),
+            44 => {
+                ctx.check("«Продолжить»: the world runs again", !world.resource::<Time<Virtual>>().is_paused(), "");
+                return Step::Next;
+            }
+            _ => {}
         }
         Step::Wait
     }));

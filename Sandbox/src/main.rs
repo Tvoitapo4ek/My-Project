@@ -11,11 +11,15 @@ mod content;
 mod contraption;
 mod core;
 mod debug;
+mod engine;
+mod fluids;
 mod grid;
 mod icons;
 mod interact;
 mod inventory;
 mod lights;
+mod menu;
+mod logic;
 mod mech;
 mod models;
 mod mounts;
@@ -29,6 +33,7 @@ mod telemetry;
 mod tools;
 mod ui;
 mod vehicle;
+mod water;
 mod world;
 
 use avian3d::prelude::*;
@@ -69,6 +74,11 @@ fn main() {
         lights::LightsPlugin,
         sound::SoundPlugin,
         mounts::MountsPlugin,
+        fluids::FluidsPlugin,
+        engine::EnginePlugin,
+        water::WaterPlugin,
+        logic::LogicPlugin,
+        menu::MenuPlugin,
     ))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();

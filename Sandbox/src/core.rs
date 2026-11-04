@@ -9,9 +9,15 @@ use bevy::{
 /// Who owns input right now.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Ui {
-    /// Playing: cursor locked, the world receives input.
+    /// Main menu (the game starts here).
     #[default]
+    Menu,
+    /// Playing: cursor locked, the world receives input.
     Game,
+    /// Esc in the game: the world stops.
+    Pause,
+    /// Game settings (from the menu or the pause).
+    Options,
     /// Inventory / catalogue screen.
     Inventory,
     /// Debug console (typing).
@@ -63,13 +69,6 @@ fn cursor_follows_ui(ui: Res<State<Ui>>, scripted: Res<Scripted>, mut cursor: Si
     }
 }
 
-/// Esc closes any screen.
-fn escape_closes(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<NextState<Ui>>) {
-    if keys.just_pressed(KeyCode::Escape) && *ui.get() != Ui::Game {
-        next.set(Ui::Game);
-    }
-}
-
 pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
@@ -77,6 +76,6 @@ impl Plugin for CorePlugin {
         app.init_state::<Ui>()
             .init_resource::<Scripted>()
             .add_message::<Toast>()
-            .add_systems(Update, (cursor_follows_ui, escape_closes));
+            .add_systems(Update, cursor_follows_ui);
     }
 }

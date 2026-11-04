@@ -43,9 +43,11 @@ fn add_listener(mut commands: Commands, cams: Query<Entity, Added<MainCamera>>) 
     }
 }
 
-fn play(mut commands: Commands, assets: Res<AssetServer>, mut msgs: MessageReader<Sfx>) {
+fn play(mut commands: Commands, assets: Res<AssetServer>, mut msgs: MessageReader<Sfx>, s: Res<crate::menu::GameSettings>) {
     for m in msgs.read() {
-        let mut settings = PlaybackSettings::DESPAWN.with_volume(Volume::Linear(m.volume));
+        // Spatial sounds are effects; the others are the interface.
+        let k = if m.at.is_some() { s.effects } else { s.interface };
+        let mut settings = PlaybackSettings::DESPAWN.with_volume(Volume::Linear(m.volume * k));
         let mut e = commands.spawn(AudioPlayer::new(assets.load(format!("sounds/{}.ogg", m.name))));
         if let Some(p) = m.at {
             settings = settings.with_spatial(true);
@@ -73,22 +75,31 @@ fn ui_close(mut out: MessageWriter<Sfx>) {
 }
 
 /// Looping hum on the nearest running motors.
-fn hums(mut commands: Commands, assets: Res<AssetServer>, cams: Query<&GlobalTransform, With<MainCamera>>, motors: Query<(Entity, &BlockEntity, &Spin, &GlobalTransform, Option<&Children>)>, hums: Query<(), With<Hum>>) {
+#[allow(clippy::too_many_arguments)]
+fn hums(mut commands: Commands, assets: Res<AssetServer>, s: Res<crate::menu::GameSettings>, mut sinks: Query<&mut SpatialAudioSink, With<Hum>>, cams: Query<&GlobalTransform, With<MainCamera>>, motors: Query<(Entity, &BlockEntity, &Spin, &GlobalTransform, Option<&Children>)>, hums: Query<(), With<Hum>>) {
     let Ok(cam) = cams.single() else { return };
+    if s.is_changed() {
+        for mut k in &mut sinks {
+            k.set_volume(Volume::Linear(0.35 * s.motors));
+        }
+    }
     let mut running: Vec<(f32, Entity, f32)> = motors
         .iter()
-        .filter(|(_, b, s, ..)| b.mech() == Some(Mech::Motor) && s.rpm.abs() > 1.0)
+        .filter(|(_, b, s, ..)| matches!(b.mech(), Some(Mech::Motor | Mech::DieselEngine)) && s.rpm.abs() > 1.0)
         .map(|(e, _, s, t, _)| (t.translation().distance(cam.translation()), e, s.rpm.abs()))
         .filter(|(d, ..)| *d < HUM_RANGE)
         .collect();
     running.sort_by(|a, b| a.0.total_cmp(&b.0));
     let keep: Vec<Entity> = running.iter().take(MAX_HUMS).map(|r| r.1).collect();
-    for (e, _, spin, _, children) in &motors {
+    for (e, b, spin, _, children) in &motors {
         let hum = children.and_then(|c| c.iter().find(|c| hums.contains(*c)));
         match (keep.contains(&e), hum) {
             (true, None) => {
-                let speed = (0.6 + spin.rpm.abs() / 160.0).min(2.2);
-                commands.spawn((Hum, AudioPlayer::new(assets.load("sounds/motor_loop.ogg")), PlaybackSettings::LOOP.with_spatial(true).with_volume(Volume::Linear(0.35)).with_speed(speed), Transform::default(), ChildOf(e)));
+                // The diesel rumbles lower than the electric creative motor.
+                let base = if b.mech() == Some(Mech::DieselEngine) { 0.7 } else { 0.6 };
+                let speed = (base + spin.rpm.abs() / 160.0).min(2.2);
+                let file = if b.mech() == Some(Mech::DieselEngine) { "sounds/engine_loop.ogg" } else { "sounds/motor_loop.ogg" };
+                commands.spawn((Hum, AudioPlayer::new(assets.load(file)), PlaybackSettings::LOOP.with_spatial(true).with_volume(Volume::Linear(0.35 * s.motors)).with_speed(speed), Transform::default(), ChildOf(e)));
             }
             (false, Some(h)) => commands.entity(h).despawn(),
             _ => {}

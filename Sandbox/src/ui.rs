@@ -300,9 +300,9 @@ struct HoverName;
 #[derive(Component)]
 struct ToggleLabel;
 
-fn toggle_inventory(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<NextState<Ui>>, cat: Res<Catalog>, held: Res<crate::tools::guns::Held>) {
+fn toggle_inventory(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<NextState<Ui>>, cat: Res<Catalog>, held: Res<crate::tools::guns::Held>, s: Res<crate::menu::GameSettings>) {
     // E rotates an object held by the physgun.
-    if !keys.just_pressed(KeyCode::KeyE) || held.body.is_some() {
+    if !keys.just_pressed(s.key(crate::menu::Action::Inventory)) || held.body.is_some() {
         return;
     }
     match ui.get() {

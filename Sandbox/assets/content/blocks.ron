@@ -21,15 +21,18 @@
     (key: "stone", name: "Камень", category: "building",
      textures: Some(("stone", "stone", "stone")), mass: 150.0),
     (key: "planks", name: "Доски", category: "building",
-     textures: Some(("planks", "planks", "planks")), mass: 40.0),
+     textures: Some(("planks", "planks", "planks")), mass: 40.0, buoyancy: Some(1000.0)),
     (key: "steel_block", name: "Стальной блок", category: "building",
      textures: Some(("steel", "steel", "steel")), mass: 200.0),
     (key: "steel_frame", name: "Стальная рама", category: "building",
-     textures: Some(("steel_frame", "steel_frame", "steel_frame")), transparent: true, mass: 60.0),
+     textures: Some(("steel_frame", "steel_frame", "steel_frame")), transparent: true, mass: 60.0, buoyancy: Some(800.0)),
     (key: "steel_casing", name: "Стальной корпус", category: "building",
      textures: Some(("steel_casing", "steel_casing", "steel_casing")), mass: 120.0),
+    // RMB with a casing on a shaft / pipe puts it in a casing.
+    (key: "copper_casing", name: "Медный корпус", category: "building",
+     textures: Some(("copper_casing", "copper_casing", "copper_casing")), mass: 120.0),
     (key: "glass", name: "Стекло", category: "building",
-     textures: Some(("glass", "glass", "glass")), transparent: true, mass: 30.0),
+     textures: Some(("glass", "glass", "glass")), transparent: true, mass: 30.0, buoyancy: Some(1000.0)),
     // Shapes. shape: Slab (half block against the clicked face) |
     // Wedge(front height, back height) — a smooth slope rising away from the
     // player. Chain them for long ramps: 45° (0→1), ≈27° (0→½, ½→1),
@@ -89,6 +92,32 @@
      params: [
         (key: "length", label: "Ход", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: "бл."), default: 4.0),
      ]),
+    // ---- fluids (mB; bucket = 1000, tank block = 16 000)
+    // Tanks next to each other join: a line 1×N or a 1×1 / 2×2 / 3×3 column.
+    (key: "fluid_tank", name: "Цистерна", category: "mechanisms", mech: Some(FluidTank),
+     placement: None, mass: 100.0, buoyancy: Some(1000.0),
+     params: [
+        // Ballast: a pump with an end in the water outside fills / empties it.
+        (key: "mode", label: "Режим", kind: Choice(["Хранение", "Балласт"]), default: 0.0),
+     ]),
+    (key: "fluid_pipe", name: "Труба", category: "mechanisms", mech: Some(Pipe), placement: Face,
+     collision: Box(0.44, 1.0, 0.44), mass: 10.0),
+    (key: "cased_pipe", name: "Труба в кожухе", category: "mechanisms", mech: Some(CasedPipe), placement: Face, mass: 10.0),
+    (key: "cased_shaft", name: "Вал в кожухе", category: "mechanisms", mech: Some(CasedShaft), placement: Face, mass: 40.0),
+    // Driven like a cogwheel (axis = facing); moves |RPM| × 8 mB/s.
+    (key: "mechanical_pump", name: "Механическая помпа", category: "mechanisms", mech: Some(Pump),
+     placement: Face, mass: 70.0,
+     params: [
+        (key: "direction", label: "Направление", kind: Choice(["Вперёд", "Назад"]), default: 0.0),
+     ]),
+    // Burns 10 mB/s of diesel; output shaft at the front, fuel on the other
+    // sides, the exhaust on top must be free and out of the water.
+    (key: "diesel_engine", name: "Дизельный двигатель", category: "mechanisms", mech: Some(DieselEngine),
+     placement: Horizontal, mass: 250.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 64.0),
+        (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
+     ]),
     (key: "piston_pole", name: "Шток поршня", category: "mechanisms", mech: Some(PistonPole),
      placement: Face, collision: Box(0.34, 1.0, 0.34), mass: 20.0, hidden: true),
     // Measures the speed of the physical contraption it stands on (km/h);
@@ -133,5 +162,32 @@
     // switches it on / off (put the sensor on the headlight).
     (key: "headlight", name: "Фара", category: "control", mech: Some(Headlight), placement: Face,
      collision: Box(0.8, 0.5, 0.8), mass: 15.0),
+    // RMB with the diesel bucket: +1000 mB into the pipe network.
+    (key: "fluid_port", name: "Заливной порт", category: "control", mech: Some(FluidPort), placement: Face, mass: 30.0),
+    // ---- logic: on / off signals through neighbours and wires (no decay)
+    // A wire lies on the face it was put on; same colours join.
+    (key: "wire", name: "Провод", category: "logic", mech: Some(Wire), placement: Attach,
+     collision: None, mass: 1.0,
+     params: [
+        (key: "color", label: "Цвет", kind: Choice(["Красный", "Синий", "Зелёный", "Жёлтый", "Белый", "Оранжевый", "Фиолетовый", "Голубой"]), default: 0.0),
+     ]),
+    (key: "button", name: "Кнопка", category: "logic", mech: Some(Button), placement: Attach,
+     collision: Box(0.4, 0.2, 0.3), mass: 5.0),
+    (key: "lever", name: "Рычаг", category: "logic", mech: Some(Lever), placement: Attach,
+     collision: Box(0.5, 0.3, 0.6), mass: 10.0),
+    (key: "timer_block", name: "Таймер", category: "logic", mech: Some(Timer), placement: Horizontal, mass: 30.0,
+     params: [
+        (key: "interval", label: "Интервал", kind: Number(min: 0.5, max: 60.0, step: 0.5, unit: "с"), default: 1.0),
+     ]),
+    (key: "pulse_generator", name: "Генератор импульсов", category: "logic", mech: Some(PulseGenerator),
+     placement: Horizontal, collision: Box(0.9, 0.4, 0.9), mass: 20.0),
+    // Inputs: left, right, back; output: the front (the arrow).
+    (key: "logic_gate", name: "Логический элемент", category: "logic", mech: Some(LogicGate),
+     placement: Horizontal, collision: Box(0.9, 0.4, 0.9), mass: 20.0,
+     params: [
+        (key: "mode", label: "Режим", kind: Choice(["И", "ИЛИ", "НЕ", "RS-триггер"]), default: 0.0),
+     ]),
+    (key: "flasher_light", name: "Мигалка", category: "logic", mech: Some(Flasher), placement: Face,
+     collision: Box(0.6, 0.7, 0.6), mass: 10.0),
     (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
 ]

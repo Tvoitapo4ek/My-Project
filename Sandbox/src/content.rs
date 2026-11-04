@@ -51,6 +51,34 @@ pub enum Mech {
     Piston,
     /// Extension pole left by an extended piston (placed automatically).
     PistonPole,
+    /// Multiblock fluid tank (16 000 mB per block).
+    FluidTank,
+    /// Pipe: joins fluid blocks into a pipe network.
+    Pipe,
+    /// A pipe in a copper casing.
+    CasedPipe,
+    /// A shaft in a steel casing.
+    CasedShaft,
+    /// Moves fluid between pipe networks, powered by rotation.
+    Pump,
+    /// Filling port: RMB with a bucket pours fluid in.
+    FluidPort,
+    /// Burns diesel, gives rotation; needs air at its exhaust.
+    DieselEngine,
+    /// Logic (`logic`): a wire on a block face, coloured.
+    Wire,
+    /// Short pulse when pressed (RMB).
+    Button,
+    /// On / off, flipped with RMB.
+    Lever,
+    /// Pulse every «Интервал» seconds.
+    Timer,
+    /// Short pulse on the rising edge of its input.
+    PulseGenerator,
+    /// AND / OR / NOT / RS latch.
+    LogicGate,
+    /// Signal lamp under a glass dome, blinks.
+    Flasher,
 }
 
 /// How a block's orientation is chosen when placed.
@@ -135,6 +163,9 @@ pub struct BlockDef {
     /// Not shown in the catalogue (placed by the game itself).
     #[serde(default)]
     pub hidden: bool,
+    /// Lift when fully under water (kg); default 40 % of the mass.
+    #[serde(default)]
+    pub buoyancy: Option<f32>,
 }
 
 fn default_mass() -> f32 {
@@ -160,6 +191,8 @@ pub enum Tool {
     PhysGun,
     /// Copies builds and pastes them (with a hologram preview).
     Blueprint,
+    /// Pours 1000 mB of diesel into a filling port (never runs dry).
+    DieselBucket,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -283,6 +316,7 @@ impl Registry {
             params: vec![],
             mass: 0.0,
             hidden: true,
+            buoyancy: None,
         });
         for b in blocks {
             if r.block_index.contains_key(&b.key) {

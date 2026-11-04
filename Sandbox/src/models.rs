@@ -304,6 +304,139 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
         }
         // Drawn by the piston (its pole stretches through these cells).
         Mech::PistonPole => Vec::new(),
+        Mech::FluidTank => {
+            // Steel edges with brass corner bolts, glass sides; the fluid
+            // level inside is added by `fluids`.
+            let mut v = Vec::new();
+            let e = 0.47;
+            for (a, b) in [(e, e), (e, -e), (-e, e), (-e, -e)] {
+                v.push(part([0.08, 1.0, 0.08], "steel", [a, 0.0, b]));
+                v.push(part([1.0, 0.08, 0.08], "steel", [0.0, a, b]));
+                v.push(part([0.08, 0.08, 1.0], "steel", [a, b, 0.0]));
+            }
+            for (x, y, z) in [(1.0f32, 1.0f32, 1.0f32), (-1.0, 1.0, 1.0), (1.0, -1.0, 1.0), (-1.0, -1.0, 1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0), (1.0, -1.0, -1.0), (-1.0, -1.0, -1.0)] {
+                v.push(part([0.12, 0.12, 0.12], "brass", [x * 0.46, y * 0.46, z * 0.46]));
+            }
+            for d in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z] {
+                let r = Quat::from_rotation_arc(Vec3::Z, d);
+                v.push(part([0.86, 0.86, 0.03], "glass", (d * 0.455).to_array()).rot(r));
+            }
+            v.push(part([0.88, 0.04, 0.88], "steel", [0.0, -0.46, 0.0]));
+            v
+        }
+        Mech::Wire => crate::logic::wire_parts(&[], 0, false),
+        Mech::Button => vec![
+            // On the face behind it (+Y); the cap moves in when pressed.
+            part([0.44, 0.06, 0.34], "steel", [0.0, 0.46, 0.0]),
+            part([0.06, 0.04, 0.06], "brass", [0.17, 0.42, 0.12]),
+            part([0.06, 0.04, 0.06], "brass", [-0.17, 0.42, -0.12]),
+            part([0.26, 0.12, 0.18], "red_grip", [0.0, 0.38, 0.0]).layer(Layer::Mount),
+        ],
+        Mech::Lever => vec![
+            part([0.5, 0.08, 0.64], "steel_casing", [0.0, 0.45, 0.0]),
+            part([0.16, 0.08, 0.3], "steel", [0.0, 0.39, 0.0]),
+            part([0.07, 0.42, 0.07], "steel", [0.0, 0.2, 0.0]).layer(Layer::Mount),
+            part([0.13, 0.13, 0.13], "red_grip", [0.0, -0.02, 0.0]).layer(Layer::Mount),
+        ],
+        Mech::Timer => {
+            // Front (local +Z): a dial with a turning hand and a lamp.
+            let mut v = vec![
+                part([0.86, 0.86, 0.86], "steel_casing", [0.0, 0.0, 0.0]),
+                part([0.62, 0.62, 0.04], "screen", [0.0, -0.04, 0.44]),
+                part([0.66, 0.05, 0.05], "brass", [0.0, 0.3, 0.45]),
+                part([0.66, 0.05, 0.05], "brass", [0.0, -0.38, 0.45]),
+                part([0.03, 0.26, 0.03], "red_grip", [0.0, 0.09, 0.47]).layer(Layer::Mount),
+                part([0.07, 0.07, 0.04], "brass", [0.0, -0.04, 0.47]),
+            ];
+            for i in 0..8 {
+                let a = i as f32 / 8.0 * TAU;
+                v.push(part([0.04, 0.04, 0.03], "brass", [a.sin() * 0.24, -0.04 + a.cos() * 0.24, 0.46]));
+            }
+            v
+        }
+        Mech::PulseGenerator => vec![
+            part([0.92, 0.3, 0.92], "steel", [0.0, -0.35, 0.0]),
+            part([0.8, 0.06, 0.8], "brass", [0.0, -0.18, 0.0]),
+            part([0.3, 0.2, 0.3], "copper", [0.0, -0.06, -0.1]),
+            part([0.12, 0.06, 0.32], "red_grip", [0.0, -0.13, 0.26]),
+            part([0.06, 0.12, 0.06], "glow_cyan", [0.0, 0.08, -0.1]),
+        ],
+        Mech::LogicGate => vec![
+            // A plate with two input posts (torch-like) and a red arrow to
+            // the output at the front (local +Z).
+            part([0.92, 0.24, 0.92], "steel", [0.0, -0.38, 0.0]),
+            part([0.8, 0.05, 0.8], "brass", [0.0, -0.24, 0.0]),
+            part([0.1, 0.3, 0.1], "copper", [0.26, -0.08, -0.18]),
+            part([0.1, 0.3, 0.1], "copper", [-0.26, -0.08, -0.18]),
+            part([0.12, 0.1, 0.12], "glow_amber", [0.26, 0.11, -0.18]),
+            part([0.12, 0.1, 0.12], "glow_amber", [-0.26, 0.11, -0.18]),
+            part([0.3, 0.05, 0.1], "red_grip", [0.0, -0.2, 0.1]),
+            part([0.18, 0.05, 0.1], "red_grip", [0.0, -0.2, 0.2]),
+            part([0.06, 0.05, 0.1], "red_grip", [0.0, -0.2, 0.3]),
+        ],
+        Mech::Flasher => vec![
+            // Bolted to the face behind it (−Y); a glass dome on top.
+            part([0.62, 0.14, 0.62], "steel", [0.0, -0.43, 0.0]),
+            part([0.5, 0.06, 0.5], "brass", [0.0, -0.34, 0.0]),
+            part([0.46, 0.4, 0.46], "glass_lens", [0.0, -0.11, 0.0]),
+            part([0.5, 0.05, 0.5], "brass", [0.0, 0.11, 0.0]),
+            part([0.06, 0.48, 0.06], "brass", [0.24, -0.11, 0.24]),
+            part([0.06, 0.48, 0.06], "brass", [-0.24, -0.11, -0.24]),
+        ],
+        Mech::Pipe => crate::fluids::pipe_parts(&[], false),
+        Mech::CasedPipe => crate::fluids::pipe_parts(&[IVec3::Y, IVec3::NEG_Y], true),
+        Mech::CasedShaft => {
+            let mut v = casing("steel_casing");
+            v.extend(through_shaft());
+            v
+        }
+        Mech::Pump => {
+            // A copper pipe body along the axis with a brass cog around it
+            // (powered like a cogwheel) and an arrow of the flow.
+            let mut v = cog(0.38, 8, 0.62);
+            v.retain(|p| p.mat != "shaft");
+            v.push(part([0.42, 1.0, 0.42], "copper", [0.0, 0.0, 0.0]));
+            v.push(part([0.5, 0.1, 0.5], "brass", [0.0, 0.45, 0.0]));
+            v.push(part([0.5, 0.1, 0.5], "brass", [0.0, -0.45, 0.0]));
+            v.push(part([0.56, 0.3, 0.56], "steel_casing", [0.0, 0.25, 0.0]));
+            v.push(part([0.12, 0.08, 0.04], "glow_green", [0.0, 0.3, 0.29]));
+            v
+        }
+        Mech::FluidPort => vec![
+            // Casing with a funnel and a hatch on the face (+Y).
+            part([0.9, 0.78, 0.9], "steel_casing", [0.0, -0.06, 0.0]),
+            part([0.6, 0.1, 0.6], "copper", [0.0, 0.36, 0.0]),
+            part([0.46, 0.06, 0.46], "brass", [0.0, 0.43, 0.0]),
+            part([0.3, 0.04, 0.3], "screen", [0.0, 0.46, 0.0]),
+            part([0.3, 0.06, 0.08], "red_grip", [0.0, 0.48, 0.16]),
+            part([0.08, 0.08, 0.08], "brass", [0.25, 0.45, -0.22]),
+        ],
+        Mech::DieselEngine => {
+            // Front (local +Z) = output with a flywheel. Dark steel block,
+            // three cylinders with valve covers, copper coolant pipes, the
+            // exhaust stack on top.
+            let mut v = vec![
+                part([0.96, 0.16, 0.96], "steel", [0.0, -0.42, 0.0]),
+                part([0.84, 0.46, 0.76], "steel_casing", [0.0, -0.11, -0.04]),
+                part([0.86, 0.06, 0.78], "brass", [0.0, 0.13, -0.04]),
+                part([0.3, 0.16, 0.06], "glow_amber", [-0.2, -0.12, 0.35]),
+            ];
+            for (i, x) in [-0.27f32, 0.0, 0.27].iter().enumerate() {
+                v.push(part([0.2, 0.22, 0.42], "steel", [*x, 0.27, -0.12]));
+                v.push(part([0.22, 0.05, 0.44], if i == 1 { "brass" } else { "copper" }, [*x, 0.4, -0.12]));
+            }
+            for z in [-0.3f32, 0.05] {
+                v.push(part([0.06, 0.36, 0.06], "copper", [-0.46, -0.05, z]));
+            }
+            v.push(part([0.06, 0.06, 0.41], "copper", [-0.46, 0.13, -0.125]));
+            v.push(part([0.14, 0.4, 0.14], "steel", [0.3, 0.3, 0.26]));
+            v.push(part([0.18, 0.06, 0.18], "brass", [0.3, 0.48, 0.26]));
+            v.push(part([0.22, 0.22, 0.2], "shaft", [0.0, -0.12, 0.44]).layer(Layer::RotorZ));
+            v.push(part([0.5, 0.5, 0.06], "brass", [0.0, -0.12, 0.42]).layer(Layer::RotorZ));
+            v.push(part([0.5, 0.5, 0.06], "brass", [0.0, -0.12, 0.42]).rot(Quat::from_rotation_z(FRAC_PI_4)).layer(Layer::RotorZ));
+            v.push(part([0.2, 0.2, 0.08], "steel", [0.0, -0.12, 0.46]).layer(Layer::RotorZ));
+            v
+        }
         Mech::PhysicsToggle => vec![
             part([0.96, 0.96, 0.96], "steel_casing", [0.0, 0.0, 0.0]),
             part([1.0, 0.12, 0.3], "brass", [0.0, 0.42, 0.0]),
@@ -330,6 +463,15 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.16, 0.04, 0.16], "steel", [0.0, 0.1, 0.0]),
             part([0.05, 0.08, 0.05], "steel", [0.0, 0.15, 0.0]),
             part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
+        ],
+        Tool::DieselBucket => vec![
+            // A steel bucket with an amber fill and a brass handle.
+            part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),
+            part([0.16, 0.02, 0.16], "diesel", [0.0, 0.1, 0.0]),
+            part([0.22, 0.03, 0.22], "brass", [0.0, 0.1, 0.0]),
+            part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
+            part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
+            part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
         ],
         Tool::Blueprint => vec![
             // An open book of blue drawings.

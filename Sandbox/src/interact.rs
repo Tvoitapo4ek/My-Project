@@ -118,6 +118,15 @@ fn read_clicks(mouse: Res<ButtonInput<MouseButton>>, time: Res<Time>, ui: Res<St
     }
 }
 
+/// The cased block made by putting casing `casing` on a block, if any.
+pub fn encased(casing: &str, on: Option<Mech>) -> Option<&'static str> {
+    match (casing, on?) {
+        ("steel_casing" | "copper_casing", Mech::Shaft) => Some("cased_shaft"),
+        ("steel_casing" | "copper_casing", Mech::Pipe) => Some("cased_pipe"),
+        _ => None,
+    }
+}
+
 /// Orientation of a new block from its placement rule.
 pub fn place_facing(rule: Placement, normal: IVec3, look: Vec3) -> u8 {
     match rule {
@@ -152,7 +161,7 @@ fn edit_blocks(
     // which turns them, or the glue; crouch to place a block on them).
     if clicks.right
         && let Some(m) = grid.get(a.cell).id.def().mech
-        && matches!(m, Mech::Seat | Mech::PhysicsToggle)
+        && matches!(m, Mech::Seat | Mech::PhysicsToggle | Mech::Lever | Mech::Button)
         && !matches!(held.and_then(|s| s.item.tool()), Some(crate::content::Tool::Wrench | crate::content::Tool::Glue | crate::content::Tool::Blueprint))
         && (!body.crouching || held.is_none())
     {
@@ -184,6 +193,14 @@ fn edit_blocks(
     }
     let Some(stack) = held else { return };
     let Some(block) = stack.item.block() else { return };
+    // A casing on a shaft or a pipe encases it (like Create).
+    let here = grid.get(a.cell);
+    if let Some(cased) = encased(block.def().key.as_str(), here.id.def().mech) {
+        grid.set(a.cell, Cell::new(crate::content::BlockId::k(cased), here.facing));
+        body.swing = 1.0;
+        edited.write(Edited { grid: a.grid, cell: a.cell, placed: true, block });
+        return;
+    }
     let cell = a.cell + a.normal;
     if a.normal == IVec3::ZERO || !grid.get(cell).is_air() {
         return;
@@ -218,7 +235,9 @@ fn hotbar_keys(keys: Res<ButtonInput<KeyCode>>, scroll: Res<bevy::input::mouse::
             inv.selected = i;
         }
     }
-    if !wheel_busy.0 && scroll.delta.y != 0.0 {
+    // Shift + wheel with a wire in hand picks its colour (`logic`).
+    let wire_color = keys.pressed(KeyCode::ShiftLeft) && inv.held().is_some_and(|s| s.item.def().key == "wire");
+    if !wheel_busy.0 && !wire_color && scroll.delta.y != 0.0 {
         let n = crate::inventory::HOTBAR as i32;
         inv.selected = (inv.selected as i32 - scroll.delta.y.signum() as i32).rem_euclid(n) as usize;
     }
@@ -257,5 +276,10 @@ mod tests {
         assert_eq!(facing_dir(place_facing(Placement::Attach, IVec3::Y, Vec3::NEG_Z)), IVec3::NEG_Y);
         // Looking north (−Z): a seat faces the player (+Z).
         assert_eq!(facing_dir(place_facing(Placement::Horizontal, IVec3::Y, Vec3::new(0.1, -0.5, -1.0))), IVec3::Z);
+        // Casings: on a shaft → cased shaft, on a pipe → cased pipe.
+        assert_eq!(encased("steel_casing", Some(Mech::Shaft)), Some("cased_shaft"));
+        assert_eq!(encased("copper_casing", Some(Mech::Pipe)), Some("cased_pipe"));
+        assert_eq!(encased("stone", Some(Mech::Pipe)), None);
+        assert_eq!(encased("copper_casing", Some(Mech::Cog)), None);
     }
 }

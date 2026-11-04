@@ -35,6 +35,7 @@ fn wrench(
     mut players: Query<(&Inventory, &mut Body), With<Player>>,
     mut grids: Query<&mut VoxelGrid>,
     blocks: Query<&BlockEntity>,
+    mut params: Query<&mut crate::mech::Params>,
     mut sensors: Query<&mut Linked>,
     mut link: ResMut<LinkMode>,
     mut editing: ResMut<Editing>,
@@ -54,6 +55,19 @@ fn wrench(
     }
     body.swing = 1.0;
     let def = cell.id.def();
+    if clicks.right && body.crouching {
+        // Shift + RMB: take the casing off a cased shaft / pipe.
+        let bare = match def.mech {
+            Some(Mech::CasedShaft) => Some("shaft"),
+            Some(Mech::CasedPipe) => Some("fluid_pipe"),
+            _ => None,
+        };
+        if let Some(k) = bare {
+            grid.set(a.cell, Cell::new(crate::content::BlockId::k(k), cell.facing));
+            sounds.write(crate::sound::sfx("rotate"));
+        }
+        return;
+    }
     if clicks.right {
         // Turn about the clicked face's axis; upright blocks only about Y.
         if def.placement == Placement::None || a.normal == IVec3::ZERO {
@@ -70,6 +84,17 @@ fn wrench(
     let entity = grid.entities.get(&a.cell).copied();
     let here = PanelRef { grid: a.grid, cell: a.cell };
     match (def.mech, link.0) {
+        (Some(Mech::Wire), _) => {
+            // Next colour.
+            if let Some(e) = entity
+                && let Ok(mut p) = params.get_mut(e)
+                && let Some((i, _)) = def.param("color")
+            {
+                p.0[i] = (p.0[i] + 1.0).rem_euclid(crate::logic::COLORS.len() as f32);
+                toasts.write(toast(format!("Провод: {}", crate::logic::COLORS[p.0[i] as usize].0)));
+                sounds.write(crate::sound::sfx("ui_click"));
+            }
+        }
         (Some(Mech::ControlPanel), _) => {
             link.0 = Some((here, Mech::ControlPanel));
             toasts.write(toast("Пульт выбран: теперь ЛКМ ключом по датчику, чтобы связать"));

@@ -61,7 +61,7 @@ pub struct MountedOn {
 }
 
 /// Turn speed while holding a set angle (rad/s) when the shaft is slower.
-pub const HOLD_RATE: f32 = 0.5236;
+pub const HOLD_RATE: f32 = std::f32::consts::FRAC_PI_6;
 /// Moving parts larger than this are not assembled (a glued floor).
 const MAX_BLOCKS: usize = 4096;
 

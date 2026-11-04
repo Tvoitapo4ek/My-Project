@@ -137,7 +137,8 @@ pub fn side_axis(b: &BlockEntity) -> IVec3 {
 
 /// The node a block contributes to the network (pass 2 = speed
 /// controllers on their output side).
-fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) -> Option<Node> {
+/// `running`: a diesel engine has fuel and air (`engine`).
+fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, running: bool) -> Option<Node> {
     let d = b.dir();
     let axis = Axis::of(d);
     let s = (d.x + d.y + d.z) as f32;
@@ -148,7 +149,15 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) ->
             let ccw = p.get(b.id, "direction") >= 0.5;
             Node::new(Role::Shaft, axis).one_port(d).source(if ccw { s * speed } else { -s * speed })
         }
-        Mech::Shaft | Mech::Suspension | Mech::Wheel => Node::new(Role::Shaft, axis),
+        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel => Node::new(Role::Shaft, axis),
+        // Pumps mesh like cogwheels around their pipe axis.
+        Mech::Pump => Node::new(Role::Cog, axis),
+        Mech::DieselEngine => {
+            let speed = if running { p.get(b.id, "speed") } else { 0.0 };
+            let ccw = p.get(b.id, "direction") >= 0.5;
+            let n = Node::new(Role::Shaft, axis).one_port(d);
+            if running { n.source(if ccw { s * speed } else { -s * speed }) } else { n }
+        }
         // Powered from the side: it is a cog whose axis runs left–right, so
         // a shaft or cogwheel on its side (or a cog meshing in its plane)
         // turns it.
@@ -178,7 +187,7 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) ->
 }
 
 #[allow(clippy::type_complexity)]
-fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &Signal, &mut Spin, &mut NetState)>) {
+fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &Signal, &mut Spin, &mut NetState, Option<&crate::engine::Engine>)>) {
     let dt = time.delta_secs();
     for grid in &grids {
         if grid.entities.is_empty() {
@@ -187,8 +196,8 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
         let mut nodes: HashMap<IVec3, Node> = HashMap::new();
         let mut controllers = Vec::new();
         for (&c, &e) in &grid.entities {
-            let Ok((b, p, sig, _, _)) = blocks.get(e) else { continue };
-            if let Some(n) = node_for(b, p, sig.0, None) {
+            let Ok((b, p, sig, _, _, eng)) = blocks.get(e) else { continue };
+            if let Some(n) = node_for(b, p, sig.0, None, eng.is_some_and(|e| e.running)) {
                 nodes.insert(c, n);
                 if b.mech() == Some(Mech::SpeedController) {
                     controllers.push((c, e));
@@ -199,8 +208,8 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
         if !controllers.is_empty() {
             for &(c, e) in &controllers {
                 let running = sol.speed.get(&c).is_some_and(|v| v.abs() > 1e-3);
-                if let Ok((b, p, sig, _, _)) = blocks.get(e)
-                    && let Some(n) = node_for(b, p, sig.0, Some(running))
+                if let Ok((b, p, sig, _, _, _)) = blocks.get(e)
+                    && let Some(n) = node_for(b, p, sig.0, Some(running), false)
                 {
                     nodes.insert(c, n);
                 }
@@ -208,7 +217,7 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
             sol = network::solve(&nodes);
         }
         for (&c, &e) in &grid.entities {
-            let Ok((_, _, _, mut spin, mut st)) = blocks.get_mut(e) else { continue };
+            let Ok((_, _, _, mut spin, mut st, _)) = blocks.get_mut(e) else { continue };
             let rpm = sol.speed.get(&c).copied().unwrap_or(0.0);
             spin.rpm = rpm;
             spin.angle = (spin.angle + rpm / 60.0 * std::f32::consts::TAU * dt).rem_euclid(std::f32::consts::TAU * 64.0);
@@ -235,6 +244,7 @@ fn spin_rotors(blocks: Query<(&BlockEntity, &Spin, &Children)>, mut nodes: Query
                 match l.0 {
                     Layer::Rotor => t.rotation = Quat::from_rotation_y(spin.angle * s + offset),
                     Layer::RotorX => t.rotation = Quat::from_rotation_x(spin.angle * sx),
+                    Layer::RotorZ => t.rotation = Quat::from_rotation_z(spin.angle * s),
                     _ => {}
                 }
             }
@@ -245,6 +255,7 @@ fn spin_rotors(blocks: Query<(&BlockEntity, &Spin, &Children)>, mut nodes: Query
 /// Text of a parameter value.
 pub fn param_text(kind: &ParamKind, v: f32) -> String {
     match kind {
+        ParamKind::Number { unit, step, .. } if step.fract() != 0.0 => format!("{v:.1} {unit}").trim().to_string(),
         ParamKind::Number { unit, .. } => format!("{v:.0} {unit}").trim().to_string(),
         ParamKind::Choice(c) => c.get(v as usize).cloned().unwrap_or_default(),
         ParamKind::Key => crate::core::BINDABLE_KEYS.get(v as usize).map(|k| k.0.to_string()).unwrap_or_default(),
@@ -285,21 +296,21 @@ mod tests {
     #[test]
     fn motor_direction_and_speed_come_from_settings() {
         let (b, mut p) = be("creative_motor", 0); // facing +X
-        let n = node_for(&b, &p, 0.0, None).unwrap();
+        let n = node_for(&b, &p, 0.0, None, false).unwrap();
         assert_eq!(n.only, Some(IVec3::X));
         assert_eq!(n.source, Some(-32.0), "clockwise seen from the output face");
         p.0[1] = 1.0;
         p.0[0] = 64.0;
-        assert_eq!(node_for(&b, &p, 0.0, None).unwrap().source, Some(64.0));
+        assert_eq!(node_for(&b, &p, 0.0, None, false).unwrap().source, Some(64.0));
     }
 
     #[test]
     fn speed_controller_blends_by_signal() {
         let (b, p) = be("speed_controller", 2);
-        assert_eq!(node_for(&b, &p, 0.0, Some(true)).unwrap().source, Some(32.0));
-        assert_eq!(node_for(&b, &p, 1.0, Some(true)).unwrap().source, Some(128.0));
-        assert_eq!(node_for(&b, &p, -1.0, Some(true)).unwrap().source, Some(-128.0), "negative signal reverses");
-        assert_eq!(node_for(&b, &p, 1.0, Some(false)).unwrap().source, None, "no input → no output");
+        assert_eq!(node_for(&b, &p, 0.0, Some(true), false).unwrap().source, Some(32.0));
+        assert_eq!(node_for(&b, &p, 1.0, Some(true), false).unwrap().source, Some(128.0));
+        assert_eq!(node_for(&b, &p, -1.0, Some(true), false).unwrap().source, Some(-128.0), "negative signal reverses");
+        assert_eq!(node_for(&b, &p, 1.0, Some(false), false).unwrap().source, None, "no input → no output");
     }
 
     #[test]
@@ -314,7 +325,7 @@ mod tests {
         let ax = Axis::of(side);
         g.insert(IVec3::ZERO, Node::new(Role::Shaft, ax).one_port(side).source(64.0));
         g.insert(side, Node::new(Role::Cog, ax));
-        g.insert(side * 2, node_for(&disp, &Params::defaults(disp.id), 0.0, None).unwrap());
+        g.insert(side * 2, node_for(&disp, &Params::defaults(disp.id), 0.0, None, false).unwrap());
         let sol = network::solve(&g);
         assert_eq!(sol.speed[&(side * 2)].abs(), 64.0);
         // Nothing turns it → stopped.

@@ -28,7 +28,7 @@ pub struct MoveInput {
     pub scripted: bool,
 }
 
-fn read_keys(keys: Res<ButtonInput<KeyCode>>, mut input: ResMut<MoveInput>, ui: Res<State<crate::core::Ui>>) {
+fn read_keys(keys: Res<ButtonInput<KeyCode>>, mut input: ResMut<MoveInput>, ui: Res<State<crate::core::Ui>>, s: Res<crate::menu::GameSettings>) {
     if input.scripted {
         return;
     }
@@ -37,11 +37,12 @@ fn read_keys(keys: Res<ButtonInput<KeyCode>>, mut input: ResMut<MoveInput>, ui: 
         return;
     }
     let k = |c| keys.pressed(c) as i32 as f32;
-    input.axis = Vec2::new(k(KeyCode::KeyD) - k(KeyCode::KeyA), k(KeyCode::KeyW) - k(KeyCode::KeyS));
-    input.jump = keys.pressed(KeyCode::Space);
-    input.jump_pressed |= keys.just_pressed(KeyCode::Space);
-    input.crouch = keys.pressed(KeyCode::ShiftLeft);
-    input.sprint = keys.pressed(KeyCode::ControlLeft);
+    use crate::menu::Action as A;
+    input.axis = Vec2::new(k(s.key(A::Right)) - k(s.key(A::Left)), k(s.key(A::Forward)) - k(s.key(A::Back)));
+    input.jump = keys.pressed(s.key(A::Jump));
+    input.jump_pressed |= keys.just_pressed(s.key(A::Jump));
+    input.crouch = keys.pressed(s.key(A::Crouch));
+    input.sprint = keys.pressed(s.key(A::Sprint));
 }
 
 fn move_toward(cur: Vec3, target: Vec3, max: f32) -> Vec3 {
@@ -66,6 +67,7 @@ fn step(
     mut input: ResMut<MoveInput>,
     spatial: SpatialQuery,
     mut q: Query<(Entity, &Position, &mut LinearVelocity, &mut GravityScale, &mut Body), (With<Player>, Without<Seated>)>,
+    water: Res<crate::water::Water>,
 ) {
     let dt = time.delta_secs();
     for (e, pos, mut vel, mut grav, mut body) in &mut q {
@@ -108,6 +110,12 @@ fn step(
             let speed = if body.sprinting { FLY * 2.0 } else { FLY };
             let up = (input.jump as i32 - input.crouch as i32) as f32;
             vel.0 = move_toward(vel.0, wish * speed + Vec3::Y * up * speed * 0.7, 60.0 * dt);
+        } else if water.depth(pos.0) > 0.0 {
+            // Swimming: slow sinking, Space swims up, Shift dives.
+            grav.0 = 0.15;
+            let up = (input.jump as i32 - input.crouch as i32) as f32;
+            let target = wish * WALK * 0.6 + Vec3::Y * up * 3.0;
+            vel.0 = move_toward(vel.0, Vec3::new(target.x, if up != 0.0 { target.y } else { vel.y.max(-1.0) }, target.z), 20.0 * dt);
         } else {
             grav.0 = 2.6;
             let speed = if body.crouching { CROUCH } else if body.sprinting { SPRINT } else { WALK };

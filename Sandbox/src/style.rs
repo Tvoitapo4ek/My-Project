@@ -19,7 +19,7 @@ use bevy::{
 use crate::grid::render::{load_texture, pixel_image, TILE};
 
 /// (name, metallic, roughness)
-const MATERIALS: [(&str, f32, f32); 16] = [
+const MATERIALS: [(&str, f32, f32); 19] = [
     ("white", 0.0, 0.9),
     ("concrete", 0.0, 0.92),
     ("steel", 0.55, 0.55),
@@ -36,6 +36,9 @@ const MATERIALS: [(&str, f32, f32); 16] = [
     ("leather", 0.0, 0.8),
     ("player", 0.0, 0.9),
     ("glass", 0.0, 0.1),
+    ("copper_casing", 0.45, 0.55),
+    ("water", 0.0, 0.15),
+    ("diesel", 0.0, 0.2),
 ];
 
 #[derive(Resource, Clone, Default)]
@@ -72,6 +75,14 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mats: Re
     m.insert("blueprint".into(), mats.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(0.25, 0.7, 1.6)), unlit: true, ..default() }));
     m.insert("glass_lens".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.55, 0.6, 0.58), perceptual_roughness: 0.15, reflectance: 0.6, ..default() }));
     m.insert("glow_lamp".into(), mats.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(6.0, 5.2, 3.4)), unlit: true, ..default() }));
+    // Wires: a dull colour, and a bright one while powered.
+    for (i, (_, c)) in crate::logic::COLORS.iter().enumerate() {
+        let col = Color::srgb(c[0], c[1], c[2]);
+        m.insert(crate::logic::WIRE_MATS[i].into(), mats.add(StandardMaterial { base_color: col.darker(0.25), perceptual_roughness: 0.6, ..default() }));
+        let l = col.to_linear();
+        m.insert(crate::logic::WIRE_MATS_ON[i].into(), mats.add(StandardMaterial { base_color: col, emissive: LinearRgba::rgb(l.red * 3.0, l.green * 3.0, l.blue * 3.0), ..default() }));
+    }
+    m.insert("smoke".into(), mats.add(StandardMaterial { base_color: Color::srgba(0.32, 0.32, 0.34, 0.7), alpha_mode: AlphaMode::Blend, perceptual_roughness: 1.0, ..default() }));
     m.insert("seg_off".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.13, 0.16, 0.17), perceptual_roughness: 0.6, ..default() }));
     commands.insert_resource(Materials(m));
 }
@@ -153,6 +164,8 @@ pub enum Layer {
     Rotor,
     /// Spins with the kinetic speed about local X (side gear rings).
     RotorX,
+    /// Spins about local Z (the output of upright engines).
+    RotorZ,
     /// Turned by steering (suspension knuckle + wheel).
     Steer,
     /// Follows a bearing's angle / a piston's extension (`mounts`).

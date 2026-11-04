@@ -109,6 +109,10 @@ fn send_signals(active: Res<ActivePanels>, keys: Res<PanelKeys>, sensors: Query<
     }
 }
 
+/// Control panels → sensors (signals are reset and written here).
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SignalSet;
+
 pub struct SignalPlugin;
 
 impl Plugin for SignalPlugin {
@@ -116,7 +120,7 @@ impl Plugin for SignalPlugin {
         app.init_resource::<LinkMode>()
             .init_resource::<ActivePanels>()
             .init_resource::<PanelKeys>()
-            .add_systems(Update, (attach_links, read_keys, find_active, send_signals).chain().before(crate::mech::MechSet));
+            .add_systems(Update, (attach_links, read_keys, find_active, send_signals).chain().in_set(SignalSet).before(crate::mech::MechSet));
     }
 }
 

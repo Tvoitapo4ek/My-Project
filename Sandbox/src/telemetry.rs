@@ -71,7 +71,7 @@ pub fn segments(d: u8) -> [bool; 7] {
 fn read_sensors(
     sensors: Query<(&BlockEntity, &Linked)>,
     grids: Query<(&VoxelGrid, Option<&LinearVelocity>)>,
-    blocks: Query<(&BlockEntity, &Spin, Option<&Steer>)>,
+    blocks: Query<(&BlockEntity, &Spin, Option<&Steer>, Option<&crate::fluids::FluidStore>)>,
     mut displays: Query<&mut Shown>,
 ) {
     for mut s in &mut displays {
@@ -84,7 +84,9 @@ fn read_sensors(
         let Some(target_ref) = link.0 else { continue };
         let Ok((grid, vel)) = grids.get(b.grid) else { continue };
         let value = match grid.entities.get(&(b.cell + b.dir())).and_then(|e| blocks.get(*e).ok()) {
-            Some((t, spin, steer)) => {
+            // A tank: how full it is (%).
+            Some((t, _, _, Some(store))) if t.mech() == Some(Mech::FluidTank) => store.amount / store.cap.max(1.0) * 100.0,
+            Some((t, spin, steer, _)) => {
                 let kmh = vel.map(|v| v.0.length() * 3.6).unwrap_or(0.0);
                 read_value(t.mech(), spin.rpm, steer.map(|s| s.0.to_degrees()).unwrap_or(0.0), kmh)
             }

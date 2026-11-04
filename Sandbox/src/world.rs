@@ -8,6 +8,8 @@
 //!   1. smooth 15° ramp, 2. smooth 30° ramp (static concrete solids),
 //!   3. ≈27° ramp of half slopes, 4. ≈14° ramp of quarter slopes (blocks),
 //!   5. a washboard of slabs.
+//! * A test pool (32 × 32, 10 deep) on the east side, with a 25° ramp
+//!   for driving in; the water is a volume (`water`), not blocks.
 
 use avian3d::prelude::*;
 use bevy::{
@@ -39,6 +41,40 @@ pub fn lane_x(k: i32) -> i32 {
 /// Where the climb starts (lanes rise towards −Z from here).
 pub const LANE_START_Z: i32 = 12;
 pub const LANE_HEIGHT: f32 = 3.0;
+
+/// The pool: x and z from `POOL.0` (inclusive) for `POOL_SIZE` blocks.
+pub const POOL: IVec2 = IVec2::new(30, 16);
+pub const POOL_SIZE: i32 = 32;
+pub const POOL_DEPTH: i32 = 10;
+/// Water surface: one block below the platform top.
+pub const WATER_LEVEL: f32 = -1.0;
+
+/// The water volume of the pool (min, max corners).
+pub fn pool() -> (Vec3, Vec3) {
+    (Vec3::new(POOL.x as f32, -POOL_DEPTH as f32, POOL.y as f32), Vec3::new((POOL.x + POOL_SIZE) as f32, WATER_LEVEL, (POOL.y + POOL_SIZE) as f32))
+}
+
+fn in_pool(x: i32, z: i32) -> bool {
+    (POOL.x..POOL.x + POOL_SIZE).contains(&x) && (POOL.y..POOL.y + POOL_SIZE).contains(&z)
+}
+
+/// Basin: floor cut out, concrete walls and bottom.
+fn pool_basin(grid: &mut VoxelGrid) {
+    let (x0, z0, n) = (POOL.x, POOL.y, POOL_SIZE);
+    for x in x0 - 1..=x0 + n {
+        for z in z0 - 1..=z0 + n {
+            let wall = !in_pool(x, z);
+            for y in -POOL_DEPTH - 1..-1 {
+                if wall || y == -POOL_DEPTH - 1 {
+                    grid.set(IVec3::new(x, y, z), Cell::new(BlockId::k("concrete"), 2));
+                }
+            }
+            if !wall {
+                grid.set(IVec3::new(x, -1, z), Cell::AIR);
+            }
+        }
+    }
+}
 
 fn floor_block(x: i32, z: i32) -> &'static str {
     if x.rem_euclid(16) == 0 || z.rem_euclid(16) == 0 { "concrete_line" } else { "concrete" }
@@ -158,6 +194,11 @@ fn smooth_ramps(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mats: 
             commands.spawn((Name::new(format!("Ramp {deg}°")), Mesh3d(meshes.add(mesh)), MeshMaterial3d(mats.get("concrete")), Transform::default(), RigidBody::Static, col));
         }
     }
+    // Into the pool: 25° from the rim down to the bottom, along +Z.
+    let (x0, z0) = (POOL.x as f32, POOL.y as f32);
+    let run = POOL_DEPTH as f32 / 25f32.to_radians().tan();
+    let (mesh, col) = prism(x0, x0 + 6.0, &[(z0, 0.0), (z0, -POOL_DEPTH as f32), (z0 + run, -POOL_DEPTH as f32)]);
+    commands.spawn((Name::new("Pool ramp"), Mesh3d(meshes.add(mesh)), MeshMaterial3d(mats.get("concrete")), Transform::default(), RigidBody::Static, col));
 }
 
 fn spawn_world(mut commands: Commands) {
@@ -168,6 +209,7 @@ fn spawn_world(mut commands: Commands) {
         }
     }
     block_lanes(&mut grid);
+    pool_basin(&mut grid);
     let e = commands.spawn((Name::new("World grid"), WorldGrid, grid, Transform::default(), Visibility::default(), RigidBody::Static)).id();
     commands.insert_resource(WorldEntity(e));
 }
@@ -196,6 +238,13 @@ mod tests {
         let x = lane_x(2);
         assert_eq!(g.get(IVec3::new(x, 2, LANE_START_Z - 5)).id, BlockId::k("steel_slope_half_high"));
         assert!(!g.get(IVec3::new(x, 2, LANE_START_Z - 6)).is_air());
+        // The pool: no floor over the water, a bottom, walls; clear of the lanes.
+        let mut g = VoxelGrid::default();
+        pool_basin(&mut g);
+        assert!(g.get(IVec3::new(POOL.x + 3, -1, POOL.y + 3)).is_air());
+        assert!(!g.get(IVec3::new(POOL.x + 3, -POOL_DEPTH - 1, POOL.y + 3)).is_air());
+        assert!(!g.get(IVec3::new(POOL.x - 1, -5, POOL.y + 3)).is_air());
+        assert!(POOL.x > lane_x(4) + 6);
         let (_, col) = prism(0.0, 6.0, &[(1.0, 0.0), (-10.0, 0.0), (-10.0, 3.0)]);
         assert!(col.mass_properties(1.0).mass > 0.0);
     }
