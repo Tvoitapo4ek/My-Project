@@ -27,8 +27,6 @@ pub struct Aim {
     /// Face normal in grid space.
     pub normal: IVec3,
     pub distance: f32,
-    /// World-space hit point.
-    pub point: Vec3,
 }
 
 /// Eye position and look direction (world).
@@ -38,8 +36,10 @@ pub struct Eye {
     pub dir: Vec3,
 }
 
-/// A block was placed or removed by the player (for sounds, tests …).
+/// A block was placed or removed by the player — for other modules
+/// (sounds, statistics…); nothing listens yet.
 #[derive(Message, Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct Edited {
     pub grid: Entity,
     pub cell: IVec3,
@@ -64,7 +64,7 @@ pub fn aim(grids: &Query<(Entity, &VoxelGrid, &GlobalTransform)>, origin: Vec3, 
         if let Some(h) = g.raycast(o, d, reach)
             && best.is_none_or(|b| h.distance < b.distance)
         {
-            best = Some(Aim { grid: e, cell: h.cell, normal: h.normal, distance: h.distance, point: origin + dir * h.distance });
+            best = Some(Aim { grid: e, cell: h.cell, normal: h.normal, distance: h.distance });
         }
     }
     best
@@ -145,12 +145,24 @@ fn edit_blocks(
 ) {
     let Ok((pt, mut body, mut inv)) = players.single_mut() else { return };
     let held = inv.held();
+    let Some(a) = target.hit else { return };
+    let Ok((mut grid, gt)) = grids.get_mut(a.grid) else { return };
+    // Seats and physics toggles are used with RMB (not with the wrench,
+    // which turns them, or the glue; crouch to place a block on them).
+    if clicks.right
+        && let Some(m) = grid.get(a.cell).id.def().mech
+        && matches!(m, Mech::Seat | Mech::PhysicsToggle)
+        && !matches!(held.and_then(|s| s.item.tool()), Some(crate::content::Tool::Wrench | crate::content::Tool::Glue))
+        && (!body.crouching || held.is_none())
+    {
+        body.swing = 1.0;
+        used.write(UseBlock { grid: a.grid, cell: a.cell, mech: m });
+        return;
+    }
     // Tools handle their own clicks.
     if held.is_some_and(|s| s.item.tool().is_some()) {
         return;
     }
-    let Some(a) = target.hit else { return };
-    let Ok((mut grid, gt)) = grids.get_mut(a.grid) else { return };
     if clicks.middle {
         let cell = grid.get(a.cell);
         if let Some(item) = registry().item_for_block(cell.id) {
@@ -167,15 +179,6 @@ fn edit_blocks(
         return;
     }
     if !clicks.right {
-        return;
-    }
-    let target_cell = grid.get(a.cell);
-    if let Some(m) = target_cell.id.def().mech
-        && matches!(m, Mech::Seat | Mech::PhysicsToggle)
-        && (!body.crouching || held.is_none())
-    {
-        body.swing = 1.0;
-        used.write(UseBlock { grid: a.grid, cell: a.cell, mech: m });
         return;
     }
     let Some(stack) = held else { return };

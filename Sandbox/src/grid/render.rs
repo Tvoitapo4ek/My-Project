@@ -21,6 +21,8 @@ const COLS: u32 = 8;
 /// The block atlas and the material every chunk uses.
 #[derive(Resource, Clone)]
 pub struct BlockAtlas {
+    /// The atlas texture (kept for tools that want to show it).
+    #[allow(dead_code)]
     pub image: Handle<Image>,
     pub material: Handle<StandardMaterial>,
     pub rows: u32,
@@ -130,8 +132,11 @@ fn rebuild_chunks(
                 e.insert((Mesh3d(meshes.add(data.into_mesh())), MeshMaterial3d(atlas.material.clone())));
             }
             if !boxes.is_empty() {
+                // Density so the chunk weighs what its blocks weigh.
+                let volume: f32 = boxes.iter().map(|(_, h)| h.x * h.y * h.z * 8.0).sum();
+                let mass = mesh::chunk_mass(&grid, key);
                 let shapes = boxes.into_iter().map(|(c, h)| (c, Quat::IDENTITY, Collider::cuboid(h.x * 2.0, h.y * 2.0, h.z * 2.0))).collect();
-                e.insert(Collider::compound(shapes));
+                e.insert((Collider::compound(shapes), ColliderDensity((mass / volume.max(1e-3)).max(1.0))));
             }
             views.0.insert(key, e.id());
         }

@@ -46,9 +46,12 @@
      placement: Face, mass: 70.0,
      params: [
         (key: "speed", label: "Скорость", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
+        // Signal "+" blends to +signal_speed, "−" to −signal_speed (a throttle
+        // when speed = 0).
         (key: "signal_speed", label: "Скорость по сигналу", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 128.0),
      ]),
-    (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face, mass: 60.0,
+    (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face,
+     collision: Box(0.7, 0.7, 0.7), mass: 60.0,
      params: [
         (key: "steer", label: "Поворот", kind: Number(min: 0.0, max: 45.0, step: 5.0, unit: "°"), default: 30.0),
         (key: "stiffness", label: "Жёсткость", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),

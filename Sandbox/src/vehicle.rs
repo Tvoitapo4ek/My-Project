@@ -13,7 +13,7 @@ use crate::{
     core::{Toast, toast},
     grid::VoxelGrid,
     interact::UseBlock,
-    mech::{BlockEntity, Params, Signal, Spin, transform_for},
+    mech::{BlockEntity, Params, Signal, transform_for},
     player::{Body, Player, Seated},
     style::{Layer, LayerNode},
 };
@@ -96,12 +96,6 @@ fn steer(
             t.rotation = Quat::from_rotation_y(st.0) * base.rotation;
         }
     }
-}
-
-/// The steering angle of the suspension carrying a wheel (for physics).
-pub fn wheel_steer(grid: &VoxelGrid, wheel: &BlockEntity, susp: &Query<(&BlockEntity, &Steer, &Spin)>) -> Option<(f32, Entity)> {
-    let s = grid.entities.get(&(wheel.cell - wheel.dir())).or_else(|| grid.entities.get(&(wheel.cell + wheel.dir())))?;
-    susp.get(*s).ok().filter(|(b, _, _)| b.mech() == Some(Mech::Suspension)).map(|(_, st, _)| (st.0, *s))
 }
 
 pub struct VehiclePlugin;

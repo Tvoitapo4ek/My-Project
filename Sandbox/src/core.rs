@@ -22,10 +22,6 @@ pub enum Ui {
     Settings,
 }
 
-pub fn in_game(ui: Res<State<Ui>>) -> bool {
-    *ui.get() == Ui::Game
-}
-
 /// Keys a control-panel channel can use (index 0 = none). Shift leaves
 /// the seat and E opens the inventory, so they are not bindable.
 pub const BINDABLE_KEYS: [(&str, Option<KeyCode>); 16] = [

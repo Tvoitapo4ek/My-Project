@@ -41,6 +41,8 @@ pub struct Held {
     /// Physgun: grab point in body space and distance from the eye.
     pub local: Vec3,
     pub distance: f32,
+    /// Physgun: wanted angular velocity (E + mouse).
+    pub spin: Option<Vec3>,
 }
 
 /// Mouse buttons for guns (scripts can set them too).
@@ -142,15 +144,11 @@ fn guns(
                 }
             }
             if let Some(b) = held.body
-                && let Ok((gt, mut v, mut w, _, com)) = dynamics.get_mut(b)
+                && let Ok((gt, _, _, _, com)) = dynamics.get(b)
             {
-                // Pull in from afar, then hold ~2.5 m in front.
+                // Pull in from afar, then hold ~2.5 m in front (`hold`).
                 held.distance = (held.distance - 20.0 * dt).max(2.5);
-                let center = gt.transform_point(com.0);
-                let target = eye.pos + eye.dir * held.distance;
-                v.0 = (target - center) * 10.0;
-                w.0 *= 0.85;
-                gizmos.line(muzzle, center, Color::srgb(1.0, 0.65, 0.15));
+                gizmos.line(muzzle, gt.transform_point(com.0), Color::srgb(1.0, 0.65, 0.15));
             }
         }
         Tool::PhysGun => {
@@ -178,19 +176,15 @@ fn guns(
             if let Some(b) = held.body {
                 wheel_busy.0 = true;
                 held.distance = (held.distance + gi.wheel.signum() * 0.8 * (gi.wheel != 0.0) as i32 as f32).clamp(1.5, PHYSGUN_RANGE);
+                held.spin = None;
+                if gi.rotate {
+                    // E + mouse: rotate about the view axes.
+                    locked.0 = true;
+                    let right = eye.dir.cross(Vec3::Y).normalize_or(Vec3::X);
+                    held.spin = Some(Vec3::Y * gi.mouse.x * 0.8 + right * gi.mouse.y * 0.8);
+                }
                 if let Ok((gt, mut v, mut w, _, _)) = dynamics.get_mut(b) {
-                    let grab = gt.transform_point(held.local);
-                    let target = eye.pos + eye.dir * held.distance;
-                    v.0 = (target - grab) * 12.0;
-                    if gi.rotate {
-                        // E + mouse: rotate about the view axes.
-                        locked.0 = true;
-                        let right = eye.dir.cross(Vec3::Y).normalize_or(Vec3::X);
-                        w.0 = Vec3::Y * gi.mouse.x * 0.8 + right * gi.mouse.y * 0.8;
-                    } else {
-                        w.0 *= 0.8;
-                    }
-                    gizmos.line(muzzle, grab, Color::srgb(0.3, 0.85, 1.0));
+                    gizmos.line(muzzle, gt.transform_point(held.local), Color::srgb(0.3, 0.85, 1.0));
                     if gi.right_pressed {
                         v.0 = Vec3::ZERO;
                         w.0 = Vec3::ZERO;
@@ -211,10 +205,29 @@ fn guns(
     }
 }
 
+/// Moves held bodies every physics tick (stable at any frame rate).
+fn hold(eye: Res<Eye>, held: Res<Held>, mut bodies: Query<(&GlobalTransform, &mut LinearVelocity, &mut AngularVelocity, &ComputedCenterOfMass)>) {
+    let Some(b) = held.body else { return };
+    let Ok((gt, mut v, mut w, com)) = bodies.get_mut(b) else { return };
+    let target = eye.pos + eye.dir * held.distance;
+    match held.tool {
+        Some(Tool::GravityGun) => {
+            v.0 = (target - gt.transform_point(com.0)) * 10.0;
+            w.0 *= 0.85;
+        }
+        Some(Tool::PhysGun) => {
+            v.0 = (target - gt.transform_point(held.local)) * 12.0;
+            w.0 = held.spin.unwrap_or(w.0 * 0.8);
+        }
+        _ => {}
+    }
+}
+
 pub struct GunsPlugin;
 
 impl Plugin for GunsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Held>().init_resource::<GunInput>().add_systems(Update, (read_input, guns).chain().after(crate::interact::InteractSet));
+        app.init_resource::<Held>().init_resource::<GunInput>().add_systems(Update, (read_input, guns).chain().after(crate::interact::InteractSet))
+            .add_systems(FixedUpdate, hold);
     }
 }

@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use super::{Body, Player, camera::{CameraView, View}};
+use super::{Body, Player, Seated, camera::{CameraView, View}};
 use crate::style::{BoxCache, Materials};
 
 /// One model pixel (m): 32 px = 1.8 m.
@@ -55,33 +55,36 @@ fn attach(mut commands: Commands, players: Query<Entity, Added<Player>>, mut mes
 fn animate(
     time: Res<Time>,
     view: Res<CameraView>,
-    players: Query<(&Body, &Children), With<Player>>,
+    players: Query<(&Body, &Children, Has<Seated>), With<Player>>,
     mut roots: Query<(&mut Walk, &mut Transform, &mut Visibility, &Children), With<Limb>>,
     mut limbs: Query<(&Limb, &mut Transform), Without<Walk>>,
     kids: Query<&Children>,
 ) {
     let dt = time.delta_secs();
-    for (body, children) in &players {
+    for (body, children, seated) in &players {
         for c in children.iter() {
             let Ok((mut walk, mut root_t, mut vis, _)) = roots.get_mut(c) else { continue };
             *vis = if view.0 == View::First { Visibility::Hidden } else { Visibility::Inherited };
             // Model stands on the capsule's feet and faces the look yaw.
-            root_t.translation.y = -body.height() * 0.5;
+            // Seated: hips on the cushion.
+            root_t.translation.y = -body.height() * 0.5 - if seated { 0.3 } else { 0.0 };
             root_t.rotation = Quat::from_rotation_y(body.yaw);
             let target = if body.flying { 0.0 } else { (body.speed / super::movement::WALK).min(1.6) };
             walk.amount += (target - walk.amount) * (dt * 10.0).min(1.0);
             walk.phase += body.speed * dt * 2.2;
             let (p, a) = (walk.phase, walk.amount);
             let crouch = body.crouching as i32 as f32;
+            let sit = if seated { 1.0 } else { 0.0 };
+            let (p, a) = (p, a * (1.0 - sit));
             for l in kids.iter_descendants(c) {
                 let Ok((kind, mut t)) = limbs.get_mut(l) else { continue };
                 match kind {
-                    Limb::LegR => t.rotation = Quat::from_rotation_x(p.cos() * 0.9 * a),
-                    Limb::LegL => t.rotation = Quat::from_rotation_x(-p.cos() * 0.9 * a),
-                    Limb::ArmL => t.rotation = Quat::from_rotation_x(p.cos() * 0.8 * a + crouch * 0.4),
+                    Limb::LegR => t.rotation = Quat::from_rotation_x(p.cos() * 0.9 * a + sit * 1.45),
+                    Limb::LegL => t.rotation = Quat::from_rotation_x(-p.cos() * 0.9 * a + sit * 1.45),
+                    Limb::ArmL => t.rotation = Quat::from_rotation_x(p.cos() * 0.8 * a + crouch * 0.4 + sit * 0.6),
                     Limb::ArmR => {
                         let swing = (body.swing * std::f32::consts::PI).sin();
-                        t.rotation = Quat::from_rotation_x(-p.cos() * 0.8 * a + crouch * 0.4 + swing * 1.3) * Quat::from_rotation_z(swing * 0.3);
+                        t.rotation = Quat::from_rotation_x(-p.cos() * 0.8 * a + crouch * 0.4 + sit * 0.6 + swing * 1.3) * Quat::from_rotation_z(swing * 0.3);
                     }
                     // Crouch: lean the torso forward from the hips.
                     Limb::Torso => t.rotation = Quat::from_rotation_x(-0.5 * crouch),

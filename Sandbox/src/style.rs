@@ -126,8 +126,6 @@ pub enum Layer {
     Body,
     /// Spins with the block's kinetic speed about local Y.
     Rotor,
-    /// Spins the other way (gearbox inner shafts, etc.).
-    RotorRev,
     /// Turned by steering (suspension knuckle + wheel).
     Steer,
 }

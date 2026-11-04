@@ -126,6 +126,12 @@ pub fn mesh_chunk(grid: &VoxelGrid, key: IVec3, uv: UvFn) -> MeshData {
     out
 }
 
+/// Total mass of the blocks in a chunk (kg).
+pub fn chunk_mass(grid: &VoxelGrid, key: IVec3) -> f32 {
+    let Some(chunk) = grid.chunks.get(&key) else { return 0.0 };
+    chunk.cells.iter().filter(|c| !c.is_air()).map(|c| c.id.def().mass).sum()
+}
+
 /// Collision boxes of a chunk: (centre, half extents) in grid-local space.
 pub fn chunk_boxes(grid: &VoxelGrid, key: IVec3) -> Vec<(Vec3, Vec3)> {
     let mut out = Vec::new();

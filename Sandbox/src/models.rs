@@ -66,10 +66,10 @@ pub fn wheel_parts(layer: Layer) -> Vec<Part> {
     let n = 12;
     for i in 0..n {
         let a = i as f32 / n as f32 * TAU;
-        v.push(part([0.28, 0.42, 0.2], "rubber", [a.cos() * 0.4, 0.0, a.sin() * 0.4]).rot(Quat::from_rotation_y(-a)).layer(layer));
+        v.push(part([0.3, 0.42, 0.24], "rubber", [a.cos() * 0.47, 0.0, a.sin() * 0.47]).rot(Quat::from_rotation_y(-a)).layer(layer));
     }
-    v.push(part([0.58, 0.36, 0.58], "brass", [0.0, 0.0, 0.0]).layer(layer));
-    v.push(part([0.58, 0.36, 0.58], "brass", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(layer));
+    v.push(part([0.7, 0.36, 0.7], "brass", [0.0, 0.0, 0.0]).layer(layer));
+    v.push(part([0.7, 0.36, 0.7], "brass", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(layer));
     v.push(part([0.3, 0.44, 0.3], "steel", [0.0, 0.0, 0.0]).layer(layer));
     v.push(part([0.12, 0.48, 0.12], "brass", [0.0, 0.0, 0.0]).layer(layer));
     v

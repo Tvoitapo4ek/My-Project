@@ -224,21 +224,8 @@ fn toggle(
     }
 }
 
-/// Collider density so the body weighs what its blocks weigh.
-fn mass_from_blocks(mut commands: Commands, bodies: Query<(&Contraption, &ChunkViews), Changed<ChunkViews>>, colliders: Query<&Collider>) {
-    for (c, views) in &bodies {
-        let volume: f32 = views.0.values().filter_map(|e| colliders.get(*e).ok()).map(|col| col.mass_properties(1.0).mass).sum();
-        if volume <= 0.0 {
-            continue;
-        }
-        let density = c.mass / volume;
-        for e in views.0.values() {
-            commands.entity(*e).insert(ColliderDensity(density));
-        }
-    }
-}
-
-pub const WHEEL_RADIUS: f32 = 0.5;
+/// Slightly over half a block: blocks at axle height clear the ground.
+pub const WHEEL_RADIUS: f32 = 0.6;
 const TRAVEL: f32 = 0.35;
 
 /// Raycast suspension, drive and side grip of every wheel.
@@ -247,19 +234,23 @@ fn drive(
     time: Res<Time>,
     spatial: SpatialQuery,
     gravity: Res<Gravity>,
-    mut bodies: Query<(Entity, &Contraption, &VoxelGrid, &ChunkViews, &GlobalTransform, Forces)>,
+    mut bodies: Query<(Entity, &VoxelGrid, &ChunkViews, &GlobalTransform, &ComputedMass, Forces)>,
     mut wheels: Query<(&BlockEntity, &mut Spin), Without<Steer>>,
     susp: Query<(&BlockEntity, &Steer, &Spin, &crate::mech::Params)>,
 ) {
     let dt = time.delta_secs().max(1e-4);
     let g = gravity.0.length();
-    for (_, c, grid, views, gt, mut forces) in &mut bodies {
+    for (_, grid, views, gt, mass, mut forces) in &mut bodies {
         let list: Vec<Entity> = grid.entities.values().copied().filter(|e| wheels.get(*e).is_ok_and(|(b, _)| b.mech() == Some(Mech::Wheel))).collect();
         if list.is_empty() {
             continue;
         }
+        // No colliders yet (just assembled): no mass to work with.
+        if !mass.value().is_finite() || mass.value() < 1.0 {
+            continue;
+        }
         let n = list.len() as f32;
-        let per_wheel = c.mass / n;
+        let per_wheel = mass.value() / n;
         let filter = SpatialQueryFilter::default().with_excluded_entities(views.0.values().copied());
         let t = gt.compute_transform();
         let up = t.rotation * Vec3::Y;
@@ -273,18 +264,23 @@ fn drive(
             let axle0 = t.rotation * wb.dir().as_vec3();
             let axle = Quat::from_axis_angle(up, steer.0) * axle0;
             let forward = axle.cross(up).normalize_or_zero();
-            let origin = center + up * TRAVEL;
-            let Some(hit) = spatial.cast_ray(origin, Dir3::new(-up).unwrap_or(Dir3::NEG_Y), TRAVEL * 2.0 + WHEEL_RADIUS, true, &filter) else {
+            // Spring rate: at rest each wheel carries its share of the weight
+            // with `eq` compression; the ray is that much longer, so the car
+            // rests at the height it was built.
+            let k = per_wheel * g / (TRAVEL * 0.5) * stiffness;
+            let eq = per_wheel * g / k;
+            let rest = TRAVEL + WHEEL_RADIUS + eq;
+            let origin = center + up * (TRAVEL + eq);
+            let Some(hit) = spatial.cast_ray(origin, Dir3::new(-up).unwrap_or(Dir3::NEG_Y), rest + TRAVEL, true, &filter) else {
                 continue;
             };
-            let compression = (TRAVEL + WHEEL_RADIUS) - hit.distance;
+            let compression = rest - hit.distance;
             if compression <= 0.0 {
                 continue;
             }
             let contact = origin - up * hit.distance;
             let v = forces.velocity_at_point(contact);
             // Spring + damper along the body's up.
-            let k = per_wheel * g / (TRAVEL * 0.5) * stiffness;
             let damp = 2.0 * (k * per_wheel).sqrt() * 0.6;
             let normal_force = (k * compression - damp * v.dot(up)).max(0.0);
             forces.apply_force_at_point(up * normal_force, contact);
@@ -316,7 +312,7 @@ pub struct ContraptionPlugin;
 
 impl Plugin for ContraptionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, toggle).add_systems(PostUpdate, mass_from_blocks).add_systems(FixedUpdate, drive);
+        app.add_systems(Update, toggle).add_systems(FixedUpdate, drive);
     }
 }
 

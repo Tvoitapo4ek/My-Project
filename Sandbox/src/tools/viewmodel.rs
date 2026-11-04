@@ -42,7 +42,7 @@ fn update_hand(
             if let Some(item) = item {
                 match item.def().kind {
                     ItemKind::Tool(tool) => {
-                        let node = commands.spawn((Transform::from_scale(Vec3::splat(1.0)), Visibility::default(), ChildOf(e))).id();
+                        let node = commands.spawn((Transform::from_scale(Vec3::splat(0.42)).with_translation(Vec3::new(0.04, -0.02, 0.0)).with_rotation(Quat::from_rotation_y(0.12) * Quat::from_rotation_x(0.08)), Visibility::default(), ChildOf(e))).id();
                         spawn_parts(&mut commands, node, &models::tool_model(tool), &mut meshes, &mut cache, &mats, false);
                     }
                     ItemKind::Block(b) if b.def().is_cube() => {

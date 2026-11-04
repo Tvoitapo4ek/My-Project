@@ -64,13 +64,6 @@ pub fn step(name: &str, f: impl FnMut(&mut World, &mut Ctx) -> Step + Send + Syn
     (name.to_string(), Box::new(f))
 }
 
-/// Saves an image asset (e.g. the item icon atlas).
-pub fn save_image(world: &mut World, image: Handle<Image>, name: &str) {
-    if let Some(dir) = world.resource::<Shots>().0.clone() {
-        world.spawn(Screenshot::image(image)).observe(save_to_disk(format!("{dir}/{name}.png")));
-    }
-}
-
 pub fn screenshot(world: &mut World, name: &str) {
     if let Some(dir) = world.resource::<Shots>().0.clone() {
         let _ = std::fs::create_dir_all(&dir);
@@ -116,11 +109,6 @@ pub fn click(world: &mut World, button: MouseButton, down: bool) {
     if down { m.press(button) } else { m.release(button) }
 }
 
-pub fn key(world: &mut World, k: KeyCode, down: bool) {
-    let mut m = world.resource_mut::<ButtonInput<KeyCode>>();
-    if down { m.press(k) } else { m.release(k) }
-}
-
 pub fn world_grid(world: &World) -> Entity {
     world.resource::<WorldEntity>().0
 }
@@ -133,6 +121,19 @@ pub fn set_block(world: &mut World, c: IVec3, block: &str, facing: u8) {
 
 pub fn get_block(world: &World, c: IVec3) -> Cell {
     world.get::<VoxelGrid>(world_grid(world)).unwrap().get(c)
+}
+
+/// Removes every block in a box (later stages need free space).
+pub fn clear_area(world: &mut World, lo: IVec3, hi: IVec3) {
+    for x in lo.x..=hi.x {
+        for y in lo.y..=hi.y {
+            for z in lo.z..=hi.z {
+                if !get_block(world, IVec3::new(x, y, z)).is_air() {
+                    set_block(world, IVec3::new(x, y, z), "air", 2);
+                }
+            }
+        }
+    }
 }
 
 pub fn select(world: &mut World, item: &str) {
@@ -185,22 +186,42 @@ pub fn build() -> Scenario {
     // `AUTOTEST_ONLY=icons` etc. runs selected stages (development).
     let only = std::env::var("AUTOTEST_ONLY").ok();
     let want = |s: &str| only.as_ref().is_none_or(|o| o.split(',').any(|x| x == s));
+    warmup(&mut steps);
     if want("icons") {
         steps.push(step("icon atlas", |world, ctx| {
             if ctx.frames == 60 {
                 if let Some(icons) = world.get_resource::<crate::icons::ItemIcons>() {
                     let h = icons.image.clone();
-                    world.spawn((ImageNode::new(h), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(512), height: px(256), ..default() }, GlobalZIndex(100)));
+                let e = world.spawn((ImageNode::new(h), Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(512), height: px(256), ..default() }, GlobalZIndex(100))).id();
+                    let _ = e;
                 }
             }
             if ctx.frames == 64 {
                 screenshot(world, "00_icon_atlas_ui");
+            }
+            if ctx.frames == 66 {
+                let mut q = world.query_filtered::<Entity, (With<ImageNode>, With<GlobalZIndex>)>();
+                let nodes: Vec<Entity> = q.iter(world).collect();
+                for e in nodes {
+                    if world.get::<GlobalZIndex>(e).is_some_and(|z| z.0 == 100) {
+                        world.entity_mut(e).despawn();
+                    }
+                }
             }
             if ctx.frames > 68 { Step::Next } else { Step::Wait }
         }));
     }
     if want("basics") {
         basics(&mut steps);
+    }
+    if want("mech") {
+        mechanisms(&mut steps);
+    }
+    if want("car") {
+        car(&mut steps);
+    }
+    if want("guns") {
+        guns(&mut steps);
     }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
@@ -412,6 +433,541 @@ fn basics(steps: &mut Vec<(String, StepFn)>) {
             32 => {
                 input(world, |m| *m = MoveInput { scripted: true, ..default() });
                 world.resource_mut::<CameraView>().0 = View::First;
+                clear_area(world, IVec3::new(-4, 0, -6), IVec3::new(4, 2, -2));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// Speed of the mechanism in a world cell (RPM about the grid +axis).
+pub fn rpm(world: &mut World, c: IVec3) -> f32 {
+    let g = world_grid(world);
+    let e = world.get::<VoxelGrid>(g).and_then(|g| g.entities.get(&c).copied());
+    e.and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(f32::NAN)
+}
+
+pub fn block_entity(world: &World, c: IVec3) -> Option<Entity> {
+    world.get::<VoxelGrid>(world_grid(world)).and_then(|g| g.entities.get(&c).copied())
+}
+
+pub fn set_param(world: &mut World, c: IVec3, key: &str, v: f32) {
+    if let Some(e) = block_entity(world, c) {
+        let id = world.get::<crate::mech::BlockEntity>(e).unwrap().id;
+        if let Some((i, _)) = id.def().param(key)
+            && let Some(mut p) = world.get_mut::<crate::mech::Params>(e)
+        {
+            p.0[i] = v;
+        }
+    }
+}
+
+fn mechanisms(steps: &mut Vec<(String, StepFn)>) {
+    // Facings: 0 +X, 1 −X, 2 +Y, 3 −Y, 4 +Z, 5 −Z.
+    steps.push(step("mechanisms: build", |world, ctx| {
+        if ctx.frames == 1 {
+            let z = -8;
+            set_block(world, IVec3::new(0, 0, z), "creative_motor", 0);
+            for x in 1..4 {
+                set_block(world, IVec3::new(x, 0, z), "shaft", 0);
+            }
+            set_block(world, IVec3::new(4, 0, z), "gearbox", 2);
+            set_block(world, IVec3::new(5, 0, z), "shaft", 0);
+            set_block(world, IVec3::new(4, 0, z + 1), "shaft", 4);
+            set_block(world, IVec3::new(4, 0, z + 2), "shaft", 4);
+            set_block(world, IVec3::new(6, 0, z), "cogwheel", 0);
+            set_block(world, IVec3::new(6, 1, z), "cogwheel", 0);
+            set_block(world, IVec3::new(6, 2, z + 1), "large_cogwheel", 0);
+            // Clutch, gearshift and speed-controller lines.
+            for (z, k) in [(-12, "clutch"), (-14, "gearshift"), (-16, "speed_controller")] {
+                set_block(world, IVec3::new(0, 0, z), "creative_motor", 0);
+                set_block(world, IVec3::new(1, 0, z), k, 0);
+                set_block(world, IVec3::new(2, 0, z), "shaft", 0);
+                set_block(world, IVec3::new(3, 0, z), "shaft", 0);
+            }
+            teleport(world, Vec3::new(-2.5, 0.0, -2.5));
+        }
+        if ctx.frames == 6 {
+            set_param(world, IVec3::new(0, 0, -16), "speed", 64.0);
+        }
+        if ctx.frames == 12 {
+            let m = rpm(world, IVec3::new(0, 0, -8));
+            let s3 = rpm(world, IVec3::new(3, 0, -8));
+            ctx.check("creative motor drives a shaft line", m.abs() == 32.0 && s3 == m, format!("motor {m}, shaft {s3}"));
+            let through = rpm(world, IVec3::new(5, 0, -8));
+            ctx.check("gearbox: straight through reverses", through == -m, format!("{through}"));
+            let corner = rpm(world, IVec3::new(4, 0, -6));
+            ctx.check("gearbox turns the rotation 90°", corner.abs() == 32.0, format!("{corner}"));
+            let c1 = rpm(world, IVec3::new(6, 0, -8));
+            let c2 = rpm(world, IVec3::new(6, 1, -8));
+            let big = rpm(world, IVec3::new(6, 2, -7));
+            ctx.check("meshing cogs turn the other way", c2 == -c1 && c1 != 0.0, format!("{c1} / {c2}"));
+            ctx.check("small → large cog halves the speed", (big.abs() - c1.abs() / 2.0).abs() < 1e-3, format!("{big}"));
+            ctx.check("speed controller outputs its own speed", rpm(world, IVec3::new(3, 0, -16)).abs() == 32.0 && rpm(world, IVec3::new(0, 0, -16)).abs() == 64.0, format!("{}", rpm(world, IVec3::new(3, 0, -16))));
+            ctx.vars.insert("gs".into(), rpm(world, IVec3::new(3, 0, -14)));
+            look_at(world, Vec3::new(3.0, 0.5, -10.0));
+        }
+        if ctx.frames == 16 {
+            console(world, "fly");
+            teleport(world, Vec3::new(-2.0, 3.0, -5.0));
+        }
+        if ctx.frames == 20 {
+            look_at(world, Vec3::new(3.0, 0.0, -11.0));
+        }
+        if ctx.frames == 26 {
+            screenshot(world, "20_mechanisms");
+        }
+        if ctx.frames == 28 {
+            console(world, "fly");
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("seat, panel and sensors drive clutch / gearshift / speed controller", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                // Sensors sit on top of the controlled blocks, facing into them.
+                for z in [-12, -14, -16] {
+                    set_block(world, IVec3::new(1, 1, z), "sensor", 3);
+                }
+                set_block(world, IVec3::new(-2, 0, -14), "seat", 0);
+                set_block(world, IVec3::new(-2, 0, -13), "control_panel", 0);
+                select(world, "wrench");
+                teleport(world, Vec3::new(-3.5, 0.0, -11.5));
+            }
+            // Link with the wrench: panel, then sensor.
+            6 => look_at(world, Vec3::new(-1.5, 0.3, -12.5)),
+            10 => click(world, MouseButton::Left, true),
+            11 => click(world, MouseButton::Left, false),
+            14 => look_at(world, Vec3::new(1.5, 1.2, -11.5)),
+            18 => click(world, MouseButton::Left, true),
+            19 => click(world, MouseButton::Left, false),
+            26 => {
+                let e = block_entity(world, IVec3::new(1, 1, -12)).unwrap();
+                let linked = world.get::<crate::signal::Linked>(e).and_then(|l| l.0);
+                ctx.check("wrench links a sensor to the panel", linked.is_some_and(|p| p.cell == IVec3::new(-2, 0, -13)), format!("{linked:?}"));
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                // The other two directly.
+                for z in [-14, -16] {
+                    let e = block_entity(world, IVec3::new(1, 1, z)).unwrap();
+                    world.get_mut::<crate::signal::Linked>(e).unwrap().0 = linked;
+                }
+            }
+            30 => {
+                select(world, "white_block");
+                // From the side away from the panel.
+                teleport(world, Vec3::new(-3.5, 0.0, -15.5));
+            }
+            32 => look_at(world, Vec3::new(-1.5, 0.3, -13.5)),
+            34 => {
+                let a = world.resource::<Target>().hit;
+                let (p, b) = player(world);
+                ctx.check("aiming at the seat", a.is_some_and(|a| a.cell == IVec3::new(-2, 0, -14)), format!("{:?} from {p:.2} crouch {} ui {:?}", a.map(|a| a.cell), b.crouching, world.resource::<State<Ui>>().get()));
+                click(world, MouseButton::Right, true);
+            }
+            35 => click(world, MouseButton::Right, false),
+            40 => {
+                let seated = world.query_filtered::<&crate::player::Seated, With<Player>>().iter(world).count() == 1;
+                ctx.check("RMB on the seat sits down", seated, "");
+                let mut pk = world.resource_mut::<crate::signal::PanelKeys>();
+                pk.scripted = true;
+                pk.held = vec![KeyCode::KeyW];
+            }
+            46 => {
+                ctx.check("clutch stops the rotation on a signal", rpm(world, IVec3::new(3, 0, -12)) == 0.0, format!("{}", rpm(world, IVec3::new(3, 0, -12))));
+                let gs = rpm(world, IVec3::new(3, 0, -14));
+                ctx.check("gearshift reverses on a signal", gs == -ctx.vars["gs"] && gs != 0.0, format!("{gs}"));
+                let sc = rpm(world, IVec3::new(3, 0, -16));
+                ctx.check("speed controller switches to its signal speed", sc.abs() == 128.0, format!("{sc}"));
+                screenshot(world, "22_seated_controls");
+                world.resource_mut::<crate::signal::PanelKeys>().held.clear();
+            }
+            50 => {
+                ctx.check("released key: clutch engaged again", rpm(world, IVec3::new(3, 0, -12)) != 0.0, "");
+                input(world, |m| m.crouch = true);
+            }
+            56 => {
+                input(world, |m| m.crouch = false);
+                let seated = world.query_filtered::<&crate::player::Seated, With<Player>>().iter(world).count() == 1;
+                ctx.check("Shift stands up", !seated, "");
+                world.resource_mut::<crate::signal::PanelKeys>().scripted = false;
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("wrench: turn and settings", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                select(world, "wrench");
+                teleport(world, Vec3::new(2.5, 0.0, -5.5));
+            }
+            4 => look_at(world, Vec3::new(2.5, 1.0, -7.5)),
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the top of a shaft", a.is_some_and(|a| a.cell == IVec3::new(2, 0, -8) && a.normal == IVec3::Y), format!("{:?}", a.map(|a| (a.cell, a.normal))));
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            14 => {
+                let f = get_block(world, IVec3::new(2, 0, -8)).facing;
+                ctx.check("RMB with the wrench turns the shaft about the face", crate::grid::facing_dir(f).x == 0, format!("facing {f}"));
+                ctx.check("a turned shaft breaks the line", rpm(world, IVec3::new(3, 0, -8)) == 0.0, format!("{}", rpm(world, IVec3::new(3, 0, -8))));
+                look_at(world, Vec3::new(0.5, 0.5, -7.5));
+            }
+            18 => click(world, MouseButton::Left, true),
+            19 => click(world, MouseButton::Left, false),
+            26 => {
+                let ui = *world.resource::<State<Ui>>().get();
+                ctx.check("LMB with the wrench opens the motor settings", ui == Ui::Settings, format!("{ui:?}"));
+                screenshot(world, "21_motor_settings");
+            }
+            30 => {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                clear_area(world, IVec3::new(-3, 0, -17), IVec3::new(7, 3, -5));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn contraptions(world: &mut World) -> Vec<(Entity, Vec3, Quat, usize)> {
+    let mut q = world.query_filtered::<(Entity, &GlobalTransform, &VoxelGrid), With<crate::contraption::Contraption>>();
+    q.iter(world).map(|(e, t, g)| { let t = t.compute_transform(); (e, t.translation, t.rotation, g.cells().len()) }).collect()
+}
+
+fn world_cells(world: &World) -> usize {
+    world.get::<VoxelGrid>(world_grid(world)).unwrap().cells().len()
+}
+
+fn warmup(steps: &mut Vec<(String, StepFn)>) {
+    // Software rendering compiles shaders for a while: frames are black.
+    steps.push(step("warm-up", |world, ctx| {
+        world.resource_mut::<Scripted>().0 = true;
+        input(world, |m| *m = MoveInput { scripted: true, ..default() });
+        if ctx.t > 8.0 { Step::Next } else { Step::Wait }
+    }));
+}
+
+fn car(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("car: build in blocks", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                for x in 0..3 {
+                    for z in -30..=-26 {
+                        set_block(world, IVec3::new(x, 1, z), "steel_block", 2);
+                    }
+                }
+                for z in [-30, -26] {
+                    set_block(world, IVec3::new(0, 0, z), "suspension", 1);
+                    set_block(world, IVec3::new(2, 0, z), "suspension", 0);
+                    set_block(world, IVec3::new(-1, 0, z), "wheel", 1);
+                    set_block(world, IVec3::new(3, 0, z), "wheel", 0);
+                }
+                // Rear axle ← two cogs ← speed controller (throttle) ← motor.
+                set_block(world, IVec3::new(1, 0, -26), "cogwheel", 0);
+                set_block(world, IVec3::new(1, 0, -25), "cogwheel", 0);
+                set_block(world, IVec3::new(2, 0, -25), "speed_controller", 1);
+                set_block(world, IVec3::new(3, 0, -25), "creative_motor", 1);
+                set_block(world, IVec3::new(2, 1, -25), "sensor", 3);
+                // Steering sensors in front of the front suspensions.
+                set_block(world, IVec3::new(0, 0, -31), "sensor", 4);
+                set_block(world, IVec3::new(2, 0, -31), "sensor", 4);
+                set_block(world, IVec3::new(1, 2, -27), "seat", 5);
+                set_block(world, IVec3::new(1, 2, -28), "control_panel", 4);
+                set_block(world, IVec3::new(1, 2, -26), "physics_toggle", 2);
+                let g = world_grid(world);
+                world.entity_mut(g).insert(crate::tools::glue::Glue(vec![(IVec3::new(-1, 0, -31), IVec3::new(3, 2, -25))]));
+                select(world, "white_block");
+                teleport(world, Vec3::new(7.5, 0.0, -22.5));
+            }
+            6 => {
+                set_param(world, IVec3::new(3, 0, -25), "speed", 128.0);
+                set_param(world, IVec3::new(2, 0, -25), "speed", 0.0);
+                set_param(world, IVec3::new(2, 0, -25), "signal_speed", 96.0);
+                set_param(world, IVec3::new(2, 1, -25), "key_neg", 2.0);
+                let g = world_grid(world);
+                let e = block_entity(world, IVec3::new(2, 1, -25)).unwrap();
+                world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: IVec3::new(1, 2, -28) });
+                for x in [0, 2] {
+                    set_param(world, IVec3::new(x, 0, -31), "key_pos", 3.0);
+                    set_param(world, IVec3::new(x, 0, -31), "key_neg", 4.0);
+                    let e = block_entity(world, IVec3::new(x, 0, -31)).unwrap();
+                    world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: IVec3::new(1, 2, -28) });
+                }
+                look_at(world, Vec3::new(1.5, 0.5, -28.0));
+            }
+            12 => {
+                let w = rpm(world, IVec3::new(3, 0, -26));
+                ctx.check("throttle at 0: wheels stand", w == 0.0 && rpm(world, IVec3::new(3, 0, -25)).abs() == 128.0, format!("{w}"));
+                screenshot(world, "30_car_blocks");
+                ctx.vars.insert("cells0".into(), world_cells(world) as f32);
+            }
+            16 => look_at(world, Vec3::new(1.5, 3.0, -25.5)),
+            20 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the physics toggle", a.is_some_and(|a| a.cell == IVec3::new(1, 2, -26)), format!("{:?}", a.map(|a| (a.cell, a.normal))));
+                click(world, MouseButton::Right, true);
+            }
+            21 => click(world, MouseButton::Right, false),
+            30 => {
+                let c = contraptions(world);
+                let left = world_cells(world) as f32;
+                ctx.check("physics toggle: the glued car becomes one body", c.len() == 1 && c[0].3 >= 30, format!("{:?}", c.iter().map(|c| c.3).collect::<Vec<_>>()));
+                ctx.check("its blocks left the world grid", ctx.vars["cells0"] - left >= 30.0, format!("{} → {left}", ctx.vars["cells0"]));
+                let m = world.query::<&crate::contraption::Contraption>().iter(world).next().map(|c| c.mass).unwrap_or(0.0);
+                ctx.check("mass from its blocks", m > 2000.0, format!("{m:.0} kg"));
+                if let Some(c) = c.first() {
+                    ctx.vars.insert("z0".into(), c.1.z);
+                    ctx.vars.insert("y0".into(), c.1.y);
+                }
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 30 && ctx.t > ctx.vars["t0"] + 4.0 {
+            let c = contraptions(world);
+            let Some(c) = c.first() else { return Step::Next };
+            let moved = (c.1.z - ctx.vars["z0"]).abs();
+            ctx.check("physical car stands still without throttle", moved < 0.3, format!("moved {moved:.2} m"));
+            ctx.check("springs hold the car at its height, upright", (c.1.y - ctx.vars["y0"]).abs() < 0.3 && (c.2 * Vec3::Y).y > 0.95, format!("y {:.2} → {:.2}", ctx.vars["y0"], c.1.y));
+            screenshot(world, "31_car_physical");
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("car: sit, drive and steer with the panel", |world, ctx| {
+        let Some((_, pos, rot, _)) = contraptions(world).first().copied() else {
+            ctx.check("car exists", false, "");
+            return Step::Next;
+        };
+        let fwd = rot * Vec3::NEG_Z;
+        let keys = |world: &mut World, k: Vec<KeyCode>| {
+            let mut pk = world.resource_mut::<crate::signal::PanelKeys>();
+            pk.scripted = true;
+            pk.held = k;
+        };
+        match ctx.frames {
+            // Stand on the chassis next to the seat.
+            1 => teleport(world, pos + rot * Vec3::new(2.5, 2.05, -26.5)),
+            4 => look_at(world, pos + rot * Vec3::new(1.5, 2.4, -26.5)),
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the seat", a.is_some_and(|a| a.cell == IVec3::new(1, 2, -27)), format!("{:?}", a.map(|a| a.cell)));
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            14 => {
+                let seated = world.query_filtered::<&crate::player::Seated, With<Player>>().iter(world).count() == 1;
+                ctx.check("sits on the car's seat", seated, "");
+                keys(world, vec![KeyCode::KeyW]);
+                ctx.vars.insert("p0x".into(), pos.x);
+                ctx.vars.insert("p0z".into(), pos.z);
+                world.resource_mut::<CameraView>().0 = View::Behind;
+            }
+            26 => {
+                let moved = Vec2::new(pos.x - ctx.vars["p0x"], pos.z - ctx.vars["p0z"]).length();
+                ctx.check("W on the panel: throttle drives the car", moved > 2.0, format!("{moved:.2} m"));
+                screenshot(world, "32_car_driving");
+                keys(world, vec![KeyCode::KeyW, KeyCode::KeyA]);
+                ctx.vars.insert("f0x".into(), fwd.x);
+                ctx.vars.insert("f0z".into(), fwd.z);
+            }
+            40 => {
+                let f0 = Vec2::new(ctx.vars["f0x"], ctx.vars["f0z"]).normalize();
+                let turned = f0.angle_to(Vec2::new(fwd.x, fwd.z).normalize()).abs().to_degrees();
+                ctx.check("A on the panel steers the car", turned > 15.0, format!("{turned:.0}°"));
+                screenshot(world, "33_car_turning");
+                keys(world, vec![]);
+            }
+            52 => {
+                let v = world.query_filtered::<&avian3d::prelude::LinearVelocity, With<crate::contraption::Contraption>>().iter(world).next().map(|v| v.0.length()).unwrap_or(9.9);
+                ctx.check("released: the car stops", v < 1.0, format!("{v:.2} m/s"));
+                world.resource_mut::<crate::signal::PanelKeys>().scripted = false;
+                input(world, |m| m.crouch = true);
+                world.resource_mut::<CameraView>().0 = View::First;
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("car: back to blocks", |world, ctx| {
+        match ctx.frames {
+            2 => input(world, |m| m.crouch = false),
+            4 => {
+                // Stop the motor so the car stands still, then switch off.
+                if let Some((body, pos, rot, _)) = contraptions(world).first().copied() {
+                    let toggle = pos + rot * Vec3::new(1.5, 2.5, -25.5);
+                    teleport(world, toggle + rot * Vec3::new(0.0, 0.0, 2.5) - Vec3::Y * 0.5);
+                    let _ = body;
+                }
+            }
+            8 => {
+                if let Some((_, pos, rot, _)) = contraptions(world).first().copied() {
+                    look_at(world, pos + rot * Vec3::new(1.5, 2.95, -25.5));
+                }
+            }
+            12 => click(world, MouseButton::Right, true),
+            13 => click(world, MouseButton::Right, false),
+            22 => {
+                let n = contraptions(world).len();
+                ctx.check("toggle again: the car returns to the block grid", n == 0, format!("{n} bodies left"));
+                ctx.check("all blocks are back", (world_cells(world) as f32 - ctx.vars["cells0"]).abs() < 0.5, format!("{} vs {}", world_cells(world), ctx.vars["cells0"]));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// World centre of mass of the first contraption.
+fn body_center(world: &mut World) -> Option<(Entity, Vec3)> {
+    let mut q = world.query_filtered::<(Entity, &GlobalTransform, &avian3d::prelude::ComputedCenterOfMass), With<crate::contraption::Contraption>>();
+    q.iter(world).next().map(|(e, t, c)| (e, t.transform_point(c.0)))
+}
+
+fn guns(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("glue tool + toggle: a cube becomes physical", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                for x in 10..12 {
+                    for y in 0..2 {
+                        for z in -10..-8 {
+                            set_block(world, IVec3::new(x, y, z), "stone", 2);
+                        }
+                    }
+                }
+                set_block(world, IVec3::new(11, 1, -9), "physics_toggle", 2);
+                set_block(world, IVec3::new(13, 0, -10), "stone", 2);
+                select(world, "glue");
+                // Look from above so the top faces are visible.
+                console(world, "fly");
+                teleport(world, Vec3::new(10.5, 2.0, -5.5));
+            }
+            // Corners: front-bottom-left, then the top of the back-right.
+            4 => look_at(world, Vec3::new(10.5, 0.5, -8.0)),
+            8 => click(world, MouseButton::Left, true),
+            9 => click(world, MouseButton::Left, false),
+            12 => look_at(world, Vec3::new(11.5, 2.0, -9.6)),
+            16 => click(world, MouseButton::Left, true),
+            17 => click(world, MouseButton::Left, false),
+            22 => {
+                let g = world_grid(world);
+                let boxes = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                ctx.check("two glue clicks make a box", boxes.iter().any(|(lo, hi)| *lo == IVec3::new(10, 0, -10) && *hi == IVec3::new(11, 1, -9)), format!("{boxes:?}"));
+                select(world, "white_block");
+                look_at(world, Vec3::new(11.5, 2.0, -8.5));
+                console(world, "fly");
+            }
+            26 => click(world, MouseButton::Right, true),
+            27 => click(world, MouseButton::Right, false),
+            34 => {
+                let c = contraptions(world);
+                ctx.check("glued cube (8 blocks) is physical, the unglued stone stays", c.len() == 1 && c[0].3 == 8 && !get_block(world, IVec3::new(13, 0, -10)).is_air(), format!("{:?}", c.iter().map(|c| c.3).collect::<Vec<_>>()));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("physgun: grab, lift, freeze, unfreeze", |world, ctx| {
+        let Some((body, pos)) = body_center(world) else {
+            ctx.check("cube exists", false, "");
+            return Step::Next;
+        };
+        let gi = |world: &mut World, f: &dyn Fn(&mut crate::tools::guns::GunInput)| {
+            let mut g = world.resource_mut::<crate::tools::guns::GunInput>();
+            g.scripted = true;
+            f(&mut g);
+        };
+        match ctx.frames {
+            1 => {
+                select(world, "physgun");
+                ctx.vars.insert("cy".into(), pos.y);
+            }
+            2 => look_at(world, pos),
+            6 => gi(world, &|g| {
+                g.left = true;
+                g.left_pressed = true;
+            }),
+            8 => {
+                let held = world.resource::<crate::tools::guns::Held>().body;
+                ctx.check("physgun grabs the cube", held == Some(body), format!("{held:?}"));
+                // Aim higher: the cube follows.
+                let (p, _) = player(world);
+                look_at(world, p + Vec3::new(0.0, 4.0, -4.0));
+            }
+            20 => {
+                ctx.check("held cube follows the aim up", pos.y > ctx.vars["cy"] + 1.5, format!("{:.2} → {:.2}", ctx.vars["cy"], pos.y));
+                screenshot(world, "40_physgun");
+                gi(world, &|g| g.right_pressed = true);
+            }
+            22 => gi(world, &|g| g.left = false),
+            24 => ctx.vars.insert("fy".into(), pos.y).map(|_| ()).unwrap_or(()),
+            34 => {
+                let frozen = world.get::<crate::tools::guns::Frozen>(body).is_some();
+                ctx.check("RMB freezes it in the air", frozen && (pos.y - ctx.vars["fy"]).abs() < 0.05 && pos.y > 2.5, format!("y {:.2}", pos.y));
+                look_at(world, pos);
+            }
+            35..=37 => look_at(world, pos),
+            38 => gi(world, &|g| g.unfreeze = true),
+            50 => {
+                let frozen = world.get::<crate::tools::guns::Frozen>(body).is_some();
+                ctx.check("R unfreezes: it falls", !frozen && pos.y < ctx.vars["fy"] - 1.0, format!("y {:.2}", pos.y));
+                world.resource_mut::<crate::tools::guns::GunInput>().scripted = false;
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("gravity gun: punt and pull", |world, ctx| {
+        let Some((body, pos)) = body_center(world) else {
+            ctx.check("cube exists", false, "");
+            return Step::Next;
+        };
+        let gi = |world: &mut World, f: &dyn Fn(&mut crate::tools::guns::GunInput)| {
+            let mut g = world.resource_mut::<crate::tools::guns::GunInput>();
+            g.scripted = true;
+            f(&mut g);
+        };
+        match ctx.frames {
+            1 => {
+                select(world, "gravity_gun");
+                // Walk up to the cube.
+                teleport(world, Vec3::new(pos.x, 0.0, pos.z + 4.0));
+            }
+            3 => {
+                let (p, _) = player(world);
+                ctx.vars.insert("d0".into(), p.distance(pos));
+                info!("gravgun start: player {p:.2}, cube {pos:.2}");
+            }
+            2..=5 => look_at(world, pos),
+            6 => gi(world, &|g| g.left_pressed = true),
+            20 => {
+                let (p, _) = player(world);
+                info!("gravgun after punt: player {p:.2}, cube {pos:.2}");
+                let d = p.distance(pos);
+                ctx.check("LMB punts the cube away", d > ctx.vars["d0"] + 1.5, format!("{:.1} → {d:.1} m", ctx.vars["d0"]));
+                look_at(world, pos);
+            }
+            24 => gi(world, &|g| g.right_pressed = true),
+            40 => {
+                let held = world.resource::<crate::tools::guns::Held>().body;
+                let (p, _) = player(world);
+                ctx.check("RMB pulls it in and holds it", held == Some(body) && p.distance(pos) < 4.5, format!("{held:?}, {:.1} m", p.distance(pos)));
+                screenshot(world, "41_gravity_gun");
+                gi(world, &|g| g.right_pressed = true);
+            }
+            44 => {
+                world.resource_mut::<crate::tools::guns::GunInput>().scripted = false;
                 return Step::Next;
             }
             _ => {}

@@ -152,7 +152,9 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) ->
             Some(running) => {
                 let base = p.get(b.id, "speed");
                 let sig = p.get(b.id, "signal_speed");
-                let v = base + (sig - base) * signal.abs().min(1.0);
+                // The signal blends towards ±"signal speed": with a base
+                // of 0 it works as a throttle (+ forward, − reverse).
+                let v = base + (sig * signal.signum() - base) * signal.abs().min(1.0);
                 let n = Node::new(Role::Shaft, axis).one_port(d);
                 if running { n.source(s * v) } else { n }
             }
@@ -213,10 +215,9 @@ fn spin_rotors(blocks: Query<(&BlockEntity, &Spin, &Children)>, mut nodes: Query
         };
         for c in children.iter() {
             if let Ok((l, mut t)) = nodes.get_mut(c)
-                && matches!(l.0, Layer::Rotor | Layer::RotorRev)
+                && l.0 == Layer::Rotor
             {
-                let sign = if l.0 == Layer::Rotor { 1.0 } else { -1.0 };
-                t.rotation = Quat::from_rotation_y(spin.angle * s * sign + offset);
+                t.rotation = Quat::from_rotation_y(spin.angle * s + offset);
             }
         }
     }
@@ -278,6 +279,7 @@ mod tests {
         let (b, p) = be("speed_controller", 2);
         assert_eq!(node_for(&b, &p, 0.0, Some(true)).unwrap().source, Some(32.0));
         assert_eq!(node_for(&b, &p, 1.0, Some(true)).unwrap().source, Some(128.0));
+        assert_eq!(node_for(&b, &p, -1.0, Some(true)).unwrap().source, Some(-128.0), "negative signal reverses");
         assert_eq!(node_for(&b, &p, 1.0, Some(false)).unwrap().source, None, "no input → no output");
     }
 

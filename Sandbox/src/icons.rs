@@ -26,7 +26,6 @@ const S: f32 = 1.7;
 #[derive(Resource)]
 pub struct ItemIcons {
     pub image: Handle<Image>,
-    pub rows: u32,
 }
 
 impl ItemIcons {
@@ -91,7 +90,8 @@ fn build(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: 
             }
             ItemKind::Tool(t) => {
                 // Tool models start at the grip and point along −Z: centre them.
-                let r = Quat::from_rotation_y(-2.4) * Quat::from_rotation_x(0.5);
+                // Across the view, pointing up to the right.
+                let r = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4) * Quat::from_rotation_x(0.65);
                 let scale = if t == crate::content::Tool::Glue { 3.6 } else { 2.9 };
                 let center = if t == crate::content::Tool::Glue { Vec3::ZERO } else { Vec3::new(0.0, 0.0, -0.17) };
                 let node = commands.spawn((Transform::from_rotation(r).with_scale(Vec3::splat(scale)).with_translation(-(r * center) * scale), Visibility::default(), layer.clone(), ChildOf(root))).id();
@@ -99,7 +99,7 @@ fn build(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: 
             }
         }
     }
-    commands.insert_resource(ItemIcons { image, rows });
+    commands.insert_resource(ItemIcons { image });
 }
 
 /// Model meshes spawned deeper in the hierarchy get the icon layer too.

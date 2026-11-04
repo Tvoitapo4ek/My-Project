@@ -121,10 +121,6 @@ impl VoxelGrid {
         old
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.chunks.values().all(|c| c.count == 0)
-    }
-
     /// Every non-air cell.
     pub fn cells(&self) -> Vec<(IVec3, Cell)> {
         let mut out = Vec::new();
@@ -222,7 +218,7 @@ mod tests {
         assert_eq!(g.cells().len(), 1);
         assert_eq!(g.cells()[0].0, IVec3::new(-1, 5, 17));
         g.set(IVec3::new(-1, 5, 17), Cell::AIR);
-        assert!(g.is_empty());
+        assert!(g.cells().is_empty());
     }
 
     #[test]
