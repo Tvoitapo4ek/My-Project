@@ -256,6 +256,48 @@ mod tests {
         assert_eq!(needle_angle(64.0, 128.0, false), -120.0);
     }
 
+    /// Speedometer and motor → telemetry sensors → displays, through the
+    /// real reading system; the readout drops to zero when things stop.
+    #[test]
+    fn sensors_feed_linked_displays() {
+        use crate::{content::BlockId, grid::facing_of, signal::PanelRef};
+        use bevy::ecs::system::RunSystemOnce;
+        let mut w = World::new();
+        let g = w.spawn((VoxelGrid::default(), LinearVelocity(Vec3::new(15.0, 0.0, 0.0)))).id();
+        let put = |w: &mut World, cell: IVec3, key: &str, facing: u8, rpm: f32| {
+            let e = w.spawn((BlockEntity { grid: g, cell, id: BlockId::k(key), facing }, Spin { rpm, angle: 0.0 })).id();
+            w.get_mut::<VoxelGrid>(g).unwrap().entities.insert(cell, e);
+            e
+        };
+        let into_z = facing_of(IVec3::NEG_Z);
+        put(&mut w, IVec3::new(0, 0, 0), "speedometer", 2, 0.0);
+        let s1 = put(&mut w, IVec3::new(0, 0, 1), "telemetry_sensor", into_z, 0.0);
+        let d1 = put(&mut w, IVec3::new(2, 0, 0), "mechanical_display", 2, 32.0);
+        let motor = put(&mut w, IVec3::new(5, 0, 0), "creative_motor", 2, -64.0);
+        let s2 = put(&mut w, IVec3::new(5, 0, 1), "telemetry_sensor", into_z, 0.0);
+        let d2 = put(&mut w, IVec3::new(7, 0, 0), "mechanical_display", 2, 32.0);
+        w.entity_mut(s1).insert(Linked(Some(PanelRef { grid: g, cell: IVec3::new(2, 0, 0) })));
+        w.entity_mut(s2).insert(Linked(Some(PanelRef { grid: g, cell: IVec3::new(7, 0, 0) })));
+        w.entity_mut(d1).insert(Shown::default());
+        w.entity_mut(d2).insert(Shown::default());
+        w.run_system_once(read_sensors).unwrap();
+        assert!((w.get::<Shown>(d1).unwrap().0 - 54.0).abs() < 1e-3, "15 m/s = 54 km/h");
+        assert_eq!(w.get::<Shown>(d2).unwrap().0, 64.0);
+        // The motor and the car stop → both read 0.
+        w.get_mut::<Spin>(motor).unwrap().rpm = 0.0;
+        w.get_mut::<LinearVelocity>(g).unwrap().0 = Vec3::ZERO;
+        w.run_system_once(read_sensors).unwrap();
+        assert_eq!(w.get::<Shown>(d1).unwrap().0, 0.0);
+        assert_eq!(w.get::<Shown>(d2).unwrap().0, 0.0);
+        // A display whose side cog stops goes dark, whatever it receives.
+        w.get_mut::<Spin>(motor).unwrap().rpm = 64.0;
+        w.get_mut::<Spin>(d2).unwrap().rpm = 0.0;
+        w.run_system_once(read_sensors).unwrap();
+        let (shown, rpm) = (w.get::<Shown>(d2).unwrap().0, w.get::<Spin>(d2).unwrap().rpm);
+        assert_eq!(shown, 64.0);
+        assert_eq!(needle_angle(shown, 128.0, powered(rpm)), -120.0);
+    }
+
     #[test]
     fn seven_segments() {
         assert_eq!(digits(7.4), [None, None, Some(7)]);
