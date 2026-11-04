@@ -68,8 +68,13 @@ pub fn mapping(world: &World, src: Entity, dst: Entity) -> Option<(impl Fn(IVec3
     let ts = *world.get::<GlobalTransform>(src)?;
     let td = *world.get::<GlobalTransform>(dst)?;
     let inv = td.affine().inverse();
-    let rot = snap_rotation(td.compute_transform().rotation.inverse() * ts.compute_transform().rotation);
-    let map = move |c: IVec3| inv.transform_point3(ts.transform_point(c.as_vec3() + Vec3::splat(0.5))).floor().as_ivec3();
+    let (tdt, tst) = (td.compute_transform(), ts.compute_transform());
+    let rot = snap_rotation(tdt.rotation.inverse() * tst.rotation);
+    // Positions with the snapped rotation (the body is turned onto the grid
+    // about its origin), so no two cells land in the same place.
+    let world_rot = tdt.rotation * rot;
+    let origin = tst.translation;
+    let map = move |c: IVec3| inv.transform_point3(origin + world_rot * (c.as_vec3() + Vec3::splat(0.5))).floor().as_ivec3();
     Some((map, rot))
 }
 
