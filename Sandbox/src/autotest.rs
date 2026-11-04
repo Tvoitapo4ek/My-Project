@@ -2058,7 +2058,8 @@ fn torque(steps: &mut Vec<(String, StepFn)>) {
         let label = if low { "a reduction gear (small → large cog)" } else { "direct drive" };
         steps.push(step(&format!("torque: diesel car on the 30° ramp, {label}"), move |world, ctx| {
             let x = crate::world::lane_x(1) + 2;
-            let front = IVec3::new(x, 0, crate::world::LANE_START_Z + 9);
+            // At the foot of the ramp: no run-up, the climb is on the engine.
+            let front = IVec3::new(x, 0, crate::world::LANE_START_Z + 1);
             let o = front + IVec3::new(-1, 0, 31);
             let engine_at = |world: &mut World, cell: IVec3| -> Option<crate::engine::Engine> {
                 let mut q = world.query_filtered::<&VoxelGrid, With<crate::contraption::Contraption>>();
@@ -2116,6 +2117,12 @@ fn torque(steps: &mut Vec<(String, StepFn)>) {
                 }
                 if engine_at(world, eng_cell).is_some_and(|e| e.stall == Some(crate::engine::Stall::Overload)) {
                     ctx.vars.insert("tq_stalled".into(), 1.0);
+                }
+                if ctx.frames % 3 == 0
+                    && let Some((_, com)) = body_center(world)
+                {
+                    let k = car_block(world, o + IVec3::new(3, 0, -26)).and_then(|e| world.get::<crate::mech::NetState>(e).copied());
+                    info!("[TRACE] low {low} f{} com {com:.2} k {:?} load {:?}", ctx.frames, k.map(|k| k.k), k.map(|k| k.load));
                 }
                 if ctx.frames == 30 {
                     screenshot(world, &format!("98_torque_{}", if low { "low" } else { "high" }));
