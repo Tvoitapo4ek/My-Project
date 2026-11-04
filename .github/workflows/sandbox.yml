@@ -1,0 +1,70 @@
+# Sandbox (Rust/Bevy game): tests on Linux, then the macOS app.
+# Every push that changes Sandbox/ publishes a release «sandbox-b<N>» with
+# Sandbox-macOS.zip; the game's main menu offers it as an update.
+name: Sandbox
+
+on:
+  push:
+    paths: ["Sandbox/**", ".github/workflows/sandbox.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Sandbox
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux system libraries
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Sandbox/target
+          key: linux-sandbox-${{ hashFiles('Sandbox/Cargo.lock', 'Sandbox/rust-toolchain.toml') }}
+      - name: Unit tests
+        run: cargo test --locked
+
+  macos:
+    needs: test
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: Sandbox
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Sandbox/target
+          key: macos-sandbox-${{ hashFiles('Sandbox/Cargo.lock', 'Sandbox/rust-toolchain.toml') }}
+      - name: Build (release)
+        env:
+          SANDBOX_BUILD: ${{ github.run_number }}
+        run: cargo build --release --locked
+      - name: App bundle
+        run: tools/macos/make_app.sh target/release/sandbox ${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sandbox-macOS
+          path: Sandbox/dist/Sandbox-macOS.zip
+      - name: Release (the game updates from it)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n\nВетка %s, коммит %s.\n' "${MSG:-Ручная сборка}" "${GITHUB_REF_NAME}" "${GITHUB_SHA::7}" > notes.txt
+          gh release create "sandbox-b${{ github.run_number }}" dist/Sandbox-macOS.zip \
+            --title "Sandbox — сборка ${{ github.run_number }}" --notes-file notes.txt --target "${GITHUB_SHA}"

@@ -309,7 +309,7 @@ fn act(paint: &mut Paint, a: Act, toasts: &mut MessageWriter<Toast>) {
             paint.undo = undo;
         }
         Act::Save => {
-            let path = std::path::PathBuf::from(format!("assets/textures/{}.png", paint.name));
+            let path = crate::paths::own_asset(&format!("textures/{}.png", paint.name));
             match paint.save_to(&path) {
                 Ok(()) => {
                     paint.unsaved = false;

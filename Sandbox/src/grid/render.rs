@@ -40,7 +40,7 @@ impl BlockAtlas {
 
 /// RGBA8 pixels of a texture (TILE×TILE; magenta checker if missing).
 pub fn load_texture(name: &str) -> Vec<u8> {
-    let path = format!("assets/textures/{name}.png");
+    let path = crate::paths::asset(&format!("textures/{name}.png"));
     match image::open(&path) {
         Ok(img) => {
             let img = img.to_rgba8();
@@ -52,7 +52,7 @@ pub fn load_texture(name: &str) -> Vec<u8> {
             img.into_raw()
         }
         Err(_) => {
-            warn!("missing texture {path}");
+            warn!("missing texture {}", path.display());
             (0..TILE * TILE).flat_map(|i| if ((i % TILE) / 4 + (i / TILE) / 4) % 2 == 0 { [255, 0, 255, 255] } else { [0, 0, 0, 255] }).collect()
         }
     }

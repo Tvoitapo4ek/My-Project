@@ -230,17 +230,16 @@ struct Custom {
 fn custom() -> &'static Custom {
     static C: OnceLock<Custom> = OnceLock::new();
     C.get_or_init(|| {
-        let dir = Path::new("assets/models");
         let mut blocks = HashMap::new();
         for b in &registry().blocks {
             if let Some(m) = b.mech
                 && !blocks.contains_key(&m)
-                && let Some(c) = load(&dir.join(format!("{}.bbmodel", b.key)))
+                && let Some(c) = load(&crate::paths::asset(&format!("models/{}.bbmodel", b.key)))
             {
                 blocks.insert(m, block_parts(&c));
             }
         }
-        let player = load(&dir.join("player.bbmodel")).map(|c| player_parts(&c));
+        let player = load(&crate::paths::asset("models/player.bbmodel")).map(|c| player_parts(&c));
         Custom { blocks, player }
     })
 }
@@ -383,11 +382,13 @@ pub fn export_cmd(key: &str) -> String {
             None => return format!("Нет механизма «{key}» (у простых блоков модели нет — у них текстура)"),
         }
     };
-    let path = format!("assets/models/{key}.bbmodel");
-    let _ = std::fs::create_dir_all("assets/models");
+    let path = crate::paths::own_asset(&format!("models/{key}.bbmodel"));
+    if let Some(d) = path.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
     match std::fs::write(&path, text) {
-        Ok(()) => format!("Модель записана: {path} — откройте в Blockbench, после правки перезапустите игру"),
-        Err(e) => format!("Не удалось записать {path}: {e}"),
+        Ok(()) => format!("Модель записана: {} — откройте в Blockbench, после правки перезапустите игру", path.display()),
+        Err(e) => format!("Не удалось записать {}: {e}", path.display()),
     }
 }
 

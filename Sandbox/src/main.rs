@@ -28,6 +28,7 @@ mod logic;
 mod mech;
 mod models;
 mod paint;
+mod paths;
 mod ponder;
 mod mounts;
 mod player;
@@ -40,6 +41,7 @@ mod style;
 mod telemetry;
 mod tools;
 mod ui;
+mod update;
 mod vehicle;
 mod water;
 mod world;
@@ -48,6 +50,7 @@ use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
 
 fn main() {
+    paths::init();
     let args: Vec<String> = std::env::args().collect();
     let mut app = App::new();
     app.add_plugins(
@@ -56,7 +59,8 @@ fn main() {
                 primary_window: Some(Window { title: "Sandbox".into(), resolution: WindowResolution::new(1280, 720), ..default() }),
                 ..default()
             })
-            .set(ImagePlugin::default_nearest()),
+            .set(ImagePlugin::default_nearest())
+            .set(AssetPlugin { file_path: paths::shipped_assets().to_string_lossy().into_owned(), ..default() }),
     )
     .add_plugins(PhysicsPlugins::default())
     .add_plugins((
@@ -88,7 +92,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

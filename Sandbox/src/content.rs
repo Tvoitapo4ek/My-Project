@@ -375,7 +375,7 @@ impl Registry {
 
     pub fn load() -> Registry {
         let read = |f: &str, builtin: &str| {
-            std::fs::read_to_string(format!("assets/content/{f}")).unwrap_or_else(|_| builtin.to_string())
+            std::fs::read_to_string(crate::paths::asset(&format!("content/{f}"))).unwrap_or_else(|_| builtin.to_string())
         };
         let categories: Vec<CategoryDef> = parse(&read("categories.ron", BUILTIN_CATEGORIES), "categories.ron");
         let blocks: Vec<BlockDef> = parse(&read("blocks.ron", BUILTIN_BLOCKS), "blocks.ron");
