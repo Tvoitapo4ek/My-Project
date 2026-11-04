@@ -132,6 +132,18 @@
         (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 64.0),
         (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
      ]),
+    // ---- belts (laid with the belt tool) and tracks
+    (key: "belt_pulley", name: "Шкив ленты", category: "mechanisms", mech: Some(BeltPulley), placement: Face, mass: 40.0, hidden: true),
+    (key: "belt", name: "Лента", category: "mechanisms", mech: Some(Belt), placement: Face,
+     collision: Box(1.0, 0.7, 1.0), mass: 10.0, hidden: true),
+    (key: "belt_slope", name: "Лента (наклон)", category: "mechanisms", mech: Some(Belt), placement: Horizontal,
+     shape: Wedge(0.0, 1.0), mass: 15.0, hidden: true),
+    // Facing outwards like a wheel; the shaft at its back drives it. Road
+    // wheels beside it (same axis) turn with it.
+    (key: "track_sprocket", name: "Ведущая звёздочка гусеницы", category: "mechanisms", mech: Some(TrackDrive), placement: Face,
+     collision: None, mass: 60.0),
+    (key: "track_roller", name: "Опорный каток гусеницы", category: "mechanisms", mech: Some(TrackRoller), placement: Face,
+     collision: None, mass: 40.0),
     (key: "piston_pole", name: "Шток поршня", category: "mechanisms", mech: Some(PistonPole),
      placement: Face, collision: Box(0.34, 1.0, 0.34), mass: 20.0, hidden: true),
     // Measures the speed of the physical contraption it stands on (km/h);

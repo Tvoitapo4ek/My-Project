@@ -6,6 +6,10 @@
     (key: "physgun", name: "Физическая пушка", category: "tools", tool: PhysGun),
     (key: "blueprint", name: "Чертёж", category: "tools", tool: Blueprint),
     (key: "bucket_diesel", name: "Ведро дизеля", category: "tools", tool: DieselBucket),
+    // LMB cogwheel → cogwheel (→ …): a chain; RMB on a cogwheel removes it.
+    (key: "chain", name: "Цепь", category: "mechanisms", tool: Chain),
+    // LMB shaft → shaft: a belt (straight, vertical or 45°).
+    (key: "mechanical_belt", name: "Механическая лента", category: "mechanisms", tool: Belt),
     // Worn in the head slot of the inventory.
     (key: "engineer_goggles", name: "Инженерные очки", category: "tools", tool: Goggles),
 ]

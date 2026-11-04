@@ -100,7 +100,8 @@ pub struct WheelLoad(pub f32);
 /// Stress of a block at 32 RPM (SU).
 pub fn base_stress(m: Mech) -> f32 {
     match m {
-        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Clutch | Mech::Gearshift => 0.5,
+        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Clutch | Mech::Gearshift | Mech::TrackDrive | Mech::TrackRoller => 0.5,
+        Mech::BeltPulley => 1.0,
         Mech::Cog | Mech::MechanicalDisplay | Mech::SpeedController | Mech::Flywheel => 1.0,
         Mech::LargeCog | Mech::Gearbox | Mech::Bearing | Mech::Piston => 2.0,
         Mech::Pump => 12.0,
@@ -164,7 +165,7 @@ fn sync_block_entities(
                 Mech::Flywheel => {
                     commands.entity(e).insert(Flywheel::default());
                 }
-                Mech::Wheel => {
+                Mech::Wheel | Mech::TrackDrive | Mech::TrackRoller => {
                     commands.entity(e).insert(WheelLoad::default());
                 }
                 _ => {}
@@ -196,7 +197,7 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
             let ccw = p.get(b.id, "direction") >= 0.5;
             Node::new(Role::Shaft, axis).one_port(d).source(if ccw { s * speed } else { -s * speed }).capacity(p.get(b.id, "capacity"))
         }
-        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Flywheel => Node::new(Role::Shaft, axis),
+        Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Flywheel | Mech::BeltPulley | Mech::TrackDrive | Mech::TrackRoller => Node::new(Role::Shaft, axis),
         // Pumps mesh like cogwheels around their pipe axis.
         Mech::Pump => Node::new(Role::Cog, axis),
         Mech::DieselEngine => {
@@ -236,9 +237,9 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
 
 type NetBlock<'a> = (&'a BlockEntity, &'a Params, &'a Signal, &'a mut Spin, &'a mut NetState, Option<&'a mut crate::engine::Engine>, Option<&'a mut Flywheel>, Option<&'a WheelLoad>);
 
-fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<NetBlock>) {
+fn solve_networks(time: Res<Time>, grids: Query<(&VoxelGrid, Option<&crate::chains::Chains>)>, mut blocks: Query<NetBlock>) {
     let dt = time.delta_secs();
-    for grid in &grids {
+    for (grid, chains) in &grids {
         if grid.entities.is_empty() {
             continue;
         }
@@ -260,7 +261,13 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<N
                 }
             }
         }
-        let mut sol = network::solve(&nodes);
+        // Chains (and other links between distant blocks).
+        let mut extra = Vec::new();
+        if let Some(ch) = chains {
+            extra.extend(crate::chains::links(ch, |c| grid.entities.get(&c).and_then(|e| blocks.get(*e).ok()).and_then(|b| b.0.mech())));
+        }
+        extra.extend(crate::belts::links(grid, &nodes, |c| grid.entities.get(&c).and_then(|e| blocks.get(*e).ok()).and_then(|b| b.0.mech())));
+        let mut sol = network::solve_with(&nodes, &extra);
         if !controllers.is_empty() {
             for &(c, e, _) in &controllers {
                 let running = sol.speed.get(&c).is_some_and(|v| v.abs() > 1e-3);
@@ -270,7 +277,7 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<N
                     nodes.insert(c, n);
                 }
             }
-            sol = network::solve(&nodes);
+            sol = network::solve_with(&nodes, &extra);
         }
         // Networks joined through speed controllers share power and stress.
         let mut root: Vec<usize> = (0..sol.nets.len()).collect();

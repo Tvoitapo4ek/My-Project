@@ -244,6 +244,9 @@ pub fn build() -> Scenario {
     if want("torque") {
         torque(&mut steps);
     }
+    if want("links") {
+        links(&mut steps);
+    }
     if want("shapes") {
         shapes(&mut steps);
         doors(&mut steps);
@@ -1487,7 +1490,12 @@ impl Plugin for AutotestPlugin {
             // Straight into the game (no main menu).
             app.insert_resource(build())
                 .add_systems(Startup, |mut next: ResMut<NextState<Ui>>| next.set(Ui::Game))
-                .add_systems(PreUpdate, run.after(bevy::input::InputSystems));
+                .add_systems(PreUpdate, run.after(bevy::input::InputSystems))
+                .add_systems(Last, |mut t: MessageReader<crate::core::Toast>| {
+                    for m in t.read() {
+                        info!("[TOAST] {}", m.0);
+                    }
+                });
         }
     }
 }
@@ -2280,6 +2288,163 @@ fn goggles(steps: &mut Vec<(String, StepFn)>) {
                 return Step::Next;
             }
             _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn links(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("chains: a chain over three cogwheels, same side and crossed", |world, ctx| {
+        let (a, b, c) = (IVec3::new(-20, 1, -44), IVec3::new(-15, 1, -44), IVec3::new(-10, 4, -44));
+        let up = Vec3::new(0.0, 0.3, 0.5);
+        let down = Vec3::new(0.0, -0.3, 0.5);
+        let centre = |v: IVec3| v.as_vec3() + Vec3::splat(0.5);
+        match ctx.frames {
+            1 => {
+                set_block(world, a - IVec3::Z, "creative_motor", 4);
+                for v in [a, b, c] {
+                    set_block(world, v, "cogwheel", 4);
+                }
+                select(world, "chain");
+                teleport(world, Vec3::new(-15.0, 0.0, -39.0));
+            }
+            4 => look_at(world, centre(a) + up),
+            8 => click(world, MouseButton::Left, true),
+            9 => click(world, MouseButton::Left, false),
+            12 => look_at(world, centre(b) + up),
+            16 => click(world, MouseButton::Left, true),
+            17 => click(world, MouseButton::Left, false),
+            // From B (clicked on top) to C, clicked underneath: crossed.
+            20 => look_at(world, centre(c) + down),
+            24 => click(world, MouseButton::Left, true),
+            25 => click(world, MouseButton::Left, false),
+            34 => {
+                let g = world_grid(world);
+                let n = world.get::<crate::chains::Chains>(g).map(|c| c.0.len()).unwrap_or(0);
+                let (ra, rb, rc) = (rpm(world, a), rpm(world, b), rpm(world, c));
+                ctx.check("two chain runs hung with the chain tool", n == 2, format!("{n}"));
+                ctx.check("A and B on the same side turn the same way", ra != 0.0 && rb == ra, format!("{ra} {rb}"));
+                ctx.check("B → C crossed: C turns the other way", rc == -rb, format!("{rb} {rc}"));
+                screenshot(world, "9d_chains");
+                select(world, "white_block");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("belts: a belt between two shafts turns the second and carries the player", |world, ctx| {
+        let (a, b) = (IVec3::new(-20, 1, -51), IVec3::new(-14, 1, -51));
+        let (d1, d2) = (IVec3::new(-20, 1, -57), IVec3::new(-16, 5, -57));
+        match ctx.frames {
+            1 => {
+                set_block(world, a - IVec3::Z, "creative_motor", 4);
+                for v in [a, b, d1, d2] {
+                    set_block(world, v, "shaft", 4);
+                }
+                select(world, "mechanical_belt");
+                teleport(world, Vec3::new(-17.0, 0.0, -45.0));
+            }
+            4 => look_at(world, a.as_vec3() + Vec3::new(0.5, 0.5, 0.9)),
+            8 => {
+                click(world, MouseButton::Left, true);
+            }
+            9 => click(world, MouseButton::Left, false),
+            12 => look_at(world, b.as_vec3() + Vec3::new(0.5, 0.5, 0.9)),
+            16 => click(world, MouseButton::Left, true),
+            17 => click(world, MouseButton::Left, false),
+            22 => {
+                let mid = get_block(world, IVec3::new(-17, 1, -51)).id;
+                ctx.check("the belt fills the gap, the shafts become pulleys", mid == BlockId::k("belt") && get_block(world, a).id == BlockId::k("belt_pulley"), mid.def().key.clone());
+                let (ra, rb) = (rpm(world, a), rpm(world, b));
+                ctx.check("both pulleys turn alike", ra != 0.0 && ra == rb, format!("{ra} {rb}"));
+                // A 45° belt too (laid directly).
+                let g = world_grid(world);
+                let r = crate::belts::lay(&mut world.get_mut::<VoxelGrid>(g).unwrap(), d1, d2);
+                ctx.check("a 45° belt is a ramp of slope cells", r.is_ok() && get_block(world, d1 + IVec3::new(1, 1, 0)).id == BlockId::k("belt_slope"), format!("{r:?}"));
+                // Stand on the flat belt.
+                select(world, "white_block");
+                teleport(world, Vec3::new(-16.5, 1.9, -50.5));
+                look_at(world, Vec3::new(-17.0, 1.0, -54.0));
+                ctx.vars.insert("belt_x0".into(), player(world).0.x);
+                world.resource_mut::<CameraView>().0 = View::Behind;
+                ctx.vars.insert("belt_t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames == 27 {
+            screenshot(world, "9e_belts");
+        }
+        if ctx.frames > 28 && ctx.t > ctx.vars["belt_t0"] + 1.5 {
+            world.resource_mut::<CameraView>().0 = View::First;
+            let x = player(world).0.x;
+            let moved = (x - ctx.vars["belt_x0"]).abs();
+            ctx.check("standing on the belt, the player rides along", moved > 1.0, format!("{moved:.2} m"));
+            teleport(world, Vec3::new(0.5, 0.0, 0.5));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("tracks: a tracked vehicle drives on two track rows", |world, ctx| {
+        let o = IVec3::new(50, 0, -30);
+        match ctx.frames {
+            1 => {
+                clear_bodies(world);
+                for x in 0..3 {
+                    for z in 0..5 {
+                        set_block(world, o + IVec3::new(x, 1, z), "steel_block", 2);
+                    }
+                }
+                for z in 0..5 {
+                    let (k, f) = if z == 0 { ("track_sprocket", 1) } else { ("track_roller", 1) };
+                    set_block(world, o + IVec3::new(-1, 0, z), k, f);
+                    let (k, f) = if z == 0 { ("track_sprocket", 0) } else { ("track_roller", 0) };
+                    set_block(world, o + IVec3::new(3, 0, z), k, f);
+                }
+                set_block(world, o, "creative_motor", 1);
+                set_block(world, o + IVec3::new(2, 0, 0), "creative_motor", 0);
+                set_block(world, o + IVec3::new(1, 2, 2), "physics_toggle", 2);
+                glue_box(world, o + IVec3::new(-1, 0, 0), o + IVec3::new(3, 2, 4));
+                teleport(world, Vec3::new(57.0, 0.0, -24.0));
+            }
+            3 => {
+                // Both tracks the same way about +X, stopped while assembling.
+                set_param(world, o, "speed", 0.0);
+                set_param(world, o + IVec3::new(2, 0, 0), "speed", 0.0);
+                set_param(world, o + IVec3::new(2, 0, 0), "direction", 1.0);
+            }
+            5 => {
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: o + IVec3::new(1, 2, 2), mech: crate::content::Mech::PhysicsToggle });
+                look_at(world, Vec3::new(51.5, 0.5, -28.0));
+            }
+            9 => screenshot(world, "9f_tracks"),
+            12 => {
+                for c in [o, o + IVec3::new(2, 0, 0)] {
+                    if let Some(e) = car_block(world, c) {
+                        world.get_mut::<crate::mech::Params>(e).unwrap().0[0] = 64.0;
+                    }
+                }
+                let rolled = car_block(world, o + IVec3::new(-1, 0, 4)).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(0.0);
+                let _ = rolled;
+                if let Some((_, p)) = body_center(world) {
+                    ctx.vars.insert("tr_z0".into(), p.z);
+                }
+                ctx.vars.insert("tr_t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames == 16 {
+            let r = car_block(world, o + IVec3::new(-1, 0, 4)).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(0.0);
+            ctx.check("the last road wheel turns with the sprocket", r.abs() == 64.0, format!("{r}"));
+        }
+        if ctx.frames > 16 && ctx.t > ctx.vars["tr_t0"] + 4.0 {
+            let (p, up) = body_center(world).map(|(e, p)| (p, (world.get::<GlobalTransform>(e).unwrap().compute_transform().rotation * Vec3::Y).y)).unwrap_or((Vec3::ZERO, 0.0));
+            let moved = (p.z - ctx.vars["tr_z0"]).abs();
+            ctx.check("it drives, upright, on its tracks", moved > 3.0 && up > 0.9, format!("{moved:.1} m, up {up:.2}"));
+            screenshot(world, "9g_tracks_moving");
+            clear_bodies(world);
+            return Step::Next;
         }
         Step::Wait
     }));

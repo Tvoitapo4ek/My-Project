@@ -126,6 +126,8 @@ fn toggle(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCursor
 
 /// Slightly over half a block: blocks at axle height clear the ground.
 pub const WHEEL_RADIUS: f32 = 0.6;
+/// Track road wheels touch the ground at the bottom of their cell.
+pub const TRACK_RADIUS: f32 = 0.5;
 const TRAVEL: f32 = 0.35;
 /// Ground clearance added by the springs: blocks at axle level ride this
 /// much above the ground instead of scraping it.
@@ -152,7 +154,7 @@ fn drive(
     let dt = time.delta_secs().max(1e-4);
     let g = gravity.0.length();
     for (_, grid, views, gt, mass, mut forces) in &mut bodies {
-        let list: Vec<Entity> = grid.entities.values().copied().filter(|e| wheels.get(*e).is_ok_and(|(b, ..)| b.mech() == Some(Mech::Wheel))).collect();
+        let list: Vec<Entity> = grid.entities.values().copied().filter(|e| wheels.get(*e).is_ok_and(|(b, ..)| b.mech() == Some(Mech::Wheel) || crate::tracks::is_track(b.mech()))).collect();
         if list.is_empty() {
             continue;
         }
@@ -168,12 +170,19 @@ fn drive(
         for e in list {
             let Ok((wb, mut spin, drop, net, mut load)) = wheels.get_mut(e) else { continue };
             // The suspension holding this wheel (on its axle side).
-            let s = grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).filter(|(b, ..)| b.mech() == Some(Mech::Suspension));
-            let Some((sb, steer, _, params)) = s else { continue };
-            let stiffness = params.get(sb.id, "stiffness") / 5.0;
+            // Track blocks have their own spring and do not steer.
+            let track = crate::tracks::is_track(wb.mech());
+            let (stiffness, steer_angle) = if track {
+                (1.0, 0.0)
+            } else {
+                let s = grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).filter(|(b, ..)| b.mech() == Some(Mech::Suspension));
+                let Some((sb, steer, _, params)) = s else { continue };
+                (params.get(sb.id, "stiffness") / 5.0, steer.0)
+            };
+            let radius = if track { TRACK_RADIUS } else { WHEEL_RADIUS };
             let center = t.transform_point(wb.cell.as_vec3() + Vec3::splat(0.5));
             let axle0 = t.rotation * wb.dir().as_vec3();
-            let axle = Quat::from_axis_angle(up, steer.0) * axle0;
+            let axle = Quat::from_axis_angle(up, steer_angle) * axle0;
             let forward = axle.cross(up).normalize_or_zero();
             // Spring rate: at rest each wheel carries its share of the weight
             // with `eq` compression; the ray is that much longer, so the car
@@ -181,18 +190,19 @@ fn drive(
             let k = per_wheel * g / (TRAVEL * 0.5) * stiffness;
             let eq = per_wheel * g / k;
             // Distances from the wheel centre: the spring is free at `rest`.
-            let rest = WHEEL_RADIUS + RIDE + eq;
+            let rest = radius + RIDE + eq;
             let origin = center + up * TRAVEL;
             // A small sphere instead of a thin ray: it rolls over block
             // edges, steps and slope joints instead of snapping at them.
             let hit = spatial.cast_shape(&Collider::sphere(PROBE), origin, Quat::IDENTITY, Dir3::new(-up).unwrap_or(Dir3::NEG_Y), &ShapeCastConfig::from_max_distance(TRAVEL + rest + TRAVEL - PROBE), &filter);
             let ground = hit.map(|h| h.distance + PROBE - TRAVEL).unwrap_or(rest + TRAVEL);
-            let hang = (ground - WHEEL_RADIUS).clamp(-TRAVEL, RIDE + eq);
+            let hang = (ground - radius).clamp(-TRAVEL, RIDE + eq);
             match drop {
                 Some(mut d) => d.0 = hang,
-                None => {
+                None if !track => {
                     commands.entity(e).insert(WheelDrop(hang));
                 }
+                None => {}
             }
             let compression = rest - ground;
             if hit.is_none() || compression <= 0.0 {
@@ -218,7 +228,7 @@ fn drive(
             // Held by a drivetrain with a source (0 RPM = brake); otherwise free.
             let driven = net.driven;
             if driven {
-                let target = rpm / 60.0 * std::f32::consts::TAU * WHEEL_RADIUS;
+                let target = rpm / 60.0 * std::f32::consts::TAU * radius;
                 // Stress on the drivetrain (per 32 RPM): rolling, plus the
                 // climb when it drives uphill (not when it brakes downhill).
                 // Stopped (a choked engine): the last load is kept, so the
@@ -235,11 +245,12 @@ fn drive(
                     l.0 = 0.0;
                 }
                 // Free wheel: roll with the ground (visual).
-                spin.angle += v_long / WHEEL_RADIUS * dt * (d.x + d.y + d.z) as f32;
+                spin.angle += v_long / radius * dt * (d.x + d.y + d.z) as f32;
             }
             // Side grip.
             let v_lat = v.dot(axle);
-            let f_lat = (-v_lat * per_wheel / dt * 0.3).clamp(-grip, grip);
+            let side = if track { 0.6 } else { 0.3 };
+            let f_lat = (-v_lat * per_wheel / dt * side).clamp(-grip, grip * if track { 1.5 } else { 1.0 });
             forces.apply_force_at_point(axle * f_lat, contact);
         }
     }

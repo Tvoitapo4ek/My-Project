@@ -205,7 +205,21 @@ pub struct Solution {
     pub nets: Vec<NetInfo>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
+    solve_with(grid, &[])
+}
+
+/// Like `solve`, with extra links between distant nodes (chains, belts,
+/// track rows): `(a, b, r)` means `speed_b = r · speed_a`.
+pub fn solve_with(grid: &HashMap<IVec3, Node>, extra: &[(IVec3, IVec3, f32)]) -> Solution {
+    let mut more: HashMap<IVec3, Vec<(IVec3, f32)>> = HashMap::new();
+    for &(a, b, r) in extra {
+        if grid.contains_key(&a) && grid.contains_key(&b) && r != 0.0 {
+            more.entry(a).or_default().push((b, r));
+            more.entry(b).or_default().push((a, 1.0 / r));
+        }
+    }
     let mut sol = Solution::default();
     let mut cells: Vec<IVec3> = grid.keys().copied().collect();
     cells.sort_by_key(|c| (c.x, c.y, c.z));
@@ -222,10 +236,9 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
             info.members.push(c);
             sol.net_of.insert(c, id);
             let s = rel[&c];
-            for (n, r) in links(grid, c) {
-                if !links(grid, n).iter().any(|(m, _)| *m == c) {
-                    continue;
-                }
+            let mut near: Vec<(IVec3, f32)> = links(grid, c).into_iter().filter(|(n, _)| links(grid, *n).iter().any(|(m, _)| *m == c)).collect();
+            near.extend(more.get(&c).cloned().unwrap_or_default());
+            for (n, r) in near {
                 let want = s * r;
                 match rel.get(&n) {
                     Some(&have) if (have - want).abs() > 1e-3 * want.abs().max(1.0) => info.conflict = true,
@@ -416,6 +429,19 @@ mod tests {
         let (slow, low) = load(true);
         assert_eq!((fast, slow), (64.0, 32.0));
         assert_eq!(low * 2.0, high);
+    }
+
+    #[test]
+    fn extra_links_join_distant_nodes() {
+        // Two cogs 5 apart on a chain, opposite sides: reversed; large on
+        // the other end: half speed.
+        let mut g = HashMap::new();
+        g.insert(IVec3::ZERO, Node::new(Role::Cog, Axis::Z).source(32.0));
+        g.insert(IVec3::new(5, 0, 0), Node::new(Role::Cog, Axis::Z));
+        g.insert(IVec3::new(5, 4, 0), Node::new(Role::LargeCog, Axis::Z));
+        let s = solve_with(&g, &[(IVec3::ZERO, IVec3::new(5, 0, 0), -1.0), (IVec3::new(5, 0, 0), IVec3::new(5, 4, 0), 0.5)]);
+        assert_eq!(s.speed[&IVec3::new(5, 0, 0)], -32.0);
+        assert_eq!(s.speed[&IVec3::new(5, 4, 0)], -16.0);
     }
 
     #[test]

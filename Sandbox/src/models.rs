@@ -304,6 +304,20 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
         }
         // Drawn by the piston (its pole stretches through these cells).
         Mech::PistonPole => Vec::new(),
+        Mech::BeltPulley => {
+            // A shaft with a rubber drum and brass flanges (turning).
+            let mut v = shaft(1.0);
+            v.push(part([0.72, 0.8, 0.72], "rubber", [0.0, 0.0, 0.0]).layer(Layer::Rotor));
+            v.push(part([0.72, 0.8, 0.72], "rubber", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)).layer(Layer::Rotor));
+            for y in [0.42f32, -0.42] {
+                v.push(part([0.86, 0.06, 0.86], "brass", [0.0, y, 0.0]).layer(Layer::Rotor));
+            }
+            v
+        }
+        // Drawn by `belts` (its run depends on the neighbours).
+        Mech::Belt => Vec::new(),
+        Mech::TrackDrive => crate::tracks::roller_parts(true),
+        Mech::TrackRoller => crate::tracks::roller_parts(false),
         Mech::SlidingDoor => vec![
             // Front = local +Z. A steel frame post on each side; the panel
             // (planks with steel bands, a brass handle and a window up top)
@@ -506,6 +520,21 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
         ],
         Tool::Goggles => goggles_parts(),
+        Tool::Belt => vec![
+            // A rolled-up belt.
+            part([0.2, 0.2, 0.12], "rubber", [0.0, 0.0, 0.0]),
+            part([0.2, 0.2, 0.12], "rubber", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_z(FRAC_PI_4)),
+            part([0.08, 0.08, 0.14], "steel", [0.0, 0.0, 0.0]),
+        ],
+        Tool::Chain => {
+            // A short length of chain: alternating steel and brass links.
+            let mut v = Vec::new();
+            for i in 0..6 {
+                let (mat, s) = if i % 2 == 0 { ("steel", [0.05, 0.1, 0.12]) } else { ("brass", [0.1, 0.05, 0.12]) };
+                v.push(part(s, mat, [0.0, 0.0, 0.1 - i as f32 * 0.09]));
+            }
+            v
+        }
         Tool::DieselBucket => vec![
             // A steel bucket with an amber fill and a brass handle.
             part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),

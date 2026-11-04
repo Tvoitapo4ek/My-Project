@@ -69,6 +69,14 @@ pub enum Mech {
     Flywheel,
     /// Sliding door half (`doors`): closed / open is the block itself.
     SlidingDoor,
+    /// End of a mechanical belt (a shaft with a drum).
+    BeltPulley,
+    /// A belt cell between two pulleys (flat, vertical or a 45° ramp).
+    Belt,
+    /// Track drive sprocket (turned like a wheel).
+    TrackDrive,
+    /// Track road wheel (turns with the sprocket in its row).
+    TrackRoller,
     /// Logic (`logic`): a wire on a block face, coloured.
     Wire,
     /// Short pulse when pressed (RMB).
@@ -216,6 +224,10 @@ pub enum Tool {
     DieselBucket,
     /// Engineer's goggles: worn on the head, show what blocks are doing.
     Goggles,
+    /// Hangs chains between cogwheels (`chains`).
+    Chain,
+    /// Lays a belt between two shafts (`belts`).
+    Belt,
 }
 
 #[derive(Debug, Clone, Deserialize)]

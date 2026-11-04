@@ -68,6 +68,7 @@ fn step(
     spatial: SpatialQuery,
     mut q: Query<(Entity, &Position, &mut LinearVelocity, &mut GravityScale, &mut Body), (With<Player>, Without<Seated>)>,
     water: Res<crate::water::Water>,
+    belt: Res<crate::belts::BeltCarry>,
 ) {
     let dt = time.delta_secs();
     for (e, pos, mut vel, mut grav, mut body) in &mut q {
@@ -120,7 +121,8 @@ fn step(
             grav.0 = 2.6;
             let speed = if body.crouching { CROUCH } else if body.sprinting { SPRINT } else { WALK };
             let accel = if body.grounded { 70.0 } else { 18.0 };
-            let target = wish * speed;
+            // Standing on a moving belt: it carries you.
+            let target = wish * speed + Vec3::new(belt.0.x, 0.0, belt.0.z);
             let h_now = Vec3::new(vel.x, 0.0, vel.z);
             let mut h_new = move_toward(h_now, target, accel * dt);
             // Sneak edge guard: never step off into the void while crouching.

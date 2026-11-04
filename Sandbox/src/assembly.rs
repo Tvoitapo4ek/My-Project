@@ -42,14 +42,23 @@ pub fn split_off(world: &mut World, src: Entity, cells: &[IVec3], take_glue: boo
     if take_glue && let Some(mut g) = world.get_mut::<Glue>(src) {
         g.0.retain(|b| !boxes.contains(b));
     }
-    let body = world.spawn((Name::new("Contraption"), new_grid, Glue(boxes), t, Visibility::default())).id();
+    let set: HashSet<IVec3> = cells.iter().copied().collect();
+    // Chains with both ends in the group go with it.
+    let mut chains = crate::chains::Chains::default();
+    if let Some(mut ch) = world.get_mut::<crate::chains::Chains>(src) {
+        let (go, stay): (Vec<_>, Vec<_>) = ch.0.iter().copied().partition(|l| set.contains(&l.a) && set.contains(&l.b));
+        if !go.is_empty() {
+            ch.0 = stay;
+        }
+        chains.0 = go;
+    }
+    let body = world.spawn((Name::new("Contraption"), new_grid, Glue(boxes), chains, t, Visibility::default())).id();
     for e in moved {
         if let Some(mut b) = world.get_mut::<BlockEntity>(e) {
             b.grid = body;
         }
         world.entity_mut(e).insert(ChildOf(body));
     }
-    let set: HashSet<IVec3> = cells.iter().copied().collect();
     let mut q = world.query::<&mut Linked>();
     for mut l in q.iter_mut(world) {
         if let Some(p) = l.0.as_mut()
@@ -143,6 +152,13 @@ pub fn merge_into(world: &mut World, src: Entity, dst: Entity) -> bool {
         }
     }
     world.entity_mut(dst).insert(Glue(all));
+    // Chains: mapped like the cells (the sides turn with them).
+    let moved: Vec<crate::chains::ChainLink> = world.get::<crate::chains::Chains>(src).map(|c| c.0.clone()).unwrap_or_default();
+    if !moved.is_empty() {
+        let mut dst_chains = world.get::<crate::chains::Chains>(dst).cloned().unwrap_or_default();
+        dst_chains.0.extend(moved.into_iter().map(|l| crate::chains::ChainLink { a: map(l.a), b: map(l.b), ..l }));
+        world.entity_mut(dst).insert(dst_chains);
+    }
     world.get_mut::<VoxelGrid>(src).unwrap().entities.clear();
     world.entity_mut(src).despawn();
     true

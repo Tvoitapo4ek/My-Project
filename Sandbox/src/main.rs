@@ -7,6 +7,8 @@
 
 mod assembly;
 mod autotest;
+mod belts;
+mod chains;
 mod content;
 mod contraption;
 mod core;
@@ -30,6 +32,7 @@ mod settings;
 mod signal;
 mod sound;
 mod sky;
+mod tracks;
 mod style;
 mod telemetry;
 mod tools;
@@ -82,7 +85,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }
