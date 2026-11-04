@@ -1623,11 +1623,11 @@ fn mounts(steps: &mut Vec<(String, StepFn)>) {
                 {
                     p.0[0] = 16.0;
                 }
-                ctx.vars.insert("t0".into(), ctx.t);
+                ctx.vars.insert("crane_t0".into(), ctx.t);
             }
             _ => {}
         }
-        if ctx.frames > 12 && !ctx.vars.contains_key("checked") && ctx.t > ctx.vars["t0"] + 3.0 {
+        if ctx.frames > 12 && !ctx.vars.contains_key("crane_checked") && ctx.t > ctx.vars["crane_t0"] + 3.0 {
             let parts = moving_parts(world);
             let c = contraptions(world);
             let body = c.iter().find(|c| parts.iter().all(|p| p.0 != c.0)).map(|c| c.0);
@@ -1639,15 +1639,15 @@ fn mounts(steps: &mut Vec<(String, StepFn)>) {
             {
                 p.0[0] = 0.0;
             }
-            ctx.vars.insert("checked".into(), 1.0);
-            ctx.vars.insert("toggle".into(), body.map(|b| b.to_bits() as f32).unwrap_or(0.0));
+            ctx.vars.insert("crane_checked".into(), 1.0);
+            ctx.vars.insert("crane_toggle".into(), body.map(|b| b.to_bits() as f32).unwrap_or(0.0));
             if let Some(b) = body {
                 let toggle_cell = base + IVec3::new(0, 1, 0);
                 world.write_message(crate::interact::UseBlock { grid: b, cell: toggle_cell, mech: crate::content::Mech::PhysicsToggle });
             }
-            ctx.vars.insert("t1".into(), ctx.t);
+            ctx.vars.insert("crane_t1".into(), ctx.t);
         }
-        if ctx.vars.get("t1").is_some_and(|t| ctx.t > t + 1.0) {
+        if ctx.vars.get("crane_t1").is_some_and(|t| ctx.t > t + 1.0) {
             let n = contraptions(world).len();
             ctx.check("physics off: the arm and the base go back into the grid", n == 0 && (world_cells(world) as f32 - ctx.vars["cells0"]).abs() < 0.5, format!("{n} bodies, {} vs {}", world_cells(world), ctx.vars["cells0"]));
             return Step::Next;
