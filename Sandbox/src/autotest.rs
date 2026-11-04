@@ -223,6 +223,9 @@ pub fn build() -> Scenario {
     if want("guns") {
         guns(&mut steps);
     }
+    if want("build2") {
+        build2(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -1082,6 +1085,183 @@ fn guns(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+}
+
+fn build2(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("slopes: walk up a 14° block ramp", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                // Low side towards +Z (facing 4): climbing towards −Z.
+                for (i, k) in ["steel_slope_q1", "steel_slope_q2", "steel_slope_q3", "steel_slope_q4"].iter().enumerate() {
+                    for x in 20..23 {
+                        set_block(world, IVec3::new(x, 0, -42 - i as i32), k, 4);
+                    }
+                }
+                for x in 20..23 {
+                    for z in -50..-46 {
+                        set_block(world, IVec3::new(x, 0, z), "steel_slab", 3);
+                    }
+                    set_block(world, IVec3::new(x, 0, -51), "steel_slope", 4);
+                }
+                teleport(world, Vec3::new(21.5, 0.0, -39.5));
+            }
+            6 => {
+                look_at(world, Vec3::new(21.5, 1.0, -48.0));
+                input(world, |m| m.axis = Vec2::Y);
+            }
+            _ => {}
+        }
+        {
+            let (p, _) = player(world);
+            let top = ctx.vars.get("ramp_y").copied().unwrap_or(0.0).max(p.y);
+            ctx.vars.insert("ramp_y".into(), top);
+        }
+        if ctx.frames == 14 {
+            screenshot(world, "50_slopes");
+        }
+        if ctx.frames > 22 && ctx.t > 4.5 {
+            let (p, _) = player(world);
+            // Feet ≥ 0.9 m: up the ¼ steps, over the slabs, onto the 45° top.
+            ctx.check("the player walks up the smooth slope ramp", ctx.vars["ramp_y"] > 1.75, format!("highest centre y {:.2}, now {:.2}", ctx.vars["ramp_y"], p.y));
+            input(world, |m| *m = MoveInput { scripted: true, ..default() });
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("headlight: each key press toggles it", |world, ctx| {
+        let lamp = IVec3::new(26, 1, -40);
+        let on = |world: &mut World| block_entity(world, lamp).and_then(|e| world.get::<crate::lights::Headlight>(e)).is_some_and(|h| h.on);
+        let press = |world: &mut World, down: bool| {
+            let mut pk = world.resource_mut::<crate::signal::PanelKeys>();
+            pk.scripted = true;
+            pk.held = if down { vec![KeyCode::KeyF] } else { vec![] };
+        };
+        match ctx.frames {
+            1 => {
+                set_block(world, IVec3::new(26, 1, -41), "steel_block", 2);
+                set_block(world, IVec3::new(26, 0, -41), "steel_block", 2);
+                set_block(world, lamp, "headlight", 4);
+                set_block(world, lamp + IVec3::Y, "sensor", 3);
+                set_block(world, IVec3::new(28, 0, -38), "seat", 4);
+                set_block(world, IVec3::new(28, 0, -39), "control_panel", 4);
+                teleport(world, Vec3::new(27.5, 0.0, -35.5));
+            }
+            4 => {
+                let g = world_grid(world);
+                set_param(world, lamp + IVec3::Y, "key_pos", 8.0); // F
+                let e = block_entity(world, lamp + IVec3::Y).unwrap();
+                world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: IVec3::new(28, 0, -39) });
+                // Sit on the seat (scripted).
+                let seat = block_entity(world, IVec3::new(28, 0, -38)).unwrap();
+                let p = world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap();
+                world.entity_mut(p).insert((crate::player::Seated { seat }, avian3d::prelude::RigidBody::Kinematic, avian3d::prelude::ColliderDisabled));
+                console(world, "time set night");
+            }
+            8 => {
+                ctx.check("headlight starts off", !on(world), "");
+                press(world, true);
+            }
+            12 => press(world, false),
+            16 => {
+                ctx.check("first press: on (stays on after release)", on(world), "");
+                world.resource_mut::<CameraView>().0 = View::Behind;
+            }
+            24 => screenshot(world, "51_headlight_night"),
+            26 => press(world, true),
+            30 => press(world, false),
+            34 => {
+                ctx.check("second press: off", !on(world), "");
+                world.resource_mut::<crate::signal::PanelKeys>().scripted = false;
+                world.resource_mut::<CameraView>().0 = View::First;
+                console(world, "time set day");
+                input(world, |m| m.crouch = true);
+            }
+            38 => {
+                input(world, |m| m.crouch = false);
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("blueprint: copy, hologram, rotate, paste, save/load", |world, ctx| {
+        let base = IVec3::new(32, 0, -44);
+        let clip = |world: &World| world.resource::<crate::tools::blueprint::Clipboard>().schematic.clone();
+        match ctx.frames {
+            1 => {
+                for x in 0..3 {
+                    set_block(world, base + IVec3::new(x, 0, 0), "steel_block", 2);
+                }
+                set_block(world, base + IVec3::new(0, 1, 0), "creative_motor", 0);
+                set_block(world, base + IVec3::new(1, 1, 0), "shaft", 0);
+                set_block(world, base + IVec3::new(2, 1, 0), "mechanical_display", 4);
+                set_block(world, base + IVec3::new(0, 2, 0), "telemetry_sensor", 3);
+                let g = world_grid(world);
+                world.entity_mut(g).insert(crate::tools::glue::Glue(vec![(base, base + IVec3::new(2, 2, 0))]));
+                select(world, "blueprint");
+                teleport(world, base.as_vec3() + Vec3::new(1.5, 0.0, 4.5));
+            }
+            4 => {
+                set_param(world, base + IVec3::new(0, 1, 0), "speed", 64.0);
+                let g = world_grid(world);
+                let e = block_entity(world, base + IVec3::new(0, 2, 0)).unwrap();
+                world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: base + IVec3::new(2, 1, 0) });
+                look_at(world, base.as_vec3() + Vec3::new(1.5, 0.5, 1.0));
+            }
+            8 => click(world, MouseButton::Left, true),
+            9 => click(world, MouseButton::Left, false),
+            12 => {
+                let s = clip(world);
+                let n = s.as_ref().map(|s| s.blocks.len()).unwrap_or(0);
+                ctx.check("LMB copies the glued build (7 blocks)", n == 7, format!("{n}"));
+                let motor = s.as_ref().and_then(|s| s.blocks.iter().find(|b| b.key == "creative_motor").cloned());
+                ctx.check("settings are copied", motor.is_some_and(|m| m.params.iter().any(|(k, v)| k == "speed" && *v == 64.0)), "");
+                ctx.check("links are copied", s.as_ref().is_some_and(|s| s.links.len() == 1), "");
+                ctx.check("copy written to schematics/saved_contraption.ron", std::path::Path::new("schematics/saved_contraption.ron").exists(), "");
+                // Aim at the floor further away for the hologram.
+                look_at(world, base.as_vec3() + Vec3::new(1.5, -0.5, 8.5));
+                key(world, KeyCode::KeyR, true);
+            }
+            13 => key(world, KeyCode::KeyR, false),
+            20 => screenshot(world, "52_blueprint_hologram"),
+            22 => click(world, MouseButton::Right, true),
+            23 => click(world, MouseButton::Right, false),
+            32 => {
+                // Rotated 90°: the 3-block base now runs along Z.
+                let a = world.resource::<Target>().hit;
+                let placed: Vec<IVec3> = world.get::<VoxelGrid>(world_grid(world)).unwrap().cells().into_iter().filter(|(c, cell)| cell.id == BlockId::k("creative_motor") && c.z > base.z + 2 && c.z < base.z + 12 && (c.x - base.x).abs() < 6).map(|(c, _)| c).collect();
+                ctx.check("RMB pastes the (turned) copy", placed.len() == 1, format!("{placed:?} aim {:?}", a.map(|a| a.cell)));
+                if let Some(m) = placed.first() {
+                    let speed = block_entity(world, *m).and_then(|e| world.get::<crate::mech::Params>(e)).map(|p| p.0[0]).unwrap_or(0.0);
+                    ctx.check("pasted motor keeps its settings", speed == 64.0, format!("{speed}"));
+                    let f = get_block(world, *m).facing;
+                    ctx.check("pasted motor is turned", crate::grid::facing_dir(f) == IVec3::NEG_Z, format!("{f}"));
+                    let sensor = block_entity(world, *m + IVec3::Y);
+                    let link = sensor.and_then(|e| world.get::<crate::signal::Linked>(e)).and_then(|l| l.0);
+                    ctx.check("pasted telemetry link points at the pasted display", link.is_some_and(|l| get_block(world, l.cell).id == BlockId::k("mechanical_display") && l.cell.z > base.z + 2), format!("{link:?}"));
+                }
+                console(world, "save autotest_bp");
+            }
+            36 => {
+                world.resource_mut::<crate::tools::blueprint::Clipboard>().schematic = None;
+                console(world, "load autotest_bp");
+            }
+            40 => {
+                let n = clip(world).map(|s| s.blocks.len()).unwrap_or(0);
+                ctx.check("save / load a named blueprint", n == 7, format!("{n}"));
+                let _ = std::fs::remove_file("schematics/autotest_bp.ron");
+                select(world, "white_block");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+pub fn key(world: &mut World, k: KeyCode, down: bool) {
+    let mut m = world.resource_mut::<ButtonInput<KeyCode>>();
+    if down { m.press(k) } else { m.release(k) }
 }
 
 pub struct AutotestPlugin {

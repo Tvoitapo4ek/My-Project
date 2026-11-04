@@ -14,11 +14,13 @@ mod grid;
 mod icons;
 mod interact;
 mod inventory;
+mod lights;
 mod mech;
 mod models;
 mod player;
 mod settings;
 mod signal;
+mod sound;
 mod sky;
 mod style;
 mod telemetry;
@@ -62,6 +64,8 @@ fn main() {
         contraption::ContraptionPlugin,
         tools::ToolsPlugin,
         telemetry::TelemetryPlugin,
+        lights::LightsPlugin,
+        sound::SoundPlugin,
     ))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();

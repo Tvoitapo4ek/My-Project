@@ -41,6 +41,8 @@ pub enum Mech {
     TelemetrySensor,
     /// Shows a value (digits or a needle); powered by rotation from the side.
     MechanicalDisplay,
+    /// A lamp shining along its facing; a signal press switches it on/off.
+    Headlight,
 }
 
 /// How a block's orientation is chosen when placed.
@@ -65,6 +67,19 @@ pub enum Collision {
     None,
     /// Centred box of this size (m).
     Box(f32, f32, f32),
+}
+
+/// Geometry of a textured (non-mechanism) block, in block space. The
+/// rotation comes from the facing like for models (`models::block_rot`).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+pub enum Shape {
+    #[default]
+    Cube,
+    /// Half block lying against the face it was placed on.
+    Slab,
+    /// Smooth slope: height `.0` at the front (towards the player when
+    /// placed) rising to `.1` at the back, in blocks (0..1).
+    Wedge(f32, f32),
 }
 
 /// A block setting changed with the wrench.
@@ -99,6 +114,8 @@ pub struct BlockDef {
     #[serde(default)]
     pub collision: Collision,
     #[serde(default)]
+    pub shape: Shape,
+    #[serde(default)]
     pub placement: Placement,
     #[serde(default)]
     pub mech: Option<Mech>,
@@ -130,6 +147,8 @@ pub enum Tool {
     Glue,
     GravityGun,
     PhysGun,
+    /// Copies builds and pastes them (with a hologram preview).
+    Blueprint,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -246,6 +265,7 @@ impl Registry {
             textures: None,
             transparent: true,
             collision: Collision::None,
+            shape: Shape::Cube,
             placement: Placement::None,
             mech: None,
             params: vec![],

@@ -220,6 +220,14 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             }
             v
         }
+        Mech::Headlight => vec![
+            // Bolted to the face behind it (−Y), shining along +Y. The lens
+            // (lit by `lights`) is added separately.
+            part([0.7, 0.14, 0.7], "steel", [0.0, -0.43, 0.0]),
+            part([0.56, 0.3, 0.56], "steel_casing", [0.0, -0.22, 0.0]),
+            part([0.62, 0.08, 0.62], "brass", [0.0, -0.05, 0.0]),
+            part([0.1, 0.2, 0.1], "copper", [0.3, -0.3, 0.3]),
+        ],
         Mech::PhysicsToggle => vec![
             part([0.96, 0.96, 0.96], "steel_casing", [0.0, 0.0, 0.0]),
             part([1.0, 0.12, 0.3], "brass", [0.0, 0.42, 0.0]),
@@ -246,6 +254,13 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.16, 0.04, 0.16], "steel", [0.0, 0.1, 0.0]),
             part([0.05, 0.08, 0.05], "steel", [0.0, 0.15, 0.0]),
             part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
+        ],
+        Tool::Blueprint => vec![
+            // An open book of blue drawings.
+            part([0.34, 0.03, 0.26], "leather", [0.0, -0.02, 0.0]),
+            part([0.15, 0.03, 0.24], "blueprint", [-0.08, 0.0, 0.0]).rot(Quat::from_rotation_z(0.12)),
+            part([0.15, 0.03, 0.24], "blueprint", [0.08, 0.0, 0.0]).rot(Quat::from_rotation_z(-0.12)),
+            part([0.02, 0.04, 0.26], "brass", [0.0, 0.0, 0.0]),
         ],
         Tool::GravityGun | Tool::PhysGun => {
             let glow = if tool == Tool::GravityGun { "glow_amber" } else { "glow_cyan" };

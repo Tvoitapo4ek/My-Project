@@ -53,7 +53,8 @@ fn open(mut commands: Commands, editing: Res<Editing>, blocks: Query<&BlockEntit
         });
 }
 
-fn on_step(ev: On<PointerClick>, buttons: Query<&StepButton>, editing: Res<Editing>, mut blocks: Query<(&BlockEntity, &mut Params)>) {
+fn on_step(ev: On<PointerClick>, buttons: Query<&StepButton>, editing: Res<Editing>, mut blocks: Query<(&BlockEntity, &mut Params)>, mut sounds: MessageWriter<crate::sound::Sfx>) {
+    sounds.write(crate::sound::sfx("ui_click"));
     let (Ok(sb), Some(e)) = (buttons.get(ev.entity), editing.0) else { return };
     let Ok((b, mut p)) = blocks.get_mut(e) else { return };
     let Some(def) = b.id.def().params.get(sb.0) else { return };

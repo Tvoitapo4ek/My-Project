@@ -5,6 +5,7 @@
 //!   sensor links them.
 //! * Glue, gravity gun, physgun — `glue`, `guns`.
 
+pub mod blueprint;
 pub mod glue;
 pub mod guns;
 pub mod viewmodel;
@@ -39,6 +40,7 @@ fn wrench(
     mut editing: ResMut<Editing>,
     mut next: ResMut<NextState<Ui>>,
     mut toasts: MessageWriter<Toast>,
+    mut sounds: MessageWriter<crate::sound::Sfx>,
 ) {
     let Ok((inv, mut body)) = players.single_mut() else { return };
     if held_tool(inv) != Some(Tool::Wrench) || !(clicks.left || clicks.right) {
@@ -61,6 +63,7 @@ fn wrench(
         let f = rotate_facing(cell.facing, axis);
         if f != cell.facing {
             grid.set(a.cell, Cell::new(cell.id, f));
+            sounds.write(crate::sound::sfx("rotate"));
         }
         return;
     }
@@ -70,6 +73,7 @@ fn wrench(
         (Some(Mech::ControlPanel), _) => {
             link.0 = Some((here, Mech::ControlPanel));
             toasts.write(toast("Пульт выбран: теперь ЛКМ ключом по датчику, чтобы связать"));
+            sounds.write(crate::sound::sfx("ui_click"));
         }
         (Some(Mech::Sensor), Some((panel, Mech::ControlPanel))) => {
             if let Some(e) = entity
@@ -78,6 +82,7 @@ fn wrench(
                 l.0 = Some(panel);
                 link.0 = None;
                 toasts.write(toast("Датчик связан с пультом — выберите клавиши"));
+                sounds.write(crate::sound::sfx("link"));
                 editing.0 = Some(e);
                 next.set(Ui::Settings);
             }
@@ -85,12 +90,14 @@ fn wrench(
         (Some(Mech::TelemetrySensor), _) => {
             link.0 = Some((here, Mech::TelemetrySensor));
             toasts.write(toast("Датчик телеметрии выбран: теперь ЛКМ ключом по механическому экрану"));
+            sounds.write(crate::sound::sfx("ui_click"));
         }
         (Some(Mech::MechanicalDisplay), Some((sensor, Mech::TelemetrySensor))) => {
             let s = grids.get(sensor.grid).ok().and_then(|g| g.entities.get(&sensor.cell).copied());
             if let Some(Ok(mut l)) = s.map(|s| sensors.get_mut(s)) {
                 l.0 = Some(here);
                 toasts.write(toast("Экран связан с датчиком телеметрии"));
+                sounds.write(crate::sound::sfx("link"));
             }
             link.0 = None;
         }
@@ -111,6 +118,6 @@ pub struct ToolsPlugin;
 impl Plugin for ToolsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, wrench.after(crate::interact::InteractSet))
-            .add_plugins((glue::GluePlugin, guns::GunsPlugin, viewmodel::ViewmodelPlugin));
+            .add_plugins((glue::GluePlugin, guns::GunsPlugin, viewmodel::ViewmodelPlugin, blueprint::BlueprintPlugin));
     }
 }

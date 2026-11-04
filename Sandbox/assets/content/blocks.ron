@@ -25,6 +25,26 @@
      textures: Some(("steel_casing", "steel_casing", "steel_casing")), mass: 120.0),
     (key: "glass", name: "Стекло", category: "building",
      textures: Some(("glass", "glass", "glass")), transparent: true, mass: 30.0),
+    // Shapes. shape: Slab (half block against the clicked face) |
+    // Wedge(front height, back height) — a smooth slope rising away from the
+    // player. Chain them for long ramps: 45° (0→1), ≈27° (0→½, ½→1),
+    // ≈14° (0→¼ … ¾→1).
+    (key: "steel_slab", name: "Стальная плита", category: "building", shape: Slab, placement: Attach,
+     textures: Some(("steel", "steel", "steel")), mass: 100.0),
+    (key: "steel_slope", name: "Стальной скос 45°", category: "building", shape: Wedge(0.0, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 100.0),
+    (key: "steel_slope_half_low", name: "Скос 27° — нижний", category: "building", shape: Wedge(0.0, 0.5), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 50.0),
+    (key: "steel_slope_half_high", name: "Скос 27° — верхний", category: "building", shape: Wedge(0.5, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 150.0),
+    (key: "steel_slope_q1", name: "Скос 14° — 1/4", category: "building", shape: Wedge(0.0, 0.25), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 25.0),
+    (key: "steel_slope_q2", name: "Скос 14° — 2/4", category: "building", shape: Wedge(0.25, 0.5), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 75.0),
+    (key: "steel_slope_q3", name: "Скос 14° — 3/4", category: "building", shape: Wedge(0.5, 0.75), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 125.0),
+    (key: "steel_slope_q4", name: "Скос 14° — 4/4", category: "building", shape: Wedge(0.75, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 175.0),
 
     // --- mechanisms ---------------------------------------------------------
     (key: "creative_motor", name: "Креативный мотор", category: "mechanisms", mech: Some(Motor),
@@ -88,5 +108,9 @@
         (key: "style", label: "Вид", kind: Choice(["Цифры", "Стрелка"]), default: 0.0),
         (key: "max_val", label: "Максимум шкалы", kind: Number(min: 32.0, max: 256.0, step: 32.0, unit: ""), default: 128.0),
      ]),
+    // Shines along its facing. Each press of the key on a linked sensor
+    // switches it on / off (put the sensor on the headlight).
+    (key: "headlight", name: "Фара", category: "control", mech: Some(Headlight), placement: Face,
+     collision: Box(0.8, 0.5, 0.8), mass: 15.0),
     (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
 ]

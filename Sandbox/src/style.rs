@@ -68,6 +68,9 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mats: Re
     }
     // Screens: dark glass background and unlit segments.
     m.insert("screen".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.05, 0.09, 0.1), perceptual_roughness: 0.25, reflectance: 0.4, ..default() }));
+    m.insert("blueprint".into(), mats.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(0.25, 0.7, 1.6)), unlit: true, ..default() }));
+    m.insert("glass_lens".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.55, 0.6, 0.58), perceptual_roughness: 0.15, reflectance: 0.6, ..default() }));
+    m.insert("glow_lamp".into(), mats.add(StandardMaterial { base_color: Color::LinearRgba(LinearRgba::rgb(6.0, 5.2, 3.4)), unlit: true, ..default() }));
     m.insert("seg_off".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.13, 0.16, 0.17), perceptual_roughness: 0.6, ..default() }));
     commands.insert_resource(Materials(m));
 }

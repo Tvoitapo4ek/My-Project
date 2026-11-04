@@ -32,7 +32,7 @@ pub fn inside(c: IVec3, lo: IVec3, hi: IVec3) -> bool {
 #[derive(Resource, Default)]
 pub struct GlueCorner(pub Option<(Entity, IVec3)>);
 
-fn use_glue(clicks: Res<Clicks>, target: Res<Target>, mut players: Query<(&Inventory, &mut Body), With<Player>>, mut corner: ResMut<GlueCorner>, mut glue: Query<&mut Glue>, grids: Query<(), With<VoxelGrid>>, mut commands: Commands, mut toasts: MessageWriter<Toast>) {
+fn use_glue(clicks: Res<Clicks>, target: Res<Target>, mut players: Query<(&Inventory, &mut Body), With<Player>>, mut corner: ResMut<GlueCorner>, mut glue: Query<&mut Glue>, grids: Query<(), With<VoxelGrid>>, mut commands: Commands, mut toasts: MessageWriter<Toast>, mut sounds: MessageWriter<crate::sound::Sfx>) {
     let Ok((inv, mut body)) = players.single_mut() else { return };
     if super::held_tool(inv) != Some(Tool::Glue) {
         corner.0 = None;
@@ -56,10 +56,12 @@ fn use_glue(clicks: Res<Clicks>, target: Res<Target>, mut players: Query<(&Inven
                 let n = (hi - lo + IVec3::ONE).element_product();
                 corner.0 = None;
                 toasts.write(toast(format!("Склеено: область {n} клеток")));
+                sounds.write(crate::sound::sfx("glue"));
             }
             _ => {
                 corner.0 = Some((a.grid, a.cell));
                 toasts.write(toast("Первый угол выбран — ЛКМ по второму углу"));
+                sounds.write(crate::sound::sfx("ui_click"));
             }
         }
     } else if clicks.right {
@@ -69,6 +71,7 @@ fn use_glue(clicks: Res<Clicks>, target: Res<Target>, mut players: Query<(&Inven
             gl.0.retain(|(lo, hi)| !inside(a.cell, *lo, *hi));
             if gl.0.len() < before {
                 toasts.write(toast("Клей снят"));
+                sounds.write(crate::sound::sfx("release"));
             }
         }
         corner.0 = None;

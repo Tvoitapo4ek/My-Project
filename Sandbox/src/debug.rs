@@ -30,7 +30,7 @@ pub fn run_command(world: &mut World, line: &str) -> String {
     let num = |i: usize| parts.get(i).and_then(|s| s.replace(',', ".").parse::<f32>().ok());
     match parts.as_slice() {
         [] => String::new(),
-        ["help"] => "time set <ч|morning|day|evening|night>, time stop|start, time speed <×>, tp x y z, fly, give <ключ> [n], clear".into(),
+        ["help"] => "time set <ч|morning|day|evening|night>, time stop|start, time speed <×>, tp x y z, fly, give <ключ> [n], clear, save <имя>, load <имя>, blueprints".into(),
         ["time", "set", v] => {
             let h = match *v {
                 "morning" | "утро" => Some(6.5),
@@ -93,6 +93,9 @@ pub fn run_command(world: &mut World, line: &str) -> String {
             }
             None => format!("Нет предмета «{key}»"),
         },
+        ["save", name] => crate::tools::blueprint::save_named(world, name),
+        ["load", name] => crate::tools::blueprint::load_named(world, name),
+        ["blueprints"] => crate::tools::blueprint::list(),
         ["clear"] => {
             let mut q = world.query_filtered::<&mut Inventory, With<Player>>();
             for mut inv in q.iter_mut(world) {

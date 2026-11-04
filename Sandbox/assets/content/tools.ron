@@ -4,4 +4,5 @@
     (key: "glue", name: "Клей", category: "tools", tool: Glue),
     (key: "gravity_gun", name: "Гравитационная пушка", category: "tools", tool: GravityGun),
     (key: "physgun", name: "Физическая пушка", category: "tools", tool: PhysGun),
+    (key: "blueprint", name: "Чертёж", category: "tools", tool: Blueprint),
 ]

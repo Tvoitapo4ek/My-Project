@@ -37,13 +37,14 @@ pub struct Eye {
 }
 
 /// A block was placed or removed by the player — for other modules
-/// (sounds, statistics…); nothing listens yet.
+/// (sounds…).
 #[derive(Message, Debug, Clone, Copy)]
-#[allow(dead_code)]
 pub struct Edited {
     pub grid: Entity,
     pub cell: IVec3,
     pub placed: bool,
+    /// The block placed or removed.
+    pub block: crate::content::BlockId,
 }
 
 /// RMB on a block with its own action.
@@ -152,7 +153,7 @@ fn edit_blocks(
     if clicks.right
         && let Some(m) = grid.get(a.cell).id.def().mech
         && matches!(m, Mech::Seat | Mech::PhysicsToggle)
-        && !matches!(held.and_then(|s| s.item.tool()), Some(crate::content::Tool::Wrench | crate::content::Tool::Glue))
+        && !matches!(held.and_then(|s| s.item.tool()), Some(crate::content::Tool::Wrench | crate::content::Tool::Glue | crate::content::Tool::Blueprint))
         && (!body.crouching || held.is_none())
     {
         body.swing = 1.0;
@@ -174,7 +175,7 @@ fn edit_blocks(
         let old = grid.set(a.cell, Cell::AIR);
         if !old.is_air() {
             body.swing = 1.0;
-            edited.write(Edited { grid: a.grid, cell: a.cell, placed: false });
+            edited.write(Edited { grid: a.grid, cell: a.cell, placed: false, block: old.id });
         }
         return;
     }
@@ -203,7 +204,7 @@ fn edit_blocks(
     let facing = place_facing(block.def().placement, a.normal, look_local);
     grid.set(cell, Cell::new(block, facing));
     body.swing = 1.0;
-    edited.write(Edited { grid: a.grid, cell, placed: true });
+    edited.write(Edited { grid: a.grid, cell, placed: true, block });
 }
 
 fn hotbar_keys(keys: Res<ButtonInput<KeyCode>>, scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>, ui: Res<State<Ui>>, mut q: Query<&mut Inventory, With<Player>>, wheel_busy: Res<WheelBusy>) {

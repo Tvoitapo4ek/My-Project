@@ -88,6 +88,7 @@ fn toggle(
     mut links: Query<&mut Linked>,
     world_e: Res<crate::world::WorldEntity>,
     mut toasts: MessageWriter<Toast>,
+    mut sounds: MessageWriter<crate::sound::Sfx>,
 ) {
     for u in used.read() {
         if u.mech != Mech::PhysicsToggle {
@@ -152,6 +153,7 @@ fn toggle(
             }
             commands.entity(body).insert(new_grid);
             toasts.write(toast(format!("Физика включена: блоков {}, масса {:.0} кг", cells.len(), mass)));
+            sounds.write(crate::sound::sfx_at("physics_on", gt.translation() + u.cell.as_vec3()));
         } else if contraption.is_some() {
             // ---- disassemble
             let world = world_e.0;
@@ -220,6 +222,7 @@ fn toggle(
             }
             commands.entity(u.grid).despawn();
             toasts.write(toast("Физика выключена: блоки вернулись в сетку"));
+            sounds.write(crate::sound::sfx_at("physics_off", t.translation));
         }
     }
 }

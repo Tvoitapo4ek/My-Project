@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
-use crate::content::{BlockId, Collision};
+use crate::content::{BlockId, Collision, Shape};
 
 pub const CHUNK: i32 = 16;
 const VOLUME: usize = (CHUNK * CHUNK * CHUNK) as usize;
@@ -180,9 +180,19 @@ pub struct RayHit {
 }
 
 /// Collision boxes of a cell in grid-local space: (centre, half extents).
+/// Wedges are convex hulls (`cell_hull`).
 pub fn cell_boxes(c: IVec3, cell: Cell) -> Option<(Vec3, Vec3)> {
     let center = c.as_vec3() + Vec3::splat(0.5);
-    match cell.id.def().collision {
+    let def = cell.id.def();
+    match def.shape {
+        Shape::Slab => {
+            let r = crate::models::block_rot(def.placement, cell.facing);
+            return Some((center + r * Vec3::new(0.0, 0.25, 0.0), (r * Vec3::new(0.5, 0.25, 0.5)).abs()));
+        }
+        Shape::Wedge(..) => return None,
+        Shape::Cube => {}
+    }
+    match def.collision {
         Collision::None => None,
         Collision::Full => Some((center, Vec3::splat(0.5))),
         Collision::Box(x, y, z) => {
@@ -190,6 +200,33 @@ pub fn cell_boxes(c: IVec3, cell: Cell) -> Option<(Vec3, Vec3)> {
             Some((center, half))
         }
     }
+}
+
+/// Corner points of a wedge cell in grid-local space (convex hull), and
+/// its volume (m³).
+pub fn cell_hull(c: IVec3, cell: Cell) -> Option<(Vec<Vec3>, f32)> {
+    let def = cell.id.def();
+    let Shape::Wedge(y0, y1) = def.shape else { return None };
+    let r = crate::models::block_rot(def.placement, cell.facing);
+    let center = c.as_vec3() + Vec3::splat(0.5);
+    let pts = wedge_points(y0, y1).into_iter().map(|p| center + r * p).collect();
+    Some((pts, (y0 + y1) * 0.5))
+}
+
+/// Wedge corners in block space (centred): bottom 4, then top back 2
+/// (height y1 at −Z), top front 2 (height y0 at +Z).
+pub fn wedge_points(y0: f32, y1: f32) -> [Vec3; 8] {
+    let (b, f, k) = (-0.5, -0.5 + y0.max(0.001), -0.5 + y1);
+    [
+        Vec3::new(-0.5, b, -0.5),
+        Vec3::new(0.5, b, -0.5),
+        Vec3::new(0.5, b, 0.5),
+        Vec3::new(-0.5, b, 0.5),
+        Vec3::new(-0.5, k, -0.5),
+        Vec3::new(0.5, k, -0.5),
+        Vec3::new(0.5, f, 0.5),
+        Vec3::new(-0.5, f, 0.5),
+    ]
 }
 
 /// The world grid (static, at the origin).

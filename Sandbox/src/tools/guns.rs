@@ -99,6 +99,7 @@ fn guns(
     mut dynamics: Query<(&GlobalTransform, &mut LinearVelocity, &mut AngularVelocity, &ComputedMass, &ComputedCenterOfMass)>,
     mut gizmos: Gizmos,
     mut toasts: MessageWriter<Toast>,
+    mut sounds: MessageWriter<crate::sound::Sfx>,
 ) {
     let dt = time.delta_secs().max(1e-4);
     wheel_busy.0 = false;
@@ -127,6 +128,7 @@ fn guns(
                     } else {
                         held.body = Some(b);
                         held.distance = d;
+                        sounds.write(crate::sound::sfx("grab"));
                     }
                 }
                 body.swing = 1.0;
@@ -140,6 +142,7 @@ fn guns(
                     // Same push for everything, lighter flies further.
                     let impulse = 9000.0;
                     v.0 += eye.dir * (impulse / m.value().max(1.0)).min(30.0);
+                    sounds.write(crate::sound::sfx("punt"));
                     commands.entity(b).remove::<Frozen>();
                 }
             }
@@ -158,13 +161,14 @@ fn guns(
                     && let Ok((gt, ..)) = dynamics.get(b)
                 {
                     held.body = Some(b);
+                    sounds.write(crate::sound::sfx("grab"));
                     held.local = gt.affine().inverse().transform_point3(p);
                     held.distance = d;
                     commands.entity(b).remove::<Frozen>().insert(RigidBody::Dynamic);
                 }
             }
-            if !gi.left {
-                held.body = None;
+            if !gi.left && held.body.take().is_some() {
+                sounds.write(crate::sound::sfx("release"));
             }
             if gi.unfreeze
                 && let Some((b, ..)) = aim_body(&spatial, &eye, me, PHYSGUN_RANGE, &colliders, &bodies)
@@ -172,6 +176,7 @@ fn guns(
             {
                 commands.entity(b).remove::<Frozen>().insert(RigidBody::Dynamic);
                 toasts.write(toast("Разморожено"));
+                sounds.write(crate::sound::sfx("release"));
             }
             if let Some(b) = held.body {
                 wheel_busy.0 = true;
@@ -191,6 +196,7 @@ fn guns(
                         commands.entity(b).insert((Frozen, RigidBody::Static));
                         held.body = None;
                         toasts.write(toast("Заморожено — R чтобы разморозить"));
+                        sounds.write(crate::sound::sfx("freeze"));
                     }
                 }
             }

@@ -22,7 +22,7 @@ use crate::{
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct Steer(pub f32);
 
-fn sit(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut commands: Commands, players: Query<(Entity, Option<&Seated>), With<Player>>, mut toasts: MessageWriter<Toast>) {
+fn sit(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut commands: Commands, players: Query<(Entity, Option<&Seated>), With<Player>>, mut toasts: MessageWriter<Toast>, mut sounds: MessageWriter<crate::sound::Sfx>) {
     for u in used.read() {
         if u.mech != Mech::Seat {
             continue;
@@ -34,6 +34,7 @@ fn sit(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut commands
         }
         commands.entity(p).insert((Seated { seat }, RigidBody::Kinematic, ColliderDisabled));
         toasts.write(toast("Вы сели. Shift — встать"));
+        sounds.write(crate::sound::sfx("seat"));
     }
 }
 
