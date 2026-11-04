@@ -46,10 +46,12 @@
     // Wedge(front height, back height) — a smooth slope rising away from the
     // player. Chain them for long ramps: 45° (0→1), ≈27° (0→½, ½→1),
     // ≈14° (0→¼ … ¾→1).
+    // Kept for the proving ground; in the catalogue the steel block's own
+    // shapes (Shift + wheel) replace them.
     (key: "steel_slab", name: "Стальная плита", category: "building", shape: Slab, placement: Attach,
-     textures: Some(("steel", "steel", "steel")), mass: 100.0),
+     textures: Some(("steel", "steel", "steel")), mass: 100.0, hidden: true),
     (key: "steel_slope", name: "Стальной скос 45°", category: "building", shape: Wedge(0.0, 1.0), placement: Horizontal,
-     textures: Some(("steel", "steel", "steel")), mass: 100.0),
+     textures: Some(("steel", "steel", "steel")), mass: 100.0, hidden: true),
     (key: "steel_slope_half_low", name: "Скос 27° — нижний", category: "building", shape: Wedge(0.0, 0.5), placement: Horizontal,
      textures: Some(("steel", "steel", "steel")), mass: 50.0),
     (key: "steel_slope_half_high", name: "Скос 27° — верхний", category: "building", shape: Wedge(0.5, 1.0), placement: Horizontal,
@@ -148,7 +150,7 @@
      placement: Face, collision: Box(0.34, 1.0, 0.34), mass: 20.0, hidden: true),
     // Measures the speed of the physical contraption it stands on (km/h);
     // 0 in the world grid. Read it with a telemetry sensor.
-    (key: "speedometer", name: "Спидометр", category: "mechanisms", mech: Some(Speedometer),
+    (key: "speedometer", name: "Спидометр", category: "control", mech: Some(Speedometer),
      placement: Horizontal, mass: 20.0),
     (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face,
      collision: Box(0.7, 0.7, 0.7), mass: 60.0,
@@ -215,5 +217,29 @@
      ]),
     (key: "flasher_light", name: "Мигалка", category: "logic", mech: Some(Flasher), placement: Face,
      collision: Box(0.6, 0.7, 0.6), mass: 10.0),
+    // Endless source for its pipe network (creative).
+    (key: "creative_tank", name: "Бесконечный бак", category: "mechanisms", mech: Some(CreativeTank), placement: None, mass: 100.0,
+     params: [
+        (key: "fluid", label: "Жидкость", kind: Choice(["Вода", "Дизель"]), default: 1.0),
+     ]),
+    // Attached to a block like a telemetry sensor; a logic signal (all
+    // sides) while the reading is at or above / at or below the threshold.
+    (key: "threshold_sensor", name: "Пороговый датчик", category: "logic", mech: Some(ThresholdSensor), placement: Attach,
+     collision: None, mass: 5.0,
+     params: [
+        (key: "threshold", label: "Порог", kind: Number(min: 0.0, max: 256.0, step: 4.0, unit: ""), default: 50.0),
+        (key: "compare", label: "Сигнал, когда", kind: Choice(["не меньше порога", "не больше порога"]), default: 0.0),
+     ]),
+    // Wireless: a transmitter on channel N powers every receiver on N.
+    (key: "radio_transmitter", name: "Радиопередатчик", category: "logic", mech: Some(RadioTransmitter), placement: None, mass: 15.0,
+     params: [
+        (key: "channel", label: "Канал", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: ""), default: 1.0),
+     ]),
+    (key: "radio_receiver", name: "Радиоприёмник", category: "logic", mech: Some(RadioReceiver), placement: None, mass: 15.0,
+     params: [
+        (key: "channel", label: "Канал", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: ""), default: 1.0),
+     ]),
+    (key: "lamp", name: "Лампа", category: "logic", mech: Some(Lamp), placement: Face,
+     collision: Box(0.7, 0.7, 0.7), mass: 10.0),
     (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
 ]

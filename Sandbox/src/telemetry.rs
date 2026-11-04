@@ -76,12 +76,25 @@ pub fn segments(d: u8) -> [bool; 7] {
 
 // ------------------------------------------------------------ reading
 
-fn read_sensors(
-    sensors: Query<(&BlockEntity, &Linked)>,
-    grids: Query<(&VoxelGrid, Option<&LinearVelocity>)>,
-    blocks: Query<(&BlockEntity, &Spin, Option<&Steer>, Option<&crate::fluids::FluidStore>, Option<&crate::mech::NetState>)>,
-    mut displays: Query<(&mut Shown, &mut LoadShown)>,
-) {
+type Readable<'a> = (&'a BlockEntity, &'a Spin, Option<&'a Steer>, Option<&'a crate::fluids::FluidStore>, Option<&'a crate::mech::NetState>);
+
+/// What a sensor attached at `b` reads from the block it faces: (value,
+/// is a load %).
+fn reading(b: &BlockEntity, grid: &VoxelGrid, vel: Option<&LinearVelocity>, blocks: &Query<Readable>) -> (f32, bool) {
+    match grid.entities.get(&(b.cell + b.dir())).and_then(|e| blocks.get(*e).ok()) {
+        // A tank: how full it is (%).
+        Some((t, _, _, Some(store), _)) if matches!(t.mech(), Some(Mech::FluidTank | Mech::CreativeTank)) => (store.amount / store.cap.max(1.0) * 100.0, false),
+        // An engine or a motor: the load of its network (%).
+        Some((t, _, _, _, Some(net))) if matches!(t.mech(), Some(Mech::Motor | Mech::DieselEngine)) => (if net.capacity > 0.0 { net.stress / net.capacity * 100.0 } else if net.stress > 0.0 { 999.0 } else { 0.0 }, true),
+        Some((t, spin, steer, _, _)) => {
+            let kmh = vel.map(|v| v.0.length() * 3.6).unwrap_or(0.0);
+            (read_value(t.mech(), spin.rpm, steer.map(|s| s.0.to_degrees()).unwrap_or(0.0), kmh), false)
+        }
+        None => (0.0, false),
+    }
+}
+
+fn read_sensors(sensors: Query<(&BlockEntity, &Linked)>, grids: Query<(&VoxelGrid, Option<&LinearVelocity>)>, blocks: Query<Readable>, mut displays: Query<(&mut Shown, &mut LoadShown)>) {
     for (mut s, mut l) in &mut displays {
         s.0 = 0.0;
         l.0 = false;
@@ -92,26 +105,30 @@ fn read_sensors(
         }
         let Some(target_ref) = link.0 else { continue };
         let Ok((grid, vel)) = grids.get(b.grid) else { continue };
-        let mut load = false;
-        let value = match grid.entities.get(&(b.cell + b.dir())).and_then(|e| blocks.get(*e).ok()) {
-            // A tank: how full it is (%).
-            Some((t, _, _, Some(store), _)) if t.mech() == Some(Mech::FluidTank) => store.amount / store.cap.max(1.0) * 100.0,
-            // An engine or a motor: the load of its network (%).
-            Some((t, _, _, _, Some(net))) if matches!(t.mech(), Some(Mech::Motor | Mech::DieselEngine)) => {
-                load = true;
-                if net.capacity > 0.0 { net.stress / net.capacity * 100.0 } else if net.stress > 0.0 { 999.0 } else { 0.0 }
-            }
-            Some((t, spin, steer, _, _)) => {
-                let kmh = vel.map(|v| v.0.length() * 3.6).unwrap_or(0.0);
-                read_value(t.mech(), spin.rpm, steer.map(|s| s.0.to_degrees()).unwrap_or(0.0), kmh)
-            }
-            None => 0.0,
-        };
+        let (value, load) = reading(b, grid, vel, &blocks);
         let Some(&d) = grids.get(target_ref.grid).ok().and_then(|(g, _)| g.entities.get(&target_ref.cell)) else { continue };
         if let Ok((mut s, mut l)) = displays.get_mut(d) {
             s.0 = s.0.max(value);
             l.0 |= load;
         }
+    }
+}
+
+/// Threshold sensors: a logic output while the reading passes the
+/// threshold (`logic` sends it to the neighbours next frame).
+pub fn passes(value: f32, threshold: f32, below: bool) -> bool {
+    if below { value <= threshold } else { value >= threshold }
+}
+
+fn read_thresholds(mut sensors: Query<(&BlockEntity, &crate::mech::Params, &mut crate::logic::LogicState)>, grids: Query<(&VoxelGrid, Option<&LinearVelocity>)>, blocks: Query<Readable>) {
+    for (b, p, mut s) in &mut sensors {
+        if b.mech() != Some(Mech::ThresholdSensor) {
+            continue;
+        }
+        let Ok((grid, vel)) = grids.get(b.grid) else { continue };
+        let (value, _) = reading(b, grid, vel, &blocks);
+        s.memory = passes(value, p.get(b.id, "threshold"), p.get(b.id, "compare") >= 0.5);
+        s.t = value;
     }
 }
 
@@ -252,7 +269,8 @@ pub struct TelemetryPlugin;
 
 impl Plugin for TelemetryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (attach_face, read_sensors.after(crate::mech::MechSet), draw_faces).chain());
+        app.add_systems(Update, (attach_face, read_sensors.after(crate::mech::MechSet), draw_faces).chain())
+            .add_systems(Update, read_thresholds.after(crate::mech::MechSet));
     }
 }
 
@@ -328,6 +346,12 @@ mod tests {
         assert!(w.get::<LoadShown>(d3).unwrap().0);
         // 100 % sits at the start of the red zone of the dial.
         assert!((needle_angle(100.0, LOAD_MAX, true) - (-120.0 + 240.0 * 7.0 / 8.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn thresholds() {
+        assert!(passes(100.0, 100.0, false) && !passes(99.0, 100.0, false));
+        assert!(passes(10.0, 20.0, true) && !passes(30.0, 20.0, true));
     }
 
     #[test]

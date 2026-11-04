@@ -132,7 +132,8 @@ pub fn role_of(b: &BlockEntity) -> Option<Role> {
     Some(match b.mech()? {
         Mech::Pipe | Mech::CasedPipe => Role::Pipe,
         Mech::FluidTank => Role::Tank,
-        Mech::FluidPort => Role::Port,
+        // An endless tank works like a port that never empties.
+        Mech::FluidPort | Mech::CreativeTank => Role::Port,
         Mech::DieselEngine => Role::Engine { front: crate::grid::facing_dir(b.facing) },
         Mech::Pump => Role::Pump { d: b.dir() },
         _ => return None,
@@ -271,6 +272,20 @@ fn simulate(time: Res<Time>, water: Res<crate::water::Water>, grids: Query<(&Vox
         if nodes.is_empty() {
             continue;
         }
+        // Endless tanks refill themselves.
+        for (c, e) in &ent {
+            if let Ok((b, _, p)) = blocks.get(*e)
+                && b.mech() == Some(Mech::CreativeTank)
+                && let Ok(mut s) = stores.get_mut(*e)
+            {
+                let f = if p.get(b.id, "fluid") >= 0.5 { Fluid::Diesel } else { Fluid::Water };
+                let full = FluidStore { fluid: Some(f), amount: TANK, cap: TANK };
+                if *s != full {
+                    *s = full;
+                }
+                let _ = c;
+            }
+        }
         let comp = components(&nodes);
         // Units: tanks (joined), ports, engines.
         let tanks: HashSet<IVec3> = nodes.iter().filter(|(_, r)| **r == Role::Tank).map(|(c, _)| *c).collect();
@@ -403,6 +418,7 @@ fn add_stores(mut commands: Commands, added: Query<(Entity, &BlockEntity), (Adde
         let cap = match b.mech() {
             Some(Mech::FluidTank) => TANK,
             Some(Mech::FluidPort) => PORT,
+            Some(Mech::CreativeTank) => TANK,
             Some(Mech::DieselEngine) => ENGINE,
             _ => continue,
         };
@@ -414,7 +430,12 @@ fn add_stores(mut commands: Commands, added: Query<(Entity, &BlockEntity), (Adde
 
 fn use_bucket(clicks: Res<Clicks>, target: Res<Target>, players: Query<&Inventory, With<crate::player::Player>>, grids: Query<&VoxelGrid>, blocks: Query<&BlockEntity>, mut stores: Query<&mut FluidStore>, mut msgs: MessageWriter<crate::core::Toast>, mut sounds: MessageWriter<crate::sound::Sfx>) {
     let Ok(inv) = players.single() else { return };
-    if !clicks.right || crate::tools::held_tool(inv) != Some(Tool::DieselBucket) {
+    let fluid = match crate::tools::held_tool(inv) {
+        Some(Tool::DieselBucket) => Fluid::Diesel,
+        Some(Tool::WaterBucket) => Fluid::Water,
+        _ => return,
+    };
+    if !clicks.right {
         return;
     }
     let Some(a) = target.hit else { return };
@@ -422,10 +443,12 @@ fn use_bucket(clicks: Res<Clicks>, target: Res<Target>, players: Query<&Inventor
     match blocks.get(e).ok().and_then(|b| b.mech()) {
         Some(Mech::FluidPort) => {
             if let Ok(mut s) = stores.get_mut(e) {
-                let put = s.add(Fluid::Diesel, BUCKET);
+                let put = s.add(fluid, BUCKET);
                 if put > 0.0 {
-                    msgs.write(toast(format!("Залито {put:.0} mB, в порту {:.0} mB ({})", s.amount, Fluid::Diesel.name())));
+                    msgs.write(toast(format!("Залито {put:.0} mB, в порту {:.0} mB ({})", s.amount, fluid.name())));
                     sounds.write(crate::sound::sfx("glue"));
+                } else if s.room(fluid) == 0.0 && s.fluid.is_some_and(|f| f != fluid) {
+                    msgs.write(toast(format!("В порту другая жидкость ({})", s.fluid.map(|f| f.name()).unwrap_or(""))));
                 } else {
                     msgs.write(toast("Порт полон"));
                 }

@@ -69,6 +69,17 @@ pub enum Mech {
     Flywheel,
     /// Sliding door half (`doors`): closed / open is the block itself.
     SlidingDoor,
+    /// Endless source of water or diesel for its pipe network.
+    CreativeTank,
+    /// Reads a value like the telemetry sensor; a logic signal while it is
+    /// above (or below) the threshold.
+    ThresholdSensor,
+    /// Sends its input on a channel to every receiver (anywhere).
+    RadioTransmitter,
+    /// A logic source while its channel is on.
+    RadioReceiver,
+    /// Steady light while powered.
+    Lamp,
     /// End of a mechanical belt (a shaft with a drum).
     BeltPulley,
     /// A belt cell between two pulleys (flat, vertical or a 45° ramp).
@@ -222,6 +233,8 @@ pub enum Tool {
     Blueprint,
     /// Pours 1000 mB of diesel into a filling port (never runs dry).
     DieselBucket,
+    /// Pours 1000 mB of water into a filling port (never runs dry).
+    WaterBucket,
     /// Engineer's goggles: worn on the head, show what blocks are doing.
     Goggles,
     /// Hangs chains between cogwheels (`chains`).

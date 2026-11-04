@@ -198,7 +198,15 @@ pub fn flasher_lit(powered: bool, on_for: f32) -> bool {
 // ------------------------------------------------------------ systems
 
 fn is_logic(m: Option<Mech>) -> bool {
-    matches!(m, Some(Mech::Wire | Mech::Button | Mech::Lever | Mech::Timer | Mech::PulseGenerator | Mech::LogicGate | Mech::Flasher))
+    matches!(m, Some(Mech::Wire | Mech::Button | Mech::Lever | Mech::Timer | Mech::PulseGenerator | Mech::LogicGate | Mech::Flasher | Mech::ThresholdSensor | Mech::RadioTransmitter | Mech::RadioReceiver | Mech::Lamp))
+}
+
+/// Radio channels: on this frame (`on`, read by receivers) and being
+/// collected from the transmitters for the next one.
+#[derive(Resource, Debug, Default)]
+pub struct Radio {
+    pub on: HashSet<u8>,
+    next: HashSet<u8>,
 }
 
 fn add_state(mut commands: Commands, color: Res<WireColor>, mut added: Query<(Entity, &BlockEntity, &mut Params), (Added<BlockEntity>, Without<LogicState>)>) {
@@ -234,8 +242,10 @@ fn use_switches(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut
 }
 
 #[allow(clippy::type_complexity)]
-fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &mut LogicState)>, mut signals: Query<&mut Signal, Without<LogicState>>) {
+fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &mut LogicState, Option<&Signal>)>, mut signals: Query<&mut Signal, Without<LogicState>>, mut radio: ResMut<Radio>) {
     let dt = time.delta_secs();
+    // Channels on last frame (receivers), collected anew this frame.
+    radio.on = std::mem::take(&mut radio.next);
     for grid in &grids {
         if grid.entities.is_empty() {
             continue;
@@ -244,7 +254,7 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
         let mut wires = HashMap::new();
         let mut sources = Vec::new();
         for (&c, &e) in &grid.entities {
-            let Ok((b, p, mut s)) = blocks.get_mut(e) else { continue };
+            let Ok((b, p, mut s, _)) = blocks.get_mut(e) else { continue };
             let front = Some(b.dir());
             let out = match b.mech() {
                 Some(Mech::Wire) => {
@@ -265,6 +275,9 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
                     (s.t < PULSE, None)
                 }
                 Some(Mech::PulseGenerator | Mech::LogicGate) => (s.out, front),
+                // Set by `telemetry` from its reading.
+                Some(Mech::ThresholdSensor) => (s.memory, None),
+                Some(Mech::RadioReceiver) => (radio.on.contains(&(p.get(b.id, "channel") as u8)), None),
                 _ => continue,
             };
             s.out = out.0;
@@ -277,7 +290,7 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
         // 3. Inputs → next outputs; signals to the blocks that take them.
         for (&c, &e) in &grid.entities {
             let from = powered.get(&c).copied().unwrap_or(0);
-            if let Ok((b, p, mut s)) = blocks.get_mut(e) {
+            if let Ok((b, p, mut s, sig)) = blocks.get_mut(e) {
                 let side = |d: IVec3| DIRS.iter().position(|x| *x == d).is_some_and(|i| from & (1 << i) != 0);
                 match b.mech() {
                     Some(Mech::Wire) => s.input = on_wires.contains(&c),
@@ -299,6 +312,19 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
                         s.out = s.t > 0.0;
                         s.input = input;
                     }
+                    Some(Mech::RadioTransmitter) => {
+                        // Powered by logic, or by a control-panel sensor on it.
+                        s.input = from != 0 || sig.is_some_and(|x| x.0 != 0.0);
+                        s.out = s.input;
+                        if s.input {
+                            radio.next.insert(p.get(b.id, "channel") as u8);
+                        }
+                    }
+                    Some(Mech::Lamp) => {
+                        s.input = from != 0;
+                        s.out = s.input;
+                    }
+                    Some(Mech::ThresholdSensor | Mech::RadioReceiver) => {}
                     Some(Mech::Flasher) => {
                         s.input = from != 0;
                         s.t = if s.input { s.t + dt } else { 0.0 };
@@ -430,7 +456,7 @@ fn neighbours(grid: &VoxelGrid, c: IVec3) -> Vec<(IVec3, crate::grid::Cell)> {
 
 /// Blocks that react to a signal.
 pub fn takes_signal(m: Mech) -> bool {
-    matches!(m, Mech::Clutch | Mech::Gearshift | Mech::SpeedController | Mech::Suspension | Mech::Headlight | Mech::Bearing | Mech::Flasher | Mech::LogicGate | Mech::PulseGenerator)
+    matches!(m, Mech::Clutch | Mech::Gearshift | Mech::SpeedController | Mech::Suspension | Mech::Headlight | Mech::Bearing | Mech::Flasher | Mech::LogicGate | Mech::PulseGenerator | Mech::SlidingDoor | Mech::Lamp | Mech::RadioTransmitter)
 }
 
 /// A lamp on a logic block (lit with its output).
@@ -453,9 +479,16 @@ fn add_lamps(mut commands: Commands, added: Query<(Entity, &BlockEntity), Added<
             Some(Mech::PulseGenerator) => (Vec3::new(0.16, 0.08, 0.06), Vec3::new(0.0, -0.14, 0.44), "glow_amber"),
             Some(Mech::LogicGate) => (Vec3::new(0.16, 0.08, 0.06), Vec3::new(0.0, -0.2, 0.44), "glow_red"),
             Some(Mech::Flasher) => (Vec3::new(0.26, 0.26, 0.26), Vec3::new(0.0, -0.14, 0.0), "glow_amber"),
+            Some(Mech::Lamp) => (Vec3::new(0.4, 0.4, 0.4), Vec3::new(0.0, -0.08, 0.0), "glow_lamp"),
+            Some(Mech::RadioReceiver) => (Vec3::new(0.12, 0.12, 0.06), Vec3::new(0.0, 0.1, 0.46), "glow_green"),
+            Some(Mech::RadioTransmitter) => (Vec3::new(0.12, 0.12, 0.06), Vec3::new(0.0, 0.1, 0.46), "glow_red"),
+            Some(Mech::ThresholdSensor) => (Vec3::new(0.16, 0.08, 0.16), Vec3::new(0.0, 0.3, 0.0), "glow_cyan"),
             _ => continue,
         };
         commands.spawn((Lamp { on, off: "seg_off", lit: None }, Mesh3d(cache.get(&mut meshes, size)), MeshMaterial3d(mats.get("seg_off")), Transform::from_translation(at), bevy::light::NotShadowCaster, ChildOf(e)));
+        if b.mech() == Some(Mech::Lamp) {
+            commands.spawn((FlashLight, PointLight { color: Color::srgb(1.0, 0.86, 0.62), intensity: 40_000.0, range: 12.0, shadow_maps_enabled: false, ..default() }, Transform::from_xyz(0.0, 0.0, 0.0), Visibility::Hidden, ChildOf(e)));
+        }
         if b.mech() == Some(Mech::Flasher) {
             commands.spawn((FlashLight, PointLight { color: Color::srgb(1.0, 0.62, 0.2), intensity: 25_000.0, range: 10.0, shadow_maps_enabled: false, ..default() }, Transform::from_xyz(0.0, -0.1, 0.0), Visibility::Hidden, ChildOf(e)));
         }
@@ -514,6 +547,7 @@ pub struct LogicPlugin;
 impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WireColor>()
+            .init_resource::<Radio>()
             .add_systems(Update, (add_state, use_switches, run).chain().in_set(LogicSystems).after(crate::signal::SignalSet).before(MechSet))
             .add_systems(Update, (pick_color, add_lamps, wire_looks, animate));
     }

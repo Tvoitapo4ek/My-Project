@@ -304,6 +304,43 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
         }
         // Drawn by the piston (its pole stretches through these cells).
         Mech::PistonPole => Vec::new(),
+        Mech::CreativeTank => {
+            // Like a tank, with brass bands and a glowing core: never empties.
+            let mut v = block_model(Mech::FluidTank);
+            v.push(part([1.0, 0.1, 1.0], "brass", [0.0, 0.2, 0.0]));
+            v.push(part([1.0, 0.1, 1.0], "brass", [0.0, -0.2, 0.0]));
+            v.push(part([0.2, 0.2, 0.2], "glow_amber", [0.0, 0.0, 0.0]));
+            v
+        }
+        Mech::ThresholdSensor => vec![
+            // A plate on the block it reads (+Y), a brass dial and a lens
+            // (lit while its signal is on).
+            part([0.6, 0.12, 0.6], "steel", [0.0, 0.44, 0.0]),
+            part([0.44, 0.08, 0.44], "brass", [0.0, 0.36, 0.0]),
+            part([0.04, 0.2, 0.04], "red_grip", [0.12, 0.24, 0.0]),
+        ],
+        Mech::RadioTransmitter | Mech::RadioReceiver => {
+            // A steel box with an antenna; front lamp (red: sends, green:
+            // receives).
+            let tx = mech == Mech::RadioTransmitter;
+            vec![
+                part([0.8, 0.6, 0.8], "steel_casing", [0.0, -0.2, 0.0]),
+                part([0.84, 0.06, 0.84], "brass", [0.0, 0.1, 0.0]),
+                part([0.06, 0.5, 0.06], "steel", [0.25, 0.4, 0.25]),
+                part([0.12, 0.08, 0.12], if tx { "copper" } else { "brass" }, [0.25, 0.66, 0.25]),
+                part([0.4, 0.2, 0.04], "screen", [0.0, -0.2, 0.42]),
+            ]
+        }
+        Mech::Lamp => vec![
+            // A glass cube in a steel cage, bolted to the face behind it.
+            part([0.66, 0.1, 0.66], "steel", [0.0, -0.43, 0.0]),
+            part([0.56, 0.56, 0.56], "glass_lens", [0.0, -0.08, 0.0]),
+            part([0.06, 0.62, 0.06], "steel", [0.3, -0.08, 0.3]),
+            part([0.06, 0.62, 0.06], "steel", [-0.3, -0.08, 0.3]),
+            part([0.06, 0.62, 0.06], "steel", [0.3, -0.08, -0.3]),
+            part([0.06, 0.62, 0.06], "steel", [-0.3, -0.08, -0.3]),
+            part([0.66, 0.06, 0.66], "brass", [0.0, 0.24, 0.0]),
+        ],
         Mech::BeltPulley => {
             // A shaft with a rubber drum and brass flanges (turning).
             let mut v = shaft(1.0);
@@ -520,6 +557,14 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
         ],
         Tool::Goggles => goggles_parts(),
+        Tool::WaterBucket => vec![
+            part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),
+            part([0.16, 0.02, 0.16], "water", [0.0, 0.1, 0.0]),
+            part([0.22, 0.03, 0.22], "brass", [0.0, 0.1, 0.0]),
+            part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
+            part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
+            part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
+        ],
         Tool::Belt => vec![
             // A rolled-up belt.
             part([0.2, 0.2, 0.12], "rubber", [0.0, 0.0, 0.0]),
