@@ -170,6 +170,34 @@ def t_white():
     return rgba(img)
 
 
+CONCRETE = pal("#30333a", "#363a41", "#3b3f46", "#42464e", "#4a4f57")
+LINE = pal("#5a5f68", "#646972", "#6e737c", "#787d86")
+
+
+def t_concrete():
+    """Dark proving-ground concrete: fine grain, faint pores, slab seams."""
+    y, x = np.mgrid[0:N, 0:N]
+    t = 0.5 + (fbm(401, 8) - 0.5) * 0.35 + (fbm(402, 16) - 0.5) * 0.25
+    img = shade(CONCRETE, np.clip(t, 0, 0.999))
+    rng = np.random.default_rng(403)
+    for _ in range(10):
+        px, py = rng.integers(1, N - 1, 2)
+        img[py, px] = CONCRETE[0]
+    img[(x == 0) | (y == 0)] = CONCRETE[-1]
+    img[(x == N - 1) | (y == N - 1)] = CONCRETE[0]
+    return rgba(img)
+
+
+def t_concrete_line():
+    """Lighter marking concrete (chunk grid lines of the proving ground)."""
+    y, x = np.mgrid[0:N, 0:N]
+    t = 0.5 + (fbm(411, 8) - 0.5) * 0.3
+    img = shade(LINE, np.clip(t, 0, 0.999))
+    img[(x == 0) | (y == 0)] = LINE[-1]
+    img[(x == N - 1) | (y == N - 1)] = LINE[0]
+    return rgba(img)
+
+
 def t_stone():
     return rgba(bevel(stone_like(11, STONE)))
 
@@ -314,7 +342,7 @@ def t_player():
 
 TEXTURES = {
     # building blocks
-    "white": t_white, "stone": t_stone, "planks": t_planks, "glass": t_glass,
+    "white": t_white, "concrete": t_concrete, "concrete_line": t_concrete_line, "stone": t_stone, "planks": t_planks, "glass": t_glass,
     "steel": t_steel, "steel_frame": t_steel_frame,
     # machine materials (also used as block faces)
     "steel_casing": t_steel_casing, "brass_casing": t_brass_casing,

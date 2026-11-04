@@ -226,6 +226,9 @@ pub fn build() -> Scenario {
     if want("build2") {
         build2(&mut steps);
     }
+    if want("ground") {
+        ground(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -237,7 +240,7 @@ fn basics(steps: &mut Vec<(String, StepFn)>) {
             return Step::Wait;
         }
         let (p, b) = player(world);
-        ctx.check("white platform under the spawn", get_block(world, IVec3::new(0, -1, 0)).id == BlockId::k("white_block"), "");
+        ctx.check("concrete proving ground under the spawn", get_block(world, IVec3::new(0, -1, 0)).id == BlockId::k("concrete_line"), "");
         ctx.check("player stands on the platform", b.grounded && (p.y - 0.9).abs() < 0.15, format!("{p:.2}"));
         screenshot(world, "01_spawn");
         Step::Next
@@ -349,7 +352,8 @@ fn basics(steps: &mut Vec<(String, StepFn)>) {
             35 => click(world, MouseButton::Middle, false),
             40 => {
                 let held = world.query_filtered::<&Inventory, With<Player>>().iter(world).next().and_then(|i| i.held()).map(|s| s.item.def().key.clone());
-                ctx.check("MMB picks the block", held.as_deref() == Some("white_block"), format!("{held:?}"));
+                let floor = get_block(world, IVec3::new(0, -1, -3)).id.def().key.clone();
+                ctx.check("MMB picks the block", held.as_deref() == Some(floor.as_str()), format!("{held:?} / {floor}"));
                 // A little build for the screenshots.
                 for (i, k) in ["white_block", "stone", "planks", "steel_block", "steel_frame", "steel_casing", "glass"].iter().enumerate() {
                     set_block(world, IVec3::new(-3 + i as i32, 0, -5), k, 2);
@@ -930,6 +934,13 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
                 let n = contraptions(world).len();
                 ctx.check("toggle again: the car returns to the block grid", n == 0, format!("{n} bodies left"));
                 ctx.check("all blocks are back", (world_cells(world) as f32 - ctx.vars["cells0"]).abs() < 0.5, format!("{} vs {}", world_cells(world), ctx.vars["cells0"]));
+                // Clear the car where it stopped (later tests build there).
+                let g = world_grid(world);
+                let boxes = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                for (lo, hi) in boxes {
+                    clear_area(world, lo.with_y(lo.y.max(0)), hi);
+                }
+                world.entity_mut(g).insert(crate::tools::glue::Glue(Vec::new()));
                 return Step::Next;
             }
             _ => {}
@@ -1257,6 +1268,163 @@ fn build2(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+}
+
+/// Builds a small test car with its front at `front` (driving towards −Z),
+/// glued, with a seat, a panel (W = throttle) and a physics toggle; turns
+/// physics on. Returns the toggle cell.
+fn test_car(world: &mut World, front: IVec3) -> IVec3 {
+    let o = front + IVec3::new(-1, 0, 31); // the layout below is relative to the old car
+    let at = |v: IVec3| o + v;
+    for x in 0..3 {
+        for z in -30..=-26 {
+            set_block(world, at(IVec3::new(x, 1, z)), "steel_block", 2);
+        }
+    }
+    // The drivetrain sits on top of the rear axle (nothing hangs low
+    // behind it: no tail strike on steep ramps).
+    for z in [-30, -26] {
+        set_block(world, at(IVec3::new(0, 0, z)), "suspension", 1);
+        set_block(world, at(IVec3::new(2, 0, z)), "suspension", 0);
+        set_block(world, at(IVec3::new(-1, 0, z)), "wheel", 1);
+        set_block(world, at(IVec3::new(3, 0, z)), "wheel", 0);
+    }
+    set_block(world, at(IVec3::new(1, 0, -26)), "cogwheel", 0);
+    set_block(world, at(IVec3::new(1, 1, -26)), "cogwheel", 0);
+    set_block(world, at(IVec3::new(2, 1, -26)), "speed_controller", 1);
+    set_block(world, at(IVec3::new(3, 1, -26)), "creative_motor", 1);
+    set_block(world, at(IVec3::new(2, 2, -26)), "sensor", 3);
+    set_block(world, at(IVec3::new(1, 2, -27)), "seat", 5);
+    set_block(world, at(IVec3::new(1, 2, -28)), "control_panel", 4);
+    set_block(world, at(IVec3::new(1, 2, -26)), "physics_toggle", 2);
+    set_block(world, at(IVec3::new(0, 2, -30)), "speedometer", 4);
+    let g = world_grid(world);
+    let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+    glue.push((at(IVec3::new(-1, 0, -31)), at(IVec3::new(3, 2, -26))));
+    world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+    at(IVec3::new(1, 2, -26))
+}
+
+fn ground(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("proving ground: overview", |world, ctx| {
+        match ctx.frames {
+            1 => {
+                console(world, "fly");
+                teleport(world, Vec3::new(-24.0, 9.0, 26.0));
+            }
+            4 => look_at(world, Vec3::new(-46.0, 0.0, -2.0)),
+            16 => screenshot(world, "65_ground_overview"),
+            20 => {
+                console(world, "fly");
+                teleport(world, Vec3::new(0.5, 0.0, 0.5));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    // lane, label, needed height
+    for (lane, label) in [(0, "smooth 15° ramp"), (1, "smooth 30° ramp"), (2, "block 27° ramp"), (3, "block 14° ramp"), (4, "washboard")] {
+        steps.push(step(&format!("proving ground: {label}"), move |world, ctx| {
+            let x = crate::world::lane_x(lane) + 2;
+            let front = IVec3::new(x, 0, crate::world::LANE_START_Z + 9);
+            match ctx.frames {
+                1 => {
+                    let toggle = test_car(world, front);
+                    ctx.vars.insert("tx".into(), toggle.x as f32);
+                    ctx.vars.insert("ty".into(), toggle.y as f32);
+                    ctx.vars.insert("tz".into(), toggle.z as f32);
+                    ctx.vars.insert("maxy".into(), -9.0);
+                    ctx.vars.insert("minup".into(), 1.0);
+                    teleport(world, Vec3::new(x as f32 + 6.5, 0.0, front.z as f32 + 3.0));
+                }
+                4 => {
+                    let o = front + IVec3::new(-1, 0, 31);
+                    set_param(world, o + IVec3::new(3, 1, -26), "speed", 128.0);
+                    set_param(world, o + IVec3::new(2, 1, -26), "speed", 0.0);
+                    // This layout drives towards −Z with a negative speed.
+                    set_param(world, o + IVec3::new(2, 1, -26), "signal_speed", -64.0);
+                    let g = world_grid(world);
+                    let e = block_entity(world, o + IVec3::new(2, 2, -26)).unwrap();
+                    world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: o + IVec3::new(1, 2, -28) });
+                    let cell = IVec3::new(ctx.vars["tx"] as i32, ctx.vars["ty"] as i32, ctx.vars["tz"] as i32);
+                    world.write_message(crate::interact::UseBlock { grid: g, cell, mech: crate::content::Mech::PhysicsToggle });
+                }
+                10 => {
+                    // Drive: a scripted seat on the car's seat + W.
+                    let seat = car_block(world, front + IVec3::new(-1, 0, 31) + IVec3::new(1, 2, -27));
+                    let p = world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap();
+                    if let Some(seat) = seat {
+                        world.entity_mut(p).insert((crate::player::Seated { seat }, avian3d::prelude::RigidBody::Kinematic, avian3d::prelude::ColliderDisabled));
+                    }
+                    let mut pk = world.resource_mut::<crate::signal::PanelKeys>();
+                    pk.scripted = true;
+                    pk.held = vec![KeyCode::KeyW];
+                    world.resource_mut::<CameraView>().0 = View::Behind;
+                }
+                12 => {
+                    // Look where the car goes (the camera is behind the player).
+                    let (p, _) = player(world);
+                    look_at(world, p + Vec3::new(0.0, -0.5, -10.0));
+                }
+                13 => {
+                    // Forward is −Z: the right wheel (facing +X) must turn
+                    // about −X; flip the throttle direction if needed.
+                    let o = front + IVec3::new(-1, 0, 31);
+                    let rpm = car_block(world, o + IVec3::new(3, 0, -26)).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(0.0);
+                    if rpm > 0.0
+                        && let Some(c) = car_block(world, o + IVec3::new(2, 1, -26))
+                    {
+                        let mut p = world.get_mut::<crate::mech::Params>(c).unwrap();
+                        p.0[1] = -p.0[1];
+                    }
+                }
+                _ => {}
+            }
+            if ctx.frames > 10
+                && let Some((_, _, rot, _)) = contraptions(world).first().copied()
+                && let Some((_, com)) = body_center(world)
+            {
+                let up = (rot * Vec3::Y).y;
+                if !ctx.vars.contains_key("y0") {
+                    ctx.vars.insert("y0".into(), com.y);
+                    ctx.vars.insert("z0".into(), com.z);
+                }
+                ctx.vars.insert("maxy".into(), ctx.vars["maxy"].max(com.y - ctx.vars["y0"]));
+                ctx.vars.insert("minup".into(), ctx.vars["minup"].min(up));
+                if ctx.frames == 28 {
+                    screenshot(world, &format!("6{lane}_ground_{lane}"));
+                }
+
+            }
+            if ctx.frames > 10 && ctx.t > 9.0 {
+                let c = contraptions(world).first().copied();
+                let (maxy, minup) = (ctx.vars["maxy"], ctx.vars["minup"]);
+                // −Z travel of the centre of mass since the drive started.
+                let moved = body_center(world).map(|(_, p)| ctx.vars["z0"] - p.z).unwrap_or(0.0);
+                if lane == 4 {
+                    ctx.check(&format!("{label}: the car drives over it upright"), moved > 10.0 && minup > 0.8, format!("moved {moved:.1} m, min up {minup:.2}"));
+                } else {
+                    ctx.check(&format!("{label}: the car climbs to the plateau"), maxy > 2.6 && minup > 0.6, format!("max y {maxy:.2}, min up {minup:.2}, moved {moved:.1} m"));
+                }
+                // Clean up: stand up, remove the car.
+                let mut pk = world.resource_mut::<crate::signal::PanelKeys>();
+                pk.held.clear();
+                pk.scripted = false;
+                let p = world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap();
+                world.entity_mut(p).remove::<(crate::player::Seated, avian3d::prelude::ColliderDisabled)>().insert(avian3d::prelude::RigidBody::Dynamic);
+                world.resource_mut::<CameraView>().0 = View::First;
+                if let Some((e, ..)) = c {
+                    world.entity_mut(e).despawn();
+                }
+                ctx.vars.remove("y0");
+                ctx.vars.remove("z0");
+                teleport(world, Vec3::new(0.5, 0.0, 0.5));
+                return Step::Next;
+            }
+            Step::Wait
+        }));
+    }
 }
 
 pub fn key(world: &mut World, k: KeyCode, down: bool) {

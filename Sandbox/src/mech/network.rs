@@ -169,6 +169,9 @@ fn mesh_offsets(axis: Axis, role: Role) -> Vec<IVec3> {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NetInfo {
     pub members: Vec<IVec3>,
+    /// The network has a source (even one asking for 0 RPM): its wheels
+    /// are held by the drivetrain instead of rolling freely.
+    pub driven: bool,
     pub conflict: bool,
     pub limited: bool,
 }
@@ -213,6 +216,7 @@ pub fn solve(grid: &HashMap<IVec3, Node>) -> Solution {
             }
         }
         let mut base: Option<f32> = None;
+        info.driven = info.members.iter().any(|c| grid[c].source.is_some());
         for c in &info.members {
             if let Some(rpm) = grid[c].source
                 && rpm != 0.0
@@ -312,5 +316,16 @@ mod tests {
         g.insert(IVec3::new(1, 0, 1), Node::new(Role::Cog, Axis::Y));
         let s = solve(&g);
         assert!(s.speed.values().all(|v| v.abs() <= MAX_RPM + 1e-3));
+    }
+
+    #[test]
+    fn driven_networks() {
+        let mut g = HashMap::new();
+        g.insert(IVec3::ZERO, shaft(Axis::X).source(0.0));
+        g.insert(IVec3::X, shaft(Axis::X));
+        g.insert(IVec3::new(5, 0, 0), shaft(Axis::X));
+        let s = solve(&g);
+        assert!(s.nets[s.net_of[&IVec3::X]].driven, "a source asking for 0 still holds");
+        assert!(!s.nets[s.net_of[&IVec3::new(5, 0, 0)]].driven);
     }
 }

@@ -19,8 +19,9 @@ use bevy::{
 use crate::grid::render::{load_texture, pixel_image, TILE};
 
 /// (name, metallic, roughness)
-const MATERIALS: [(&str, f32, f32); 15] = [
+const MATERIALS: [(&str, f32, f32); 16] = [
     ("white", 0.0, 0.9),
+    ("concrete", 0.0, 0.92),
     ("steel", 0.55, 0.55),
     ("steel_casing", 0.4, 0.6),
     ("brass_casing", 0.5, 0.5),

@@ -71,7 +71,7 @@ fn steer(
     time: Res<Time>,
     mut susp: Query<(&BlockEntity, &Params, &Signal, &mut Steer, &Children)>,
     grids: Query<&VoxelGrid>,
-    mut wheels: Query<(&BlockEntity, &mut Transform), Without<LayerNode>>,
+    mut wheels: Query<(&BlockEntity, &mut Transform, Option<&crate::contraption::WheelDrop>), Without<LayerNode>>,
     mut nodes: Query<(&LayerNode, &mut Transform), Without<BlockEntity>>,
 ) {
     let dt = time.delta_secs();
@@ -90,11 +90,13 @@ fn steer(
         }
         let Ok(grid) = grids.get(b.grid) else { continue };
         if let Some(&w) = grid.entities.get(&(b.cell + b.dir()))
-            && let Ok((wb, mut t)) = wheels.get_mut(w)
+            && let Ok((wb, mut t, drop)) = wheels.get_mut(w)
             && wb.mech() == Some(Mech::Wheel)
         {
             let base = transform_for(wb.cell, wb.id, wb.facing);
             t.rotation = Quat::from_rotation_y(st.0) * base.rotation;
+            // Follow the suspension travel (physics mode).
+            t.translation = base.translation - Vec3::Y * drop.map(|d| d.0).unwrap_or(0.0);
         }
     }
 }

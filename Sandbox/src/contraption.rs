@@ -230,6 +230,16 @@ fn toggle(
 /// Slightly over half a block: blocks at axle height clear the ground.
 pub const WHEEL_RADIUS: f32 = 0.6;
 const TRAVEL: f32 = 0.35;
+/// Ground clearance added by the springs: blocks at axle level ride this
+/// much above the ground instead of scraping it.
+pub const RIDE: f32 = 0.25;
+
+/// How far the wheel hangs below its built position (suspension travel),
+/// for the visuals.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct WheelDrop(pub f32);
+/// Radius of the wheel's ground probe (m).
+const PROBE: f32 = 0.25;
 
 /// Raycast suspension, drive and side grip of every wheel.
 #[allow(clippy::type_complexity)]
@@ -238,13 +248,14 @@ fn drive(
     spatial: SpatialQuery,
     gravity: Res<Gravity>,
     mut bodies: Query<(Entity, &VoxelGrid, &ChunkViews, &GlobalTransform, &ComputedMass, Forces)>,
-    mut wheels: Query<(&BlockEntity, &mut Spin), Without<Steer>>,
+    mut wheels: Query<(&BlockEntity, &mut Spin, Option<&mut WheelDrop>, &crate::mech::NetState), Without<Steer>>,
+    mut commands: Commands,
     susp: Query<(&BlockEntity, &Steer, &Spin, &crate::mech::Params)>,
 ) {
     let dt = time.delta_secs().max(1e-4);
     let g = gravity.0.length();
     for (_, grid, views, gt, mass, mut forces) in &mut bodies {
-        let list: Vec<Entity> = grid.entities.values().copied().filter(|e| wheels.get(*e).is_ok_and(|(b, _)| b.mech() == Some(Mech::Wheel))).collect();
+        let list: Vec<Entity> = grid.entities.values().copied().filter(|e| wheels.get(*e).is_ok_and(|(b, ..)| b.mech() == Some(Mech::Wheel))).collect();
         if list.is_empty() {
             continue;
         }
@@ -258,7 +269,7 @@ fn drive(
         let t = gt.compute_transform();
         let up = t.rotation * Vec3::Y;
         for e in list {
-            let Ok((wb, mut spin)) = wheels.get_mut(e) else { continue };
+            let Ok((wb, mut spin, drop, net)) = wheels.get_mut(e) else { continue };
             // The suspension holding this wheel (on its axle side).
             let s = grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).filter(|(b, ..)| b.mech() == Some(Mech::Suspension));
             let Some((sb, steer, _, params)) = s else { continue };
@@ -272,16 +283,25 @@ fn drive(
             // rests at the height it was built.
             let k = per_wheel * g / (TRAVEL * 0.5) * stiffness;
             let eq = per_wheel * g / k;
-            let rest = TRAVEL + WHEEL_RADIUS + eq;
-            let origin = center + up * (TRAVEL + eq);
-            let Some(hit) = spatial.cast_ray(origin, Dir3::new(-up).unwrap_or(Dir3::NEG_Y), rest + TRAVEL, true, &filter) else {
-                continue;
-            };
-            let compression = rest - hit.distance;
-            if compression <= 0.0 {
+            // Distances from the wheel centre: the spring is free at `rest`.
+            let rest = WHEEL_RADIUS + RIDE + eq;
+            let origin = center + up * TRAVEL;
+            // A small sphere instead of a thin ray: it rolls over block
+            // edges, steps and slope joints instead of snapping at them.
+            let hit = spatial.cast_shape(&Collider::sphere(PROBE), origin, Quat::IDENTITY, Dir3::new(-up).unwrap_or(Dir3::NEG_Y), &ShapeCastConfig::from_max_distance(TRAVEL + rest + TRAVEL - PROBE), &filter);
+            let ground = hit.map(|h| h.distance + PROBE - TRAVEL).unwrap_or(rest + TRAVEL);
+            let hang = (ground - WHEEL_RADIUS).clamp(-TRAVEL, RIDE + eq);
+            match drop {
+                Some(mut d) => d.0 = hang,
+                None => {
+                    commands.entity(e).insert(WheelDrop(hang));
+                }
+            }
+            let compression = rest - ground;
+            if hit.is_none() || compression <= 0.0 {
                 continue;
             }
-            let contact = origin - up * hit.distance;
+            let contact = center - up * ground;
             let v = forces.velocity_at_point(contact);
             // Spring + damper along the body's up.
             let damp = 2.0 * (k * per_wheel).sqrt() * 0.6;
@@ -294,7 +314,8 @@ fn drive(
             // about the wheel's own facing.
             let d = wb.dir();
             let rpm = spin.rpm * (d.x + d.y + d.z) as f32;
-            let driven = spin.rpm.abs() > 1e-3;
+            // Held by a drivetrain with a source (0 RPM = brake); otherwise free.
+            let driven = net.driven;
             if driven {
                 let target = rpm / 60.0 * std::f32::consts::TAU * WHEEL_RADIUS;
                 let f = ((target - v_long) * per_wheel / dt * 0.2).clamp(-grip, grip);

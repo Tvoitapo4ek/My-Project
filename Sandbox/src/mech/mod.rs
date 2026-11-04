@@ -67,6 +67,8 @@ pub struct Spin {
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct NetState {
     pub conflict: bool,
+    /// Part of a network with a source (see `NetInfo::driven`).
+    pub driven: bool,
 }
 
 pub fn transform_for(cell: IVec3, id: BlockId, facing: u8) -> Transform {
@@ -209,6 +211,7 @@ fn solve_networks(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(
             spin.rpm = rpm;
             spin.angle = (spin.angle + rpm / 60.0 * std::f32::consts::TAU * dt).rem_euclid(std::f32::consts::TAU * 64.0);
             st.conflict = sol.net_of.get(&c).is_some_and(|n| sol.nets[*n].conflict);
+            st.driven = sol.net_of.get(&c).is_some_and(|n| sol.nets[*n].driven);
         }
     }
 }

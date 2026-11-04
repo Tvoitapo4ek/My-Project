@@ -13,6 +13,11 @@
     // --- building -----------------------------------------------------------
     (key: "white_block", name: "Белый блок", category: "building",
      textures: Some(("white", "white", "white")), mass: 100.0),
+    // The proving ground: dark concrete, lighter marking lines.
+    (key: "concrete", name: "Бетон", category: "building",
+     textures: Some(("concrete", "concrete", "concrete")), mass: 180.0),
+    (key: "concrete_line", name: "Бетон разметки", category: "building",
+     textures: Some(("concrete_line", "concrete_line", "concrete_line")), mass: 180.0),
     (key: "stone", name: "Камень", category: "building",
      textures: Some(("stone", "stone", "stone")), mass: 150.0),
     (key: "planks", name: "Доски", category: "building",
