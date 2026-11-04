@@ -34,6 +34,13 @@ pub enum Mech {
     Sensor,
     /// Gives physics to itself and everything glued to it, and takes it back.
     PhysicsToggle,
+    /// Measures the speed of the contraption it is on (km/h).
+    Speedometer,
+    /// Reads a value from the block it is attached to and sends it to a
+    /// linked mechanical display.
+    TelemetrySensor,
+    /// Shows a value (digits or a needle); powered by rotation from the side.
+    MechanicalDisplay,
 }
 
 /// How a block's orientation is chosen when placed.

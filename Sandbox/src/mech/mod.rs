@@ -127,6 +127,12 @@ fn sync_block_entities(
     }
 }
 
+/// World (grid) direction of a block's local +X — the side axis of
+/// upright blocks (displays).
+pub fn side_axis(b: &BlockEntity) -> IVec3 {
+    (transform_for(b.cell, b.id, b.facing).rotation * Vec3::X).round().as_ivec3()
+}
+
 /// The node a block contributes to the network (pass 2 = speed
 /// controllers on their output side).
 fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) -> Option<Node> {
@@ -141,6 +147,10 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>) ->
             Node::new(Role::Shaft, axis).one_port(d).source(if ccw { s * speed } else { -s * speed })
         }
         Mech::Shaft | Mech::Suspension | Mech::Wheel => Node::new(Role::Shaft, axis),
+        // Powered from the side: it is a cog whose axis runs left–right, so
+        // a shaft or cogwheel on its side (or a cog meshing in its plane)
+        // turns it.
+        Mech::MechanicalDisplay => Node::new(Role::Cog, Axis::of(side_axis(b))),
         Mech::Cog => Node::new(Role::Cog, axis),
         Mech::LargeCog => Node::new(Role::LargeCog, axis),
         Mech::Gearbox => Node::new(Role::Gearbox, axis),
@@ -208,16 +218,20 @@ fn spin_rotors(blocks: Query<(&BlockEntity, &Spin, &Children)>, mut nodes: Query
     for (b, spin, children) in &blocks {
         let d = b.dir();
         let s = (d.x + d.y + d.z) as f32;
+        let x = side_axis(b);
+        let sx = (x.x + x.y + x.z) as f32;
         // Meshing cogs are offset by half a tooth so the teeth interleave.
         let offset = match b.mech() {
             Some(Mech::Cog) if (b.cell.x + b.cell.y + b.cell.z).rem_euclid(2) == 1 => std::f32::consts::PI / 8.0,
             _ => 0.0,
         };
         for c in children.iter() {
-            if let Ok((l, mut t)) = nodes.get_mut(c)
-                && l.0 == Layer::Rotor
-            {
-                t.rotation = Quat::from_rotation_y(spin.angle * s + offset);
+            if let Ok((l, mut t)) = nodes.get_mut(c) {
+                match l.0 {
+                    Layer::Rotor => t.rotation = Quat::from_rotation_y(spin.angle * s + offset),
+                    Layer::RotorX => t.rotation = Quat::from_rotation_x(spin.angle * sx),
+                    _ => {}
+                }
             }
         }
     }
@@ -281,6 +295,26 @@ mod tests {
         assert_eq!(node_for(&b, &p, 1.0, Some(true)).unwrap().source, Some(128.0));
         assert_eq!(node_for(&b, &p, -1.0, Some(true)).unwrap().source, Some(-128.0), "negative signal reverses");
         assert_eq!(node_for(&b, &p, 1.0, Some(false)).unwrap().source, None, "no input → no output");
+    }
+
+    #[test]
+    fn display_is_driven_by_a_cog_on_its_side() {
+        // Display facing −Z (front towards the player at +Z… seen from −Z):
+        // its side axis is X. A motor → cogwheel line along X ends at it.
+        let disp = BlockEntity { grid: Entity::PLACEHOLDER, cell: IVec3::new(2, 0, 0), id: BlockId::k("mechanical_display"), facing: crate::grid::facing_of(IVec3::Z) };
+        let side = side_axis(&disp);
+        assert_eq!(side.y, 0);
+        assert_eq!(side.x.abs() + side.z.abs(), 1);
+        let mut g = HashMap::new();
+        let ax = Axis::of(side);
+        g.insert(IVec3::ZERO, Node::new(Role::Shaft, ax).one_port(side).source(64.0));
+        g.insert(side, Node::new(Role::Cog, ax));
+        g.insert(side * 2, node_for(&disp, &Params::defaults(disp.id), 0.0, None).unwrap());
+        let sol = network::solve(&g);
+        assert_eq!(sol.speed[&(side * 2)].abs(), 64.0);
+        // Nothing turns it → stopped.
+        g.remove(&IVec3::ZERO);
+        assert_eq!(network::solve(&g).speed[&(side * 2)], 0.0);
     }
 
     #[test]

@@ -66,6 +66,9 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mats: Re
     for (name, c) in [("glow_amber", LinearRgba::rgb(4.0, 1.9, 0.3)), ("glow_cyan", LinearRgba::rgb(0.5, 2.6, 4.0)), ("glow_green", LinearRgba::rgb(0.4, 3.0, 0.8)), ("glow_red", LinearRgba::rgb(3.5, 0.4, 0.3))] {
         m.insert(name.to_string(), mats.add(StandardMaterial { base_color: Color::LinearRgba(c), unlit: true, ..default() }));
     }
+    // Screens: dark glass background and unlit segments.
+    m.insert("screen".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.05, 0.09, 0.1), perceptual_roughness: 0.25, reflectance: 0.4, ..default() }));
+    m.insert("seg_off".into(), mats.add(StandardMaterial { base_color: Color::srgb(0.13, 0.16, 0.17), perceptual_roughness: 0.6, ..default() }));
     commands.insert_resource(Materials(m));
 }
 
@@ -126,6 +129,8 @@ pub enum Layer {
     Body,
     /// Spins with the block's kinetic speed about local Y.
     Rotor,
+    /// Spins with the kinetic speed about local X (side gear rings).
+    RotorX,
     /// Turned by steering (suspension knuckle + wheel).
     Steer,
 }

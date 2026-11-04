@@ -65,20 +65,34 @@ fn wrench(
         return;
     }
     let entity = grid.entities.get(&a.cell).copied();
-    match def.mech {
-        Some(Mech::ControlPanel) => {
-            link.0 = Some(PanelRef { grid: a.grid, cell: a.cell });
+    let here = PanelRef { grid: a.grid, cell: a.cell };
+    match (def.mech, link.0) {
+        (Some(Mech::ControlPanel), _) => {
+            link.0 = Some((here, Mech::ControlPanel));
             toasts.write(toast("Пульт выбран: теперь ЛКМ ключом по датчику, чтобы связать"));
         }
-        Some(Mech::Sensor) if link.0.is_some() => {
+        (Some(Mech::Sensor), Some((panel, Mech::ControlPanel))) => {
             if let Some(e) = entity
                 && let Ok(mut l) = sensors.get_mut(e)
             {
-                l.0 = link.0.take();
+                l.0 = Some(panel);
+                link.0 = None;
                 toasts.write(toast("Датчик связан с пультом — выберите клавиши"));
                 editing.0 = Some(e);
                 next.set(Ui::Settings);
             }
+        }
+        (Some(Mech::TelemetrySensor), _) => {
+            link.0 = Some((here, Mech::TelemetrySensor));
+            toasts.write(toast("Датчик телеметрии выбран: теперь ЛКМ ключом по механическому экрану"));
+        }
+        (Some(Mech::MechanicalDisplay), Some((sensor, Mech::TelemetrySensor))) => {
+            let s = grids.get(sensor.grid).ok().and_then(|g| g.entities.get(&sensor.cell).copied());
+            if let Some(Ok(mut l)) = s.map(|s| sensors.get_mut(s)) {
+                l.0 = Some(here);
+                toasts.write(toast("Экран связан с датчиком телеметрии"));
+            }
+            link.0 = None;
         }
         _ if !def.params.is_empty() => {
             if let Some(e) = entity.filter(|e| blocks.contains(*e)) {

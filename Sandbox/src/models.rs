@@ -171,6 +171,55 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
             part([0.16, 0.08, 0.16], "glow_green", [0.0, 0.3, 0.0]),
             part([0.05, 0.3, 0.05], "steel", [0.18, 0.22, 0.18]),
         ],
+        Mech::Speedometer => {
+            // Dark casing, brass rim, an impeller in a side window and a
+            // pitot tube on top.
+            let mut v = vec![
+                part([0.86, 0.7, 0.86], "steel_casing", [0.0, -0.15, 0.0]),
+                part([0.9, 0.08, 0.9], "brass", [0.0, 0.2, 0.0]),
+                part([0.5, 0.42, 0.06], "screen", [0.0, -0.12, 0.43]),
+                part([0.08, 0.3, 0.08], "steel", [0.25, 0.38, 0.0]),
+                part([0.08, 0.08, 0.3], "brass", [0.25, 0.5, 0.12]),
+                part([0.12, 0.12, 0.08], "copper", [0.25, 0.5, 0.29]),
+            ];
+            for i in 0..6 {
+                let a = i as f32 / 6.0 * TAU;
+                v.push(part([0.05, 0.17, 0.03], "steel", [a.sin() * 0.09, -0.12 + a.cos() * 0.09, 0.47]).rot(Quat::from_rotation_z(-a)));
+            }
+            v.push(part([0.07, 0.07, 0.04], "red_grip", [0.0, -0.12, 0.48]));
+            v
+        }
+        Mech::TelemetrySensor => vec![
+            // A plate on the face of the block it reads (+Y side), with a
+            // cyan lens and a cable stub.
+            part([0.6, 0.12, 0.6], "steel", [0.0, 0.44, 0.0]),
+            part([0.44, 0.08, 0.44], "copper", [0.0, 0.36, 0.0]),
+            part([0.18, 0.08, 0.18], "glow_cyan", [0.0, 0.3, 0.0]),
+            part([0.1, 0.2, 0.1], "brass", [-0.2, 0.26, 0.2]),
+        ],
+        Mech::MechanicalDisplay => {
+            // Front = local +Z. The face (digits / dial) is added by
+            // `telemetry`; here: casing, brass frame and side gear rings.
+            let mut v = vec![
+                part([0.84, 0.84, 0.8], "steel", [0.0, 0.0, -0.04]),
+                part([0.94, 0.08, 0.1], "brass", [0.0, 0.43, 0.42]),
+                part([0.94, 0.08, 0.1], "brass", [0.0, -0.43, 0.42]),
+                part([0.08, 0.8, 0.1], "brass", [0.43, 0.0, 0.42]),
+                part([0.08, 0.8, 0.1], "brass", [-0.43, 0.0, 0.42]),
+                part([0.78, 0.78, 0.04], "screen", [0.0, 0.0, 0.4]),
+                part([0.9, 0.12, 0.7], "planks", [0.0, 0.44, -0.08]),
+            ];
+            for x in [-0.46f32, 0.46] {
+                v.push(part([0.1, 0.5, 0.5], "brass", [x, 0.0, -0.05]).layer(Layer::RotorX));
+                v.push(part([0.1, 0.5, 0.5], "brass", [x, 0.0, -0.05]).rot(Quat::from_rotation_x(FRAC_PI_4)).layer(Layer::RotorX));
+                for i in 0..8 {
+                    let a = i as f32 / 8.0 * TAU;
+                    v.push(part([0.1, 0.12, 0.12], "brass", [x, a.cos() * 0.29, -0.05 + a.sin() * 0.29]).rot(Quat::from_rotation_x(-a)).layer(Layer::RotorX));
+                }
+                v.push(part([0.12, 0.16, 0.16], "steel", [x, 0.0, -0.05]).layer(Layer::RotorX));
+            }
+            v
+        }
         Mech::PhysicsToggle => vec![
             part([0.96, 0.96, 0.96], "steel_casing", [0.0, 0.0, 0.0]),
             part([1.0, 0.12, 0.3], "brass", [0.0, 0.42, 0.0]),

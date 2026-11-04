@@ -21,6 +21,7 @@ mod settings;
 mod signal;
 mod sky;
 mod style;
+mod telemetry;
 mod tools;
 mod ui;
 mod vehicle;
@@ -60,6 +61,7 @@ fn main() {
         vehicle::VehiclePlugin,
         contraption::ContraptionPlugin,
         tools::ToolsPlugin,
+        telemetry::TelemetryPlugin,
     ))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();

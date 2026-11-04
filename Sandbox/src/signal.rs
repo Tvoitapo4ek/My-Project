@@ -21,20 +21,23 @@ use crate::{
 
 pub const PANEL_REACH: f32 = 3.5;
 
-/// A control panel, by grid and cell (survives entity respawns).
+/// A block by grid and cell (survives entity respawns and moves with
+/// contraptions).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PanelRef {
     pub grid: Entity,
     pub cell: IVec3,
 }
 
-/// The panel a sensor listens to.
+/// A link made with the wrench: sensor → the panel it listens to,
+/// telemetry sensor → the display it feeds.
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct Linked(pub Option<PanelRef>);
 
-/// Panel chosen with the wrench, waiting for a sensor.
+/// First block chosen with the wrench (panel or telemetry sensor), waiting
+/// for the second one.
 #[derive(Resource, Default)]
-pub struct LinkMode(pub Option<PanelRef>);
+pub struct LinkMode(pub Option<(PanelRef, Mech)>);
 
 /// Panels that read the keyboard this frame.
 #[derive(Resource, Default)]
@@ -56,7 +59,7 @@ fn read_keys(keys: Res<ButtonInput<KeyCode>>, mut pk: ResMut<PanelKeys>) {
 
 fn attach_links(mut commands: Commands, added: Query<(Entity, &BlockEntity), (Added<BlockEntity>, Without<Linked>)>) {
     for (e, b) in &added {
-        if b.mech() == Some(Mech::Sensor) {
+        if matches!(b.mech(), Some(Mech::Sensor | Mech::TelemetrySensor)) {
             commands.entity(e).insert(Linked::default());
         }
     }

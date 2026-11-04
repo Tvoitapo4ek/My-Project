@@ -599,6 +599,55 @@ fn mechanisms(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+    steps.push(step("telemetry stand: digits and needle", |world, ctx| {
+        let z = -20;
+        let link = |world: &mut World, sensor: IVec3, display: IVec3| {
+            let g = world_grid(world);
+            let e = block_entity(world, sensor).unwrap();
+            world.get_mut::<crate::signal::Linked>(e).unwrap().0 = Some(crate::signal::PanelRef { grid: g, cell: display });
+        };
+        let shown = |world: &mut World, c: IVec3| block_entity(world, c).and_then(|e| world.get::<crate::telemetry::Shown>(e)).map(|s| s.0).unwrap_or(-1.0);
+        match ctx.frames {
+            1 => {
+                set_block(world, IVec3::new(0, 0, z), "creative_motor", 0);
+                for x in 1..6 {
+                    set_block(world, IVec3::new(x, 0, z), if x == 2 || x == 4 { "mechanical_display" } else { "shaft" }, if x == 2 || x == 4 { 4 } else { 0 });
+                }
+                set_block(world, IVec3::new(0, 1, z), "telemetry_sensor", 3);
+                set_block(world, IVec3::new(3, 1, z), "telemetry_sensor", 3);
+                teleport(world, Vec3::new(3.0, 0.0, z as f32 + 3.2));
+            }
+            4 => {
+                set_param(world, IVec3::new(0, 0, z), "speed", 96.0);
+                set_param(world, IVec3::new(4, 0, z), "style", 1.0);
+                link(world, IVec3::new(0, 1, z), IVec3::new(2, 0, z));
+                link(world, IVec3::new(3, 1, z), IVec3::new(4, 0, z));
+                look_at(world, Vec3::new(3.0, 0.5, z as f32 + 0.5));
+            }
+            12 => {
+                let a = shown(world, IVec3::new(2, 0, z));
+                let b = shown(world, IVec3::new(4, 0, z));
+                ctx.check("telemetry: motor RPM on the digital display", a == 96.0, format!("{a}"));
+                ctx.check("telemetry: shaft RPM on the needle display", b == 96.0, format!("{b}"));
+            }
+            22 => {
+                screenshot(world, "23_telemetry_stand");
+            }
+            26 => set_param(world, IVec3::new(0, 0, z), "speed", 0.0),
+            30 => {
+                let rpm = block_entity(world, IVec3::new(2, 0, z)).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(1.0);
+                let a = shown(world, IVec3::new(2, 0, z));
+                ctx.check("motor stopped: displays lose power and show 0", rpm == 0.0 && a == 0.0, format!("rpm {rpm}, shown {a}"));
+            }
+            38 => {
+                screenshot(world, "24_telemetry_off");
+                clear_area(world, IVec3::new(0, 0, z), IVec3::new(5, 1, z));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
     steps.push(step("wrench: turn and settings", |world, ctx| {
         match ctx.frames {
             1 => {
@@ -641,6 +690,12 @@ fn contraptions(world: &mut World) -> Vec<(Entity, Vec3, Quat, usize)> {
     q.iter(world).map(|(e, t, g)| { let t = t.compute_transform(); (e, t.translation, t.rotation, g.cells().len()) }).collect()
 }
 
+/// Block entity in the (first) contraption's grid.
+fn car_block(world: &mut World, c: IVec3) -> Option<Entity> {
+    let mut q = world.query_filtered::<&VoxelGrid, With<crate::contraption::Contraption>>();
+    q.iter(world).next().and_then(|g| g.entities.get(&c).copied())
+}
+
 fn world_cells(world: &World) -> usize {
     world.get::<VoxelGrid>(world_grid(world)).unwrap().cells().len()
 }
@@ -681,8 +736,14 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
                 set_block(world, IVec3::new(1, 2, -27), "seat", 5);
                 set_block(world, IVec3::new(1, 2, -28), "control_panel", 4);
                 set_block(world, IVec3::new(1, 2, -26), "physics_toggle", 2);
+                // Telemetry: speedometer ← telemetry sensor (from above);
+                // a display facing +Z, turned from its −X side by a motor.
+                set_block(world, IVec3::new(0, 2, -30), "speedometer", 4);
+                set_block(world, IVec3::new(0, 3, -30), "telemetry_sensor", 3);
+                set_block(world, IVec3::new(2, 2, -29), "mechanical_display", 4);
+                set_block(world, IVec3::new(1, 2, -29), "creative_motor", 0);
                 let g = world_grid(world);
-                world.entity_mut(g).insert(crate::tools::glue::Glue(vec![(IVec3::new(-1, 0, -31), IVec3::new(3, 2, -25))]));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(vec![(IVec3::new(-1, 0, -31), IVec3::new(3, 3, -25))]));
                 select(world, "white_block");
                 teleport(world, Vec3::new(7.5, 0.0, -22.5));
             }
@@ -741,6 +802,43 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+    steps.push(step("car: link telemetry with the wrench", |world, ctx| {
+        let Some((_, pos, rot, _)) = contraptions(world).first().copied() else {
+            ctx.check("car exists", false, "");
+            return Step::Next;
+        };
+        let at = |p: Vec3| pos + rot * p;
+        match ctx.frames {
+            1 => {
+                select(world, "wrench");
+                teleport(world, at(Vec3::new(5.5, 0.0, -29.5)) - Vec3::Y * at(Vec3::ZERO).y);
+            }
+            4 => look_at(world, at(Vec3::new(0.5, 3.5, -29.5))),
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the telemetry sensor", a.is_some_and(|a| a.cell == IVec3::new(0, 3, -30)), format!("{:?}", a.map(|a| a.cell)));
+                click(world, MouseButton::Left, true);
+            }
+            9 => click(world, MouseButton::Left, false),
+            12 => look_at(world, at(Vec3::new(3.0, 2.5, -28.5))),
+            16 => click(world, MouseButton::Left, true),
+            17 => click(world, MouseButton::Left, false),
+            22 => {
+                let sensor = car_block(world, IVec3::new(0, 3, -30));
+                let link = sensor.and_then(|e| world.get::<crate::signal::Linked>(e)).and_then(|l| l.0);
+                ctx.check("wrench links the telemetry sensor to the display", link.is_some_and(|l| l.cell == IVec3::new(2, 2, -29)), format!("{link:?}"));
+                let d = car_block(world, IVec3::new(2, 2, -29)).unwrap();
+                let rpm = world.get::<crate::mech::Spin>(d).map(|s| s.rpm).unwrap_or(0.0);
+                ctx.check("display is powered by the motor on its side", rpm.abs() > 1.0, format!("{rpm}"));
+                let shown = world.get::<crate::telemetry::Shown>(d).map(|s| s.0).unwrap_or(-1.0);
+                ctx.check("standing car: the display shows 0 km/h", shown < 0.5, format!("{shown:.2}"));
+                select(world, "white_block");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
     steps.push(step("car: sit, drive and steer with the panel", |world, ctx| {
         let Some((_, pos, rot, _)) = contraptions(world).first().copied() else {
             ctx.check("car exists", false, "");
@@ -774,10 +872,20 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
                 let moved = Vec2::new(pos.x - ctx.vars["p0x"], pos.z - ctx.vars["p0z"]).length();
                 ctx.check("W on the panel: throttle drives the car", moved > 2.0, format!("{moved:.2} m"));
                 screenshot(world, "32_car_driving");
+                let d = car_block(world, IVec3::new(2, 2, -29)).unwrap();
+                let shown = world.get::<crate::telemetry::Shown>(d).map(|s| s.0).unwrap_or(0.0);
+                ctx.check("driving: the display shows the speed", shown > 3.0, format!("{shown:.1} km/h"));
+                ctx.vars.insert("kmh".into(), shown);
                 keys(world, vec![KeyCode::KeyW, KeyCode::KeyA]);
                 ctx.vars.insert("f0x".into(), fwd.x);
                 ctx.vars.insert("f0z".into(), fwd.z);
             }
+            32 => {
+                // Switch the display to the needle (wrench setting «Вид»).
+                let d = car_block(world, IVec3::new(2, 2, -29)).unwrap();
+                world.get_mut::<crate::mech::Params>(d).unwrap().0[0] = 1.0;
+            }
+            37 => screenshot(world, "34_display_needle"),
             40 => {
                 let f0 = Vec2::new(ctx.vars["f0x"], ctx.vars["f0z"]).normalize();
                 let turned = f0.angle_to(Vec2::new(fwd.x, fwd.z).normalize()).abs().to_degrees();

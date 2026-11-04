@@ -50,6 +50,10 @@
         // when speed = 0).
         (key: "signal_speed", label: "Скорость по сигналу", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 128.0),
      ]),
+    // Measures the speed of the physical contraption it stands on (km/h);
+    // 0 in the world grid. Read it with a telemetry sensor.
+    (key: "speedometer", name: "Спидометр", category: "mechanisms", mech: Some(Speedometer),
+     placement: Horizontal, mass: 20.0),
     (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face,
      collision: Box(0.7, 0.7, 0.7), mass: 60.0,
      params: [
@@ -70,6 +74,19 @@
      params: [
         (key: "key_pos", label: "Клавиша (+)", kind: Key, default: 1.0),
         (key: "key_neg", label: "Клавиша (−)", kind: Key, default: 0.0),
+     ]),
+    // Attached to a block (faces into it): speedometer → km/h, suspension →
+    // steering angle (°), anything turning → RPM. Wrench: LMB on it, then
+    // LMB on a mechanical display — linked.
+    (key: "telemetry_sensor", name: "Датчик телеметрии", category: "control", mech: Some(TelemetrySensor),
+     placement: Attach, collision: None, mass: 5.0),
+    // Shows the value of a linked telemetry sensor. Works only while it
+    // turns: drive it from the side (cogwheel or shaft on its left/right).
+    (key: "mechanical_display", name: "Механический экран", category: "control", mech: Some(MechanicalDisplay),
+     placement: Horizontal, mass: 50.0,
+     params: [
+        (key: "style", label: "Вид", kind: Choice(["Цифры", "Стрелка"]), default: 0.0),
+        (key: "max_val", label: "Максимум шкалы", kind: Number(min: 32.0, max: 256.0, step: 32.0, unit: ""), default: 128.0),
      ]),
     (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
 ]
