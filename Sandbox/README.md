@@ -93,4 +93,4 @@ python3 tools/texgen/texgen.py          # пересоздать текстур�
 * **Категория** — `assets/content/categories.ron`; **инструмент** —
   `assets/content/tools.ron` + обработчик в `src/tools/`.
 
-Стиль — `docs/STYLE.md`.
+Полное описание игры (все блоки и предметы, механики, стиль, устройство, документация) — `docs/GAME_GUIDE.md`. Стиль — `docs/STYLE.md`.
