@@ -1,0 +1,7 @@
+// Tools: items that are not blocks. tool: Wrench | Glue | GravityGun | PhysGun
+[
+    (key: "wrench", name: "Гаечный ключ", category: "tools", tool: Wrench),
+    (key: "glue", name: "Клей", category: "tools", tool: Glue),
+    (key: "gravity_gun", name: "Гравитационная пушка", category: "tools", tool: GravityGun),
+    (key: "physgun", name: "Физическая пушка", category: "tools", tool: PhysGun),
+]

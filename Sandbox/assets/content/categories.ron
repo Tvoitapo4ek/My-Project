@@ -1,0 +1,7 @@
+// Categories of the item catalogue, in display order.
+[
+    (key: "building", name: "Строительные"),
+    (key: "mechanisms", name: "Механизмы"),
+    (key: "control", name: "Управление"),
+    (key: "tools", name: "Инструменты"),
+]

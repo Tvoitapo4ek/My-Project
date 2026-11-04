@@ -1,0 +1,72 @@
+// Blocks. Every block is also an item with the same key.
+//
+//   textures   — cube blocks: (top, sides, bottom) from assets/textures/<name>.png
+//   mech       — behaviour (see content.rs `Mech`); mechanisms are drawn by models
+//                (mech/model.rs) instead of textures
+//   placement  — None | Face (along the clicked face) | Attach (into the clicked
+//                block) | Horizontal (facing the player)
+//   collision  — Full | None | Box(x, y, z) in block space (Y = block facing)
+//   params     — settings changed with the wrench:
+//                Number(min, max, step, unit) | Choice([...]) | Key (keyboard key)
+//   mass       — kg when the block becomes physical
+[
+    // --- building -----------------------------------------------------------
+    (key: "white_block", name: "Белый блок", category: "building",
+     textures: Some(("white", "white", "white")), mass: 100.0),
+    (key: "stone", name: "Камень", category: "building",
+     textures: Some(("stone", "stone", "stone")), mass: 150.0),
+    (key: "planks", name: "Доски", category: "building",
+     textures: Some(("planks", "planks", "planks")), mass: 40.0),
+    (key: "steel_block", name: "Стальной блок", category: "building",
+     textures: Some(("steel", "steel", "steel")), mass: 200.0),
+    (key: "steel_frame", name: "Стальная рама", category: "building",
+     textures: Some(("steel_frame", "steel_frame", "steel_frame")), transparent: true, mass: 60.0),
+    (key: "steel_casing", name: "Стальной корпус", category: "building",
+     textures: Some(("steel_casing", "steel_casing", "steel_casing")), mass: 120.0),
+    (key: "glass", name: "Стекло", category: "building",
+     textures: Some(("glass", "glass", "glass")), transparent: true, mass: 30.0),
+
+    // --- mechanisms ---------------------------------------------------------
+    (key: "creative_motor", name: "Креативный мотор", category: "mechanisms", mech: Some(Motor),
+     placement: Face, mass: 120.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
+        (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
+     ]),
+    (key: "shaft", name: "Вал", category: "mechanisms", mech: Some(Shaft), placement: Face,
+     collision: Box(0.375, 1.0, 0.375), mass: 15.0),
+    (key: "cogwheel", name: "Шестерня", category: "mechanisms", mech: Some(Cog), placement: Face,
+     collision: Box(0.9, 0.35, 0.9), mass: 20.0),
+    (key: "large_cogwheel", name: "Большая шестерня", category: "mechanisms", mech: Some(LargeCog), placement: Face,
+     collision: Box(0.9, 0.35, 0.9), mass: 40.0),
+    (key: "gearbox", name: "Коробка передач", category: "mechanisms", mech: Some(Gearbox), placement: Face, mass: 80.0),
+    (key: "clutch", name: "Муфта (стоп по сигналу)", category: "mechanisms", mech: Some(Clutch), placement: Face, mass: 60.0),
+    (key: "gearshift", name: "Реверс (по сигналу)", category: "mechanisms", mech: Some(Gearshift), placement: Face, mass: 60.0),
+    (key: "speed_controller", name: "Регулятор скорости", category: "mechanisms", mech: Some(SpeedController),
+     placement: Face, mass: 70.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
+        (key: "signal_speed", label: "Скорость по сигналу", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 128.0),
+     ]),
+    (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face, mass: 60.0,
+     params: [
+        (key: "steer", label: "Поворот", kind: Number(min: 0.0, max: 45.0, step: 5.0, unit: "°"), default: 30.0),
+        (key: "stiffness", label: "Жёсткость", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),
+     ]),
+    // The wheel touches the ground through the suspension's spring (no
+    // collider of its own), so it rolls smoothly in physics mode.
+    (key: "wheel", name: "Колесо", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 30.0),
+
+    // --- control ------------------------------------------------------------
+    (key: "seat", name: "Сиденье", category: "control", mech: Some(Seat), placement: Horizontal, mass: 30.0),
+    (key: "control_panel", name: "Пульт управления", category: "control", mech: Some(ControlPanel),
+     placement: Horizontal, mass: 40.0),
+    (key: "sensor", name: "Датчик", category: "control", mech: Some(Sensor), placement: Attach,
+     collision: None, mass: 5.0,
+     params: [
+        (key: "key_pos", label: "Клавиша (+)", kind: Key, default: 1.0),
+        (key: "key_neg", label: "Клавиша (−)", kind: Key, default: 0.0),
+     ]),
+    (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
+]
