@@ -1317,6 +1317,16 @@ fn test_car(world: &mut World, front: IVec3) -> IVec3 {
     at(IVec3::new(1, 2, -26))
 }
 
+/// Removes every physical body left by earlier stages.
+fn clear_bodies(world: &mut World) {
+    let bodies: Vec<Entity> = world.query_filtered::<Entity, With<crate::contraption::Contraption>>().iter(world).collect();
+    for e in bodies {
+        if let Ok(e) = world.get_entity_mut(e) {
+            e.despawn();
+        }
+    }
+}
+
 fn ground(steps: &mut Vec<(String, StepFn)>) {
     steps.push(step("proving ground: overview", |world, ctx| {
         match ctx.frames {
@@ -1342,6 +1352,8 @@ fn ground(steps: &mut Vec<(String, StepFn)>) {
             let front = IVec3::new(x, 0, crate::world::LANE_START_Z + 9);
             match ctx.frames {
                 1 => {
+                    clear_bodies(world);
+                    world.resource_mut::<CameraView>().0 = View::First;
                     let toggle = test_car(world, front);
                     ctx.vars.insert("tx".into(), toggle.x as f32);
                     ctx.vars.insert("ty".into(), toggle.y as f32);
@@ -1486,6 +1498,7 @@ fn mounts(steps: &mut Vec<(String, StepFn)>) {
     steps.push(step("bearing: the motor turns a glued platform", |world, ctx| {
         match ctx.frames {
             1 => {
+                clear_bodies(world);
                 set_block(world, IVec3::new(24, 0, -24), "creative_motor", 2);
                 set_block(world, IVec3::new(24, 1, -24), "mechanical_bearing", 2);
                 for x in 22..=26 {
