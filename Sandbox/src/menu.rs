@@ -483,6 +483,7 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<
         Ui::Menu => {}
         Ui::Game => next.set(Ui::Pause),
         Ui::Pause => next.set(Ui::Game),
+        Ui::Ponder => next.set(Ui::Inventory),
         Ui::Options => {
             if state.rebinding.take().is_none() {
                 next.set(state.back.take().unwrap_or(Ui::Menu));

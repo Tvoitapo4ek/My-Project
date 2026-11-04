@@ -18,6 +18,8 @@ pub enum Ui {
     Pause,
     /// Game settings (from the menu or the pause).
     Options,
+    /// How a block works (hold W over an item in the inventory).
+    Ponder,
     /// Inventory / catalogue screen.
     Inventory,
     /// Debug console (typing).

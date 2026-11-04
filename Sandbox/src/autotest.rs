@@ -240,6 +240,7 @@ pub fn build() -> Scenario {
     }
     if want("menu") {
         menu(&mut steps);
+        help(&mut steps);
     }
     if want("torque") {
         torque(&mut steps);
@@ -2485,6 +2486,65 @@ fn showcase(steps: &mut Vec<(String, StepFn)>) {
             }
             16 => {
                 screenshot(world, "9h_showcase");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn help(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("tooltips and the visual explanation (ponder)", |world, ctx| {
+        let gearbox = crate::content::ItemId::k("gearbox");
+        match ctx.frames {
+            1 => world.resource_mut::<NextState<Ui>>().set(Ui::Inventory),
+            6 => {
+                let (title, short, hint) = crate::ui::tooltip_text(gearbox, false, 0);
+                let (_, long, _) = crate::ui::tooltip_text(gearbox, true, 0);
+                ctx.check("hover: a short description", title == "Коробка передач" && !short.is_empty() && long.len() > short.len(), short.clone());
+                ctx.check("the hint offers Shift and W", hint.contains("Shift") && hint.contains("W"), hint);
+                world.resource_mut::<crate::ui::Catalog>().hovered = Some(gearbox);
+            }
+            10 => screenshot(world, "9i_tooltip"),
+            14 => {
+                // What holding W does: open the explanation.
+                let mut p = world.resource_mut::<crate::ponder::Ponder>();
+                p.item = Some(gearbox);
+                world.resource_mut::<crate::ui::Catalog>().hovered = None;
+                world.resource_mut::<NextState<Ui>>().set(Ui::Ponder);
+                ctx.vars.insert("pd_t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 14 && !ctx.vars.contains_key("pd_done") && ctx.t > ctx.vars["pd_t0"] + 14.0 {
+            let mut q = world.query_filtered::<&VoxelGrid, With<crate::ponder::PonderGrid>>();
+            let g = q.iter(world).next().cloned();
+            let has = g.as_ref().is_some_and(|g| g.get(IVec3::ZERO).id == BlockId::k("gearbox"));
+            let turning = g.as_ref().and_then(|g| g.entities.get(&IVec3::new(0, 0, 1)).copied()).and_then(|e| world.get::<crate::mech::Spin>(e)).map(|s| s.rpm).unwrap_or(0.0);
+            ctx.check("the scene builds itself step by step: the gearbox turns its side shaft", has && turning != 0.0, format!("{turning}"));
+            screenshot(world, "9j_ponder");
+            ctx.vars.insert("pd_done".into(), ctx.t);
+        }
+        if ctx.vars.get("pd_done").is_some_and(|t| ctx.t > t + 1.0) {
+            world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+            ctx.vars.remove("pd_done");
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("render scale: the 3D view at 60 %", |world, ctx| {
+        match ctx.frames {
+            1 => world.resource_mut::<crate::menu::GameSettings>().render_scale = 0.6,
+            8 => {
+                let t = world.query_filtered::<&bevy::camera::RenderTarget, With<crate::player::camera::MainCamera>>().iter(world).next().cloned();
+                ctx.check("the main camera draws into a smaller image", matches!(t, Some(bevy::camera::RenderTarget::Image(_))), "");
+                screenshot(world, "9k_render_scale");
+            }
+            14 => world.resource_mut::<crate::menu::GameSettings>().render_scale = 1.0,
+            20 => {
+                let t = world.query_filtered::<&bevy::camera::RenderTarget, With<crate::player::camera::MainCamera>>().iter(world).next().cloned();
+                ctx.check("100 %: straight to the window again", matches!(t, Some(bevy::camera::RenderTarget::Window(_))), "");
                 return Step::Next;
             }
             _ => {}

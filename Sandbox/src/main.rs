@@ -26,6 +26,7 @@ mod menu;
 mod logic;
 mod mech;
 mod models;
+mod ponder;
 mod mounts;
 mod player;
 mod settings;
@@ -85,7 +86,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

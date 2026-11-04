@@ -424,9 +424,17 @@ fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>) {
             });
         });
     commands.spawn((CursorIcon, ImageNode { color: Color::NONE, ..default() }, Node { position_type: PositionType::Absolute, width: px(40), height: px(40), ..default() }, GlobalZIndex(50), Pickable::IGNORE));
+    // Item tooltip (follows the cursor).
+    commands
+        .spawn((Tooltip, Node { position_type: PositionType::Absolute, flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::axes(px(10), px(7)), border: UiRect::all(px(2)), max_width: px(340), display: Display::None, ..default() }, BackgroundColor(Color::srgba(0.06, 0.07, 0.09, 0.96)), BorderColor::all(FRAME), GlobalZIndex(60), Pickable::IGNORE))
+        .with_children(|t| {
+            t.spawn((TooltipTitle, Text::new(""), font(16.0), TextColor(ACCENT), Pickable::IGNORE));
+            t.spawn((TooltipBody, Text::new(""), font(14.0), TextColor(TEXT), Pickable::IGNORE));
+            t.spawn((TooltipHint, Text::new(""), font(12.0), TextColor(DIM), Pickable::IGNORE));
+        });
 }
 
-fn close_screen(mut commands: Commands, q: Query<Entity, Or<(With<Screen>, With<CursorIcon>)>>, mut carried: ResMut<Carried>, mut inv: Query<&mut Inventory, With<Player>>) {
+fn close_screen(mut commands: Commands, q: Query<Entity, Or<(With<Screen>, With<CursorIcon>, With<Tooltip>)>>, mut carried: ResMut<Carried>, mut inv: Query<&mut Inventory, With<Player>>) {
     for e in &q {
         commands.entity(e).despawn();
     }
@@ -522,6 +530,71 @@ fn type_search(mut keys: MessageReader<KeyboardInput>, mut cat: ResMut<Catalog>)
     }
 }
 
+#[derive(Component)]
+struct Tooltip;
+#[derive(Component)]
+struct TooltipTitle;
+#[derive(Component)]
+struct TooltipBody;
+#[derive(Component)]
+struct TooltipHint;
+
+/// Text of an item's tooltip: (title, body, hint). Shift: the long text.
+pub fn tooltip_text(item: ItemId, long: bool, shape: usize) -> (String, String, String) {
+    let def = item.def();
+    let title = match item.block() {
+        Some(b) if shape > 0 && crate::interact::shapeable(b) => format!("{} — {}", def.name, crate::content::SHAPES[shape].2),
+        _ => def.name.clone(),
+    };
+    let (short, full) = registry().describe(item).cloned().unwrap_or_default();
+    let mut hint = Vec::new();
+    if !long && full != short {
+        hint.push("Shift — подробнее");
+    }
+    if crate::ponder::has_scene(item) {
+        hint.push("удерживайте W — как работает");
+    }
+    (title, if long { full } else { short }, hint.join(" · "))
+}
+
+#[allow(clippy::type_complexity)]
+fn tooltip(
+    windows: Query<&Window>,
+    cat: Res<Catalog>,
+    carried: Res<Carried>,
+    keys: Res<ButtonInput<KeyCode>>,
+    shape: Res<crate::interact::ShapeMode>,
+    mut tip: Query<&mut Node, With<Tooltip>>,
+    mut texts: ParamSet<(Query<&mut Text, With<TooltipTitle>>, Query<&mut Text, With<TooltipBody>>, Query<&mut Text, With<TooltipHint>>)>,
+) {
+    let (Ok(w), Ok(mut n)) = (windows.single(), tip.single_mut()) else { return };
+    let Some(item) = cat.hovered.filter(|_| carried.0.is_none() && !cat.typing) else {
+        n.display = Display::None;
+        return;
+    };
+    let long = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let (title, body, hint) = tooltip_text(item, long, shape.0);
+    n.display = Display::Flex;
+    if let Some(p) = w.cursor_position() {
+        // Right of the cursor; to the left near the right edge.
+        let x = if p.x > w.width() - 360.0 { p.x - 350.0 } else { p.x + 18.0 };
+        n.left = px(x);
+        n.top = px((p.y + 14.0).min(w.height() - 160.0));
+    }
+    for (i, s) in [title, body, hint].into_iter().enumerate() {
+        let set = |t: &mut Text| {
+            if t.0 != s {
+                t.0 = s.clone();
+            }
+        };
+        match i {
+            0 => texts.p0().iter_mut().for_each(|mut t| set(&mut t)),
+            1 => texts.p1().iter_mut().for_each(|mut t| set(&mut t)),
+            _ => texts.p2().iter_mut().for_each(|mut t| set(&mut t)),
+        }
+    }
+}
+
 fn cursor_icon(windows: Query<&Window>, carried: Res<Carried>, icons: Option<Res<ItemIcons>>, mut q: Query<(&mut Node, &mut ImageNode), With<CursorIcon>>) {
     let (Ok(w), Ok((mut n, mut img)), Some(icons)) = (windows.single(), q.single_mut(), icons) else { return };
     if let Some(p) = w.cursor_position() {
@@ -546,7 +619,7 @@ impl Plugin for UiPlugin {
             .add_systems(Update, (toggle_inventory, refresh_slots, held_name, toasts))
             .add_systems(OnEnter(Ui::Inventory), open_screen)
             .add_systems(OnExit(Ui::Inventory), close_screen)
-            .add_systems(Update, (type_search, update_screen, cursor_icon).chain().run_if(in_state(Ui::Inventory)));
+            .add_systems(Update, (type_search, update_screen, cursor_icon, tooltip).chain().run_if(in_state(Ui::Inventory)));
     }
 }
 

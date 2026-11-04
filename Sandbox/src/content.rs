@@ -326,6 +326,8 @@ pub struct Registry {
     item_index: HashMap<String, u16>,
     /// Every texture name used by cube blocks (atlas order).
     pub textures: Vec<String>,
+    /// Item descriptions: key → (short, long) (`descriptions.ron`).
+    pub descriptions: HashMap<String, (String, String)>,
 }
 
 impl Registry {
@@ -358,6 +360,15 @@ impl Registry {
         }
         (b, 0)
     }
+    /// (short, long) description of an item (shaped blocks: their cube's).
+    pub fn describe(&self, item: ItemId) -> Option<&(String, String)> {
+        let def = item.def();
+        let key = match def.kind {
+            ItemKind::Block(b) => self.unshaped(b).0.def().key.clone(),
+            _ => def.key.clone(),
+        };
+        self.descriptions.get(&key)
+    }
     pub fn texture_index(&self, name: &str) -> usize {
         self.textures.iter().position(|t| t == name).unwrap_or(0)
     }
@@ -369,7 +380,10 @@ impl Registry {
         let categories: Vec<CategoryDef> = parse(&read("categories.ron", BUILTIN_CATEGORIES), "categories.ron");
         let blocks: Vec<BlockDef> = parse(&read("blocks.ron", BUILTIN_BLOCKS), "blocks.ron");
         let tools: Vec<ToolDef> = parse(&read("tools.ron", BUILTIN_TOOLS), "tools.ron");
-        Self::from_defs(categories, blocks, tools)
+        let mut r = Self::from_defs(categories, blocks, tools);
+        let desc: Vec<(String, String, String)> = parse(&read("descriptions.ron", BUILTIN_DESCRIPTIONS), "descriptions.ron");
+        r.descriptions = desc.into_iter().map(|(k, a, b)| (k, (a, b))).collect();
+        r
     }
 
     pub fn from_defs(categories: Vec<CategoryDef>, blocks: Vec<BlockDef>, tools: Vec<ToolDef>) -> Registry {
@@ -443,6 +457,7 @@ fn parse<T: for<'de> Deserialize<'de>>(text: &str, name: &str) -> Vec<T> {
 const BUILTIN_CATEGORIES: &str = include_str!("../assets/content/categories.ron");
 const BUILTIN_BLOCKS: &str = include_str!("../assets/content/blocks.ron");
 const BUILTIN_TOOLS: &str = include_str!("../assets/content/tools.ron");
+const BUILTIN_DESCRIPTIONS: &str = include_str!("../assets/content/descriptions.ron");
 
 static REGISTRY: OnceLock<Registry> = OnceLock::new();
 
@@ -470,6 +485,12 @@ mod tests {
         }
         for t in &r.textures {
             assert!(std::path::Path::new(&format!("assets/textures/{t}.png")).exists(), "texture {t}");
+        }
+        // Every item in the catalogue explains itself.
+        for (i, it) in r.items.iter().enumerate() {
+            if !it.hidden {
+                assert!(r.describe(ItemId(i as u16)).is_some(), "description of {}", it.key);
+            }
         }
     }
 }
