@@ -87,6 +87,9 @@ pub const ACTIONS: [(Action, &str); 9] = [
 #[serde(default)]
 pub struct GameSettings {
     pub fullscreen: bool,
+    /// Share of the screen resolution the 3D view is drawn at (0.5..1):
+    /// lighter on Retina / 4K screens; the interface stays sharp.
+    pub render_scale: f32,
     pub resolution: usize,
     pub vsync: bool,
     pub fps_limit: usize,
@@ -109,11 +112,13 @@ impl Default for GameSettings {
     fn default() -> Self {
         Self {
             fullscreen: false,
+            render_scale: 1.0,
             resolution: 0,
             vsync: true,
             fps_limit: 0,
             shadows: true,
-            ssao: true,
+            // Contact shadows cost a lot on laptops: off unless asked for.
+            ssao: false,
             bloom: true,
             view: 2,
             master: 1.0,
@@ -158,6 +163,7 @@ pub enum Setting {
     Ssao,
     Bloom,
     View,
+    RenderScale,
     Master,
     Effects,
     Motors,
@@ -167,8 +173,9 @@ pub enum Setting {
     Fov,
 }
 
-const GRAPHICS: [(Setting, &str); 8] = [
+const GRAPHICS: [(Setting, &str); 9] = [
     (Setting::Fullscreen, "Режим"),
+    (Setting::RenderScale, "Масштаб рендера"),
     (Setting::Resolution, "Разрешение"),
     (Setting::Vsync, "Вертикальная синхр."),
     (Setting::FpsLimit, "Ограничение FPS"),
@@ -201,6 +208,7 @@ pub fn value_text(s: &GameSettings, k: Setting) -> String {
         Setting::Ssao => on_off(s.ssao),
         Setting::Bloom => on_off(s.bloom),
         Setting::View => ["Близко", "Средне", "Далеко"][s.view.min(2)].into(),
+        Setting::RenderScale => format!("{:.0}%", s.render_scale * 100.0),
         Setting::Master => format!("{:.0}%", s.master * 100.0),
         Setting::Effects => format!("{:.0}%", s.effects * 100.0),
         Setting::Motors => format!("{:.0}%", s.motors * 100.0),
@@ -224,6 +232,7 @@ pub fn step(s: &mut GameSettings, k: Setting, dir: i32) {
         Setting::Ssao => s.ssao = !s.ssao,
         Setting::Bloom => s.bloom = !s.bloom,
         Setting::View => s.view = cycle(s.view, VIEW.len()),
+        Setting::RenderScale => s.render_scale = ((s.render_scale + dir as f32 * 0.1) * 10.0).round().clamp(5.0, 10.0) / 10.0,
         Setting::Master => s.master = vol(s.master),
         Setting::Effects => s.effects = vol(s.effects),
         Setting::Motors => s.motors = vol(s.motors),
@@ -542,6 +551,61 @@ fn apply(
     volume.volume = Volume::Linear(settings.master);
 }
 
+/// The 3D view drawn smaller (render scale < 100 %): its image, and the
+/// full-screen node that shows it under the interface.
+#[derive(Resource)]
+struct Scaled {
+    size: UVec2,
+    ui_cam: Entity,
+    node: Entity,
+}
+
+/// Size of the scaled 3D view for a window size.
+pub fn scaled_size(window: UVec2, scale: f32) -> UVec2 {
+    (window.as_vec2() * scale.clamp(0.5, 1.0)).round().as_uvec2().max(UVec2::ONE)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_scale(
+    mut commands: Commands,
+    settings: Res<GameSettings>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut cams: Query<(Entity, &mut bevy::camera::RenderTarget), With<MainCamera>>,
+    mut images: ResMut<Assets<Image>>,
+    scaled: Option<Res<Scaled>>,
+) {
+    let (Ok(w), Ok((cam, mut target))) = (windows.single(), cams.single_mut()) else { return };
+    let win = UVec2::new(w.resolution.physical_width(), w.resolution.physical_height());
+    if settings.render_scale >= 0.99 {
+        if let Some(s) = scaled {
+            *target = bevy::camera::RenderTarget::Window(bevy::window::WindowRef::Primary);
+            commands.entity(cam).insert(IsDefaultUiCamera);
+            commands.entity(s.ui_cam).despawn();
+            commands.entity(s.node).despawn();
+            commands.remove_resource::<Scaled>();
+        }
+        return;
+    }
+    let size = scaled_size(win, settings.render_scale);
+    if scaled.as_ref().is_some_and(|s| s.size == size) {
+        return;
+    }
+    let mut img = Image::new_target_texture(size.x, size.y, bevy::render::render_resource::TextureFormat::Rgba8Unorm, Some(bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb));
+    img.sampler = bevy::image::ImageSampler::linear();
+    let image = images.add(img);
+    *target = bevy::camera::RenderTarget::Image(image.clone().into());
+    if let Some(s) = scaled {
+        // Same helpers, a new image size.
+        commands.entity(s.node).insert(ImageNode::new(image.clone()));
+        commands.insert_resource(Scaled { size, ui_cam: s.ui_cam, node: s.node });
+        return;
+    }
+    commands.entity(cam).remove::<IsDefaultUiCamera>();
+    let ui_cam = commands.spawn((Name::new("UI camera"), Camera2d, Camera { order: 1, ..default() }, IsDefaultUiCamera)).id();
+    let node = commands.spawn((Name::new("Scaled view"), ImageNode::new(image.clone()), Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }, GlobalZIndex(-100), Pickable::IGNORE)).id();
+    commands.insert_resource(Scaled { size, ui_cam, node });
+}
+
 /// Frame limiter (when set): sleeps out the rest of the frame.
 fn limit_fps(settings: Res<GameSettings>, mut last: Local<Option<std::time::Instant>>) {
     let fps = FPS_LIMITS[settings.fps_limit.min(FPS_LIMITS.len() - 1)];
@@ -570,7 +634,7 @@ impl Plugin for MenuPlugin {
             .add_systems(OnExit(Ui::Pause), (close, unpause))
             .add_systems(OnEnter(Ui::Options), open_options)
             .add_systems(OnExit(Ui::Options), close)
-            .add_systems(Update, (escape, apply, (rebind, refresh).run_if(in_state(Ui::Options))))
+            .add_systems(Update, (escape, apply, render_scale, (rebind, refresh).run_if(in_state(Ui::Options))))
             .add_systems(Last, limit_fps);
     }
 }
@@ -597,6 +661,9 @@ mod tests {
         let back: GameSettings = ron::from_str(&text).unwrap();
         assert_eq!(back, s);
         // Missing fields (an older file) take defaults.
+        assert_eq!(scaled_size(UVec2::new(2880, 1800), 0.5), UVec2::new(1440, 900), "Retina at 50 %");
+        step(&mut s, Setting::RenderScale, -1);
+        assert_eq!(value_text(&s, Setting::RenderScale), "90%");
         let old: GameSettings = ron::from_str("(fov: 90.0)").unwrap();
         assert_eq!((old.fov, old.vsync), (90.0, true));
     }

@@ -55,7 +55,8 @@ fn mesh_shape(out: &mut MeshData, grid: &VoxelGrid, c: IVec3, cell: Cell, uv: Uv
                 out.positions.push((center + *p).to_array());
                 out.normals.push(n.to_array());
                 out.uvs.push([u0 + (u1 - u0) * s, v1 - (v1 - v0) * t]);
-                out.colors.push([1.0; 4]);
+                let k = face_shade(n.round().as_ivec3()).max(0.6);
+                out.colors.push([k, k, k, 1.0]);
             }
             for i in 1..pts.len() as u32 - 1 {
                 if flip {
@@ -114,7 +115,19 @@ impl MeshData {
     }
 }
 
-const AO: [f32; 4] = [0.5, 0.68, 0.84, 1.0];
+const AO: [f32; 4] = [0.55, 0.72, 0.87, 1.0];
+
+/// Minecraft-like face shading: the top is brightest, the sides a bit
+/// darker (east/west less than north/south), the bottom darkest — blocks
+/// read clearly whatever the sun does, and shadows need not be so dark.
+pub fn face_shade(n: IVec3) -> f32 {
+    match (n.x, n.y, n.z) {
+        (_, 1, _) => 1.0,
+        (_, -1, _) => 0.55,
+        (0, 0, _) => 0.82,
+        _ => 0.68,
+    }
+}
 
 /// Mesh of one chunk in grid-local coordinates.
 pub fn mesh_chunk(grid: &VoxelGrid, key: IVec3, uv: UvFn) -> MeshData {
@@ -165,7 +178,7 @@ pub fn mesh_chunk(grid: &VoxelGrid, key: IVec3, uv: UvFn) -> MeshData {
                         let cr = opaque(grid.get(outside + u * su + v * sv)) as usize;
                         let level = if s1 == 1 && s2 == 1 { 0 } else { 3 - (s1 + s2 + cr) };
                         ao[k] = level;
-                        let a = AO[level];
+                        let a = AO[level] * face_shade(n);
                         out.colors.push([a, a, a, 1.0]);
                     }
                     // Flip the quad diagonal so AO interpolates evenly.

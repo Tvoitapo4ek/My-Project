@@ -14,7 +14,6 @@ use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
     mesh::{Indices, PrimitiveTopology},
-    pbr::{DistanceFog, FogFalloff},
     prelude::*,
 };
 
@@ -23,7 +22,6 @@ use crate::{
     contraption::Contraption,
     fluids::FluidStore,
     grid::VoxelGrid,
-    player::camera::MainCamera,
 };
 
 /// Water volumes: (min corner, max corner); the top is the surface.
@@ -85,18 +83,6 @@ fn buoyancy(water: Res<Water>, gravity: Res<Gravity>, mut bodies: Query<(&VoxelG
     }
 }
 
-/// Blue fog while the camera is under water.
-fn underwater_fog(mut commands: Commands, water: Res<Water>, cams: Query<(Entity, &GlobalTransform, Has<DistanceFog>), With<MainCamera>>) {
-    for (e, t, has) in &cams {
-        let under = water.depth(t.translation()) > 0.0;
-        if under && !has {
-            commands.entity(e).insert(DistanceFog { color: Color::srgb(0.08, 0.27, 0.42), falloff: FogFalloff::Linear { start: 0.5, end: 22.0 }, ..default() });
-        } else if !under && has {
-            commands.entity(e).remove::<DistanceFog>();
-        }
-    }
-}
-
 /// A flat water surface over each pool (seen from both sides).
 fn spawn_surfaces(mut commands: Commands, water: Res<Water>, mut meshes: ResMut<Assets<Mesh>>, mut mats: ResMut<Assets<StandardMaterial>>, mut images: ResMut<Assets<Image>>) {
     use bevy::image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor};
@@ -130,7 +116,6 @@ impl Plugin for WaterPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Water { pools: vec![crate::world::pool()] })
             .add_systems(Startup, spawn_surfaces)
-            .add_systems(Update, underwater_fog)
             .add_systems(FixedUpdate, buoyancy);
     }
 }
