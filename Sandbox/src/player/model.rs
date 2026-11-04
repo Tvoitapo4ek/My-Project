@@ -22,6 +22,18 @@ pub enum Limb {
     LegL,
 }
 
+/// Worn equipment on the head.
+#[derive(Component)]
+struct HeadGear;
+
+fn show_gear(players: Query<&crate::inventory::Inventory, With<Player>>, mut gear: Query<&mut Visibility, With<HeadGear>>) {
+    let Ok(inv) = players.single() else { return };
+    let on = inv.worn(0).is_some();
+    for mut v in &mut gear {
+        v.set_if_neq(if on { Visibility::Inherited } else { Visibility::Hidden });
+    }
+}
+
 #[derive(Component, Default)]
 struct Walk {
     phase: f32,
@@ -44,6 +56,9 @@ fn attach(mut commands: Commands, players: Query<Entity, Added<Player>>, mut mes
         commands.spawn((Mesh3d(body), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, 6.0 * PX, 0.0), ChildOf(torso)));
         let neck = commands.spawn((Limb::Head, Transform::from_xyz(0.0, 12.0 * PX, 0.0), Visibility::default(), ChildOf(torso))).id();
         commands.spawn((Mesh3d(head), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, 4.0 * PX, 0.0), ChildOf(neck)));
+        // Engineer's goggles on the forehead (shown while worn).
+        let gear = commands.spawn((HeadGear, Transform::from_xyz(0.0, 5.5 * PX, -4.0 * PX - 0.02), Visibility::Hidden, ChildOf(neck))).id();
+        crate::style::spawn_parts(&mut commands, gear, &crate::models::goggles_parts(), &mut meshes, &mut cache, &mats, true);
         for (limb_kind, x) in [(Limb::ArmR, 6.0), (Limb::ArmL, -6.0)] {
             let pivot = commands.spawn((limb_kind, Transform::from_xyz(x * PX, 10.0 * PX, 0.0), Visibility::default(), ChildOf(torso))).id();
             commands.spawn((Mesh3d(limb.clone()), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, -4.0 * PX, 0.0), ChildOf(pivot)));
@@ -101,6 +116,6 @@ pub struct ModelPlugin;
 
 impl Plugin for ModelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (attach, animate));
+        app.add_systems(Update, (attach, animate, show_gear));
     }
 }

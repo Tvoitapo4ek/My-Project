@@ -148,8 +148,17 @@ fn on_slot_click(ev: On<PointerClick>, srcs: Query<&SlotSrc>, keys: Res<ButtonIn
     match *src {
         SlotSrc::Inv(i) => {
             if shift && carried.0.is_none() {
-                // Shift+click: hotbar ⇄ inventory.
-                let range = if i < HOTBAR { HOTBAR..inv.slots.len() } else { 0..HOTBAR };
+                // Shift+click: wear it / take it off; hotbar ⇄ inventory.
+                let wear = inv.slots[i].and_then(|s| crate::inventory::equip_slot(s.item)).map(|k| crate::inventory::EQUIP_START + k).filter(|j| *j != i && inv.slots[*j].is_none());
+                let range = if let Some(j) = wear {
+                    j..j + 1
+                } else if i >= crate::inventory::EQUIP_START {
+                    0..crate::inventory::SLOTS
+                } else if i < HOTBAR {
+                    HOTBAR..crate::inventory::SLOTS
+                } else {
+                    0..HOTBAR
+                };
                 if let Some(s) = inv.slots[i]
                     && let Some(j) = range.into_iter().find(|j| inv.slots[*j].is_none())
                 {
@@ -352,15 +361,23 @@ fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>) {
                         cat.dirty = true;
                     });
                 });
-                // Inventory view: 6 × 9.
-                panel.spawn((InvView, Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() })).with_children(|g| {
-                    for r in 0..crate::inventory::ROWS {
-                        g.spawn(Node { column_gap: px(2), ..default() }).with_children(|row| {
-                            for c in 0..9 {
-                                slot_widget(row, SlotSrc::Inv(HOTBAR + r * 9 + c), 48.0);
-                            }
-                        });
-                    }
+                // Inventory view: equipment (head, body, legs, feet) | 6 × 9.
+                panel.spawn((InvView, Node { column_gap: px(12), ..default() })).with_children(|v| {
+                    v.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), align_items: AlignItems::Center, ..default() }).with_children(|eq| {
+                        for (k, name) in crate::inventory::EQUIP_NAMES.iter().enumerate() {
+                            slot_widget(eq, SlotSrc::Inv(crate::inventory::EQUIP_START + k), 48.0);
+                            eq.spawn((Text::new(*name), font(11.0), TextColor(DIM), Pickable::IGNORE));
+                        }
+                    });
+                    v.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() }).with_children(|g| {
+                        for r in 0..crate::inventory::ROWS {
+                            g.spawn(Node { column_gap: px(2), ..default() }).with_children(|row| {
+                                for c in 0..9 {
+                                    slot_widget(row, SlotSrc::Inv(HOTBAR + r * 9 + c), 48.0);
+                                }
+                            });
+                        }
+                    });
                 });
                 // Catalogue view: categories | grid, search below.
                 panel.spawn((CatView, Node { flex_direction: FlexDirection::Column, row_gap: px(6), display: Display::None, ..default() })).with_children(|v| {

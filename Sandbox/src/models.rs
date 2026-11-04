@@ -475,6 +475,18 @@ pub fn block_model(mech: Mech) -> Vec<Part> {
     }
 }
 
+/// Engineer's goggles: a brass frame, two cyan lenses, a leather strap.
+pub fn goggles_parts() -> Vec<Part> {
+    vec![
+        part([0.13, 0.11, 0.06], "brass", [-0.08, 0.0, 0.0]),
+        part([0.13, 0.11, 0.06], "brass", [0.08, 0.0, 0.0]),
+        part([0.09, 0.07, 0.03], "glow_cyan", [-0.08, 0.0, -0.025]),
+        part([0.09, 0.07, 0.03], "glow_cyan", [0.08, 0.0, -0.025]),
+        part([0.05, 0.03, 0.04], "brass", [0.0, 0.02, 0.0]),
+        part([0.36, 0.04, 0.03], "leather", [0.0, 0.0, 0.02]),
+    ]
+}
+
 /// Hand-held tool models (local −Z = forward, origin at the grip).
 pub fn tool_model(tool: Tool) -> Vec<Part> {
     match tool {
@@ -493,6 +505,7 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.05, 0.08, 0.05], "steel", [0.0, 0.15, 0.0]),
             part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
         ],
+        Tool::Goggles => goggles_parts(),
         Tool::DieselBucket => vec![
             // A steel bucket with an amber fill and a brass handle.
             part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),

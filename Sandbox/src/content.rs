@@ -214,6 +214,8 @@ pub enum Tool {
     Blueprint,
     /// Pours 1000 mB of diesel into a filling port (never runs dry).
     DieselBucket,
+    /// Engineer's goggles: worn on the head, show what blocks are doing.
+    Goggles,
 }
 
 #[derive(Debug, Clone, Deserialize)]

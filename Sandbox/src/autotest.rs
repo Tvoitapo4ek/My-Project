@@ -247,6 +247,7 @@ pub fn build() -> Scenario {
     if want("shapes") {
         shapes(&mut steps);
         doors(&mut steps);
+        goggles(&mut steps);
     }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
@@ -2240,6 +2241,42 @@ fn doors(steps: &mut Vec<(String, StepFn)>) {
             }
             46 => {
                 ctx.check("lever off: closed again", open(world, d) == Some(false), "");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+fn goggles(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("engineer's goggles in the head slot show a block's stats", |world, ctx| {
+        let m = IVec3::new(16, 0, -62);
+        let panel = |world: &mut World| world.query_filtered::<&Text, With<crate::goggles::PanelText>>().iter(world).next().map(|t| t.0.clone()).unwrap_or_default();
+        match ctx.frames {
+            1 => {
+                set_block(world, m, "creative_motor", 0);
+                set_block(world, m + IVec3::X, "shaft", 0);
+                set_block(world, m + IVec3::new(2, 0, 0), "shaft", 0);
+                teleport(world, Vec3::new(17.5, 0.0, -58.5));
+            }
+            4 => look_at(world, Vec3::new(17.5, 0.5, -61.5)),
+            10 => {
+                ctx.check("without goggles: no panel", panel(world).is_empty() || world.query_filtered::<&Node, With<Text>>().iter(world).count() > 0, "");
+                let p = world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap();
+                world.get_mut::<Inventory>(p).unwrap().slots[crate::inventory::HEAD] = Some(crate::inventory::Stack::full(crate::content::ItemId::k("engineer_goggles")));
+            }
+            16 => {
+                let t = panel(world);
+                ctx.check("goggles on: the shaft's speed and stress next to the crosshair", t.contains("Обороты: 32") && t.contains("SU"), t.replace('\n', " | "));
+                screenshot(world, "9b_goggles");
+            }
+            19 => world.resource_mut::<NextState<Ui>>().set(Ui::Inventory),
+            24 => screenshot(world, "9c_equipment"),
+            28 => {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                let p = world.query_filtered::<Entity, With<Player>>().iter(world).next().unwrap();
+                world.get_mut::<Inventory>(p).unwrap().slots[crate::inventory::HEAD] = None;
                 return Step::Next;
             }
             _ => {}

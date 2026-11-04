@@ -1,4 +1,5 @@
-//! Player inventory: hotbar (9) + inventory (6 × 9). Pure data, unit-tested.
+//! Player inventory: hotbar (9) + inventory (6 × 9) + equipment (head,
+//! body, legs, feet). Pure data, unit-tested.
 
 use bevy::prelude::*;
 
@@ -7,6 +8,18 @@ use crate::content::{ItemId, registry};
 pub const HOTBAR: usize = 9;
 pub const ROWS: usize = 6;
 pub const SLOTS: usize = HOTBAR + ROWS * 9;
+/// Equipment slots follow the inventory: head, body, legs, feet.
+pub const EQUIP_START: usize = SLOTS;
+pub const EQUIP_NAMES: [&str; 4] = ["Голова", "Тело", "Ноги", "Обувь"];
+pub const HEAD: usize = EQUIP_START;
+
+/// The equipment slot an item is worn in (index into `EQUIP_NAMES`).
+pub fn equip_slot(item: ItemId) -> Option<usize> {
+    match item.tool()? {
+        crate::content::Tool::Goggles => Some(0),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stack {
@@ -32,7 +45,7 @@ pub struct Inventory {
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: vec![None; SLOTS], selected: 0 }
+        Self { slots: vec![None; SLOTS + EQUIP_NAMES.len()], selected: 0 }
     }
 }
 
@@ -52,6 +65,10 @@ impl Inventory {
             self.slots[self.selected] = Some(Stack::full(item));
         }
     }
+    /// What is worn in an equipment slot (0 = head).
+    pub fn worn(&self, k: usize) -> Option<Stack> {
+        self.slots.get(EQUIP_START + k).copied().flatten()
+    }
     /// First empty hotbar slot, then inventory.
     pub fn add(&mut self, s: Stack) -> bool {
         if let Some(i) = (0..SLOTS).find(|i| self.slots[*i].is_none()) {
@@ -64,6 +81,13 @@ impl Inventory {
     /// Minecraft-style click with a carried stack. Left: place / swap /
     /// merge everything. Right: place one / take half.
     pub fn click(&mut self, slot: usize, carried: &mut Option<Stack>, right: bool) {
+        // Equipment slots take only what is worn there.
+        if slot >= EQUIP_START
+            && let Some(c) = carried
+            && equip_slot(c.item) != Some(slot - EQUIP_START)
+        {
+            return;
+        }
         let here = &mut self.slots[slot];
         match (here.as_mut(), carried.as_mut()) {
             (None, None) => {}
@@ -151,5 +175,22 @@ mod tests {
         assert_eq!(inv.held().unwrap().item, ItemId::k("shaft"));
         // Tools do not stack.
         assert_eq!(Stack::full(ItemId::k("wrench")).count, 1);
+    }
+
+    #[test]
+    fn goggles_go_on_the_head_only() {
+        let mut inv = Inventory::default();
+        let mut stone = Some(Stack::new(ItemId::k("stone"), 5));
+        inv.click(HEAD, &mut stone, false);
+        assert!(inv.worn(0).is_none() && stone.is_some(), "stone is not a hat");
+        let mut g = Some(Stack::full(ItemId::k("engineer_goggles")));
+        inv.click(HEAD + 1, &mut g, false);
+        assert!(g.is_some(), "not on the body");
+        inv.click(HEAD, &mut g, false);
+        assert!(g.is_none() && inv.worn(0).is_some_and(|s| s.item == ItemId::k("engineer_goggles")));
+        // Picking up the goggles from the head works.
+        let mut hand = None;
+        inv.click(HEAD, &mut hand, false);
+        assert!(hand.is_some() && inv.worn(0).is_none());
     }
 }

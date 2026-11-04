@@ -14,6 +14,7 @@ mod debug;
 mod doors;
 mod engine;
 mod fluids;
+mod goggles;
 mod grid;
 mod icons;
 mod interact;
@@ -81,7 +82,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins(doors::DoorsPlugin)
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }
