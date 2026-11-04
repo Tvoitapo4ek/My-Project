@@ -14,6 +14,29 @@ use crate::{
 
 pub const REACH: f32 = 8.0;
 
+/// Shape new building blocks are placed in (index into `content::SHAPES`),
+/// chosen with Shift + wheel while a building block is in hand.
+#[derive(Resource, Debug, Default)]
+pub struct ShapeMode(pub usize);
+
+/// A cube item that can be placed in shapes.
+pub fn shapeable(b: crate::content::BlockId) -> bool {
+    registry().shaped(b, 1).is_some()
+}
+
+fn pick_shape(keys: Res<ButtonInput<KeyCode>>, scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>, ui: Res<State<Ui>>, players: Query<&Inventory, With<Player>>, mut mode: ResMut<ShapeMode>, mut toasts: MessageWriter<Toast>) {
+    if *ui.get() != Ui::Game || !keys.pressed(KeyCode::ShiftLeft) || scroll.delta.y == 0.0 {
+        return;
+    }
+    let Ok(inv) = players.single() else { return };
+    if !inv.held().and_then(|s| s.item.block()).is_some_and(shapeable) {
+        return;
+    }
+    let n = crate::content::SHAPES.len() as i32;
+    mode.0 = (mode.0 as i32 - scroll.delta.y.signum() as i32).rem_euclid(n) as usize;
+    toasts.write(toast(format!("Форма: {}", crate::content::SHAPES[mode.0].2)));
+}
+
 /// The block under the crosshair.
 #[derive(Resource, Debug, Clone, Copy, Default)]
 pub struct Target {
@@ -152,6 +175,7 @@ fn edit_blocks(
     mut edited: MessageWriter<Edited>,
     mut used: MessageWriter<UseBlock>,
     mut toasts: MessageWriter<Toast>,
+    mut shape_mode: ResMut<ShapeMode>,
 ) {
     let Ok((pt, mut body, mut inv)) = players.single_mut() else { return };
     let held = inv.held();
@@ -175,8 +199,13 @@ fn edit_blocks(
     }
     if clicks.middle {
         let cell = grid.get(a.cell);
-        if let Some(item) = registry().item_for_block(cell.id) {
+        // A shaped block: pick its cube and that shape.
+        let (base, shape) = registry().unshaped(cell.id);
+        if let Some(item) = registry().item_for_block(base) {
             inv.pick(item);
+            if shape > 0 {
+                shape_mode.0 = shape;
+            }
         }
         return;
     }
@@ -192,10 +221,11 @@ fn edit_blocks(
         return;
     }
     let Some(stack) = held else { return };
-    let Some(block) = stack.item.block() else { return };
+    let Some(item_block) = stack.item.block() else { return };
+    let block = registry().shaped(item_block, shape_mode.0).unwrap_or(item_block);
     // A casing on a shaft or a pipe encases it (like Create).
     let here = grid.get(a.cell);
-    if let Some(cased) = encased(block.def().key.as_str(), here.id.def().mech) {
+    if let Some(cased) = encased(item_block.def().key.as_str(), here.id.def().mech) {
         grid.set(a.cell, Cell::new(crate::content::BlockId::k(cased), here.facing));
         body.swing = 1.0;
         edited.write(Edited { grid: a.grid, cell: a.cell, placed: true, block });
@@ -236,7 +266,7 @@ fn hotbar_keys(keys: Res<ButtonInput<KeyCode>>, scroll: Res<bevy::input::mouse::
         }
     }
     // Shift + wheel with a wire in hand picks its colour (`logic`).
-    let wire_color = keys.pressed(KeyCode::ShiftLeft) && inv.held().is_some_and(|s| s.item.def().key == "wire");
+    let wire_color = keys.pressed(KeyCode::ShiftLeft) && inv.held().is_some_and(|s| s.item.def().key == "wire" || s.item.block().is_some_and(shapeable));
     if !wheel_busy.0 && !wire_color && scroll.delta.y != 0.0 {
         let n = crate::inventory::HOTBAR as i32;
         inv.selected = (inv.selected as i32 - scroll.delta.y.signum() as i32).rem_euclid(n) as usize;
@@ -259,9 +289,10 @@ impl Plugin for InteractPlugin {
             .init_resource::<Eye>()
             .init_resource::<Clicks>()
             .init_resource::<WheelBusy>()
+            .init_resource::<ShapeMode>()
             .add_message::<Edited>()
             .add_message::<UseBlock>()
-            .add_systems(Update, (update_target, read_clicks, edit_blocks, hotbar_keys, draw_outline).chain().in_set(InteractSet));
+            .add_systems(Update, (update_target, read_clicks, pick_shape, edit_blocks, hotbar_keys, draw_outline).chain().in_set(InteractSet));
     }
 }
 

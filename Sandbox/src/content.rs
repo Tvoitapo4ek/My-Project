@@ -118,7 +118,24 @@ pub enum Shape {
     /// Smooth slope: height `.0` at the front (towards the player when
     /// placed) rising to `.1` at the back, in blocks (0..1).
     Wedge(f32, f32),
+    /// Stairs: a bottom half and a back top quarter (step towards the player).
+    Stairs,
+    /// Outer corner of a 45° slope: a pyramid rising to the back-left corner.
+    CornerOuter,
+    /// Inner corner of a 45° slope: two slopes meeting at the back-left.
+    CornerInner,
 }
+
+/// Shapes a building cube can be placed in (Shift + wheel): (shape, key
+/// suffix, name, volume share). Index 0 = the cube itself.
+pub const SHAPES: [(Shape, &str, &str, f32); 6] = [
+    (Shape::Cube, "", "куб", 1.0),
+    (Shape::Slab, "_slab", "плита", 0.5),
+    (Shape::Stairs, "_stairs", "ступенька", 0.75),
+    (Shape::Wedge(0.0, 1.0), "_slope", "скос", 0.5),
+    (Shape::CornerOuter, "_corner", "внешний угол", 1.0 / 3.0),
+    (Shape::CornerInner, "_inner", "внутренний угол", 5.0 / 6.0),
+];
 
 /// A block setting changed with the wrench.
 #[derive(Debug, Clone, Deserialize)]
@@ -289,6 +306,26 @@ impl Registry {
     pub fn item_for_block(&self, b: BlockId) -> Option<ItemId> {
         self.item(&b.def().key)
     }
+    /// The block placed for a cube's item in shape `i` of `SHAPES`.
+    pub fn shaped(&self, base: BlockId, i: usize) -> Option<BlockId> {
+        if i == 0 {
+            return Some(base);
+        }
+        self.block(&format!("{}{}", base.def().key, SHAPES.get(i)?.1))
+    }
+    /// A shaped block → (its cube, shape index).
+    pub fn unshaped(&self, b: BlockId) -> (BlockId, usize) {
+        let key = &b.def().key;
+        for (i, (_, suffix, ..)) in SHAPES.iter().enumerate().skip(1) {
+            if let Some(base) = key.strip_suffix(suffix)
+                && let Some(id) = self.block(base)
+                && id.def().shape == Shape::Cube
+            {
+                return (id, i);
+            }
+        }
+        (b, 0)
+    }
     pub fn texture_index(&self, name: &str) -> usize {
         self.textures.iter().position(|t| t == name).unwrap_or(0)
     }
@@ -320,6 +357,19 @@ impl Registry {
             hidden: true,
             buoyancy: None,
         });
+        // Every plain building cube also comes in all shapes (hidden
+        // blocks, placed through the cube's item with a chosen shape).
+        let mut blocks = blocks;
+        let mut shaped = Vec::new();
+        for b in &blocks {
+            if b.category == "building" && b.is_cube() && b.shape == Shape::Cube {
+                for (shape, suffix, name, vol) in SHAPES.iter().skip(1) {
+                    let placement = if *shape == Shape::Slab { Placement::Attach } else { Placement::Horizontal };
+                    shaped.push(BlockDef { key: format!("{}{suffix}", b.key), name: format!("{} — {name}", b.name), shape: *shape, placement, mass: b.mass * vol, hidden: true, buoyancy: b.buoyancy.map(|x| x * vol), ..b.clone() });
+                }
+            }
+        }
+        blocks.extend(shaped);
         for b in blocks {
             if r.block_index.contains_key(&b.key) {
                 eprintln!("content: duplicate block {}", b.key);

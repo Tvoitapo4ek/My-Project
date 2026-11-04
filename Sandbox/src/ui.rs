@@ -258,9 +258,19 @@ fn spawn_hud(mut commands: Commands) {
         });
 }
 
-fn held_name(inv: Query<&Inventory, With<Player>>, mut q: Query<&mut Text, With<HeldName>>) {
+fn held_name(inv: Query<&Inventory, With<Player>>, shape: Res<crate::interact::ShapeMode>, mut q: Query<&mut Text, With<HeldName>>) {
     let (Ok(inv), Ok(mut t)) = (inv.single(), q.single_mut()) else { return };
-    let s = inv.held().map(|s| s.item.def().name.clone()).unwrap_or_default();
+    let s = inv
+        .held()
+        .map(|s| {
+            let name = s.item.def().name.clone();
+            // A building block shows its shape (Shift + wheel).
+            match s.item.block() {
+                Some(b) if shape.0 > 0 && crate::interact::shapeable(b) => format!("{name} — {}", crate::content::SHAPES[shape.0].2),
+                _ => name,
+            }
+        })
+        .unwrap_or_default();
     if t.0 != s {
         t.0 = s;
     }

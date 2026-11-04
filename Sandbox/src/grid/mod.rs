@@ -189,7 +189,7 @@ pub fn cell_boxes(c: IVec3, cell: Cell) -> Option<(Vec3, Vec3)> {
             let r = crate::models::block_rot(def.placement, cell.facing);
             return Some((center + r * Vec3::new(0.0, 0.25, 0.0), (r * Vec3::new(0.5, 0.25, 0.5)).abs()));
         }
-        Shape::Wedge(..) => return None,
+        Shape::Wedge(..) | Shape::Stairs | Shape::CornerOuter | Shape::CornerInner => return None,
         Shape::Cube => {}
     }
     match def.collision {
@@ -202,15 +202,82 @@ pub fn cell_boxes(c: IVec3, cell: Cell) -> Option<(Vec3, Vec3)> {
     }
 }
 
-/// Corner points of a wedge cell in grid-local space (convex hull), and
-/// its volume (m³).
-pub fn cell_hull(c: IVec3, cell: Cell) -> Option<(Vec<Vec3>, f32)> {
+/// Convex collision hulls of a shaped cell in grid-local space (corner
+/// points) with their volumes (m³). Cubes and slabs collide by boxes.
+pub fn cell_hulls(c: IVec3, cell: Cell) -> Vec<(Vec<Vec3>, f32)> {
     let def = cell.id.def();
-    let Shape::Wedge(y0, y1) = def.shape else { return None };
+    if matches!(def.shape, Shape::Cube | Shape::Slab) || cell.is_air() {
+        return Vec::new();
+    }
     let r = crate::models::block_rot(def.placement, cell.facing);
     let center = c.as_vec3() + Vec3::splat(0.5);
-    let pts = wedge_points(y0, y1).into_iter().map(|p| center + r * p).collect();
-    Some((pts, (y0 + y1) * 0.5))
+    shape_pieces(def.shape).into_iter().map(|p| (p.points.iter().map(|q| center + r * *q).collect(), p.volume)).collect()
+}
+
+/// A convex part of a shaped block (block space, centred): its faces,
+/// corner points, centre and volume.
+#[derive(Debug, Clone)]
+pub struct Piece {
+    pub polys: Vec<Vec<Vec3>>,
+    pub points: Vec<Vec3>,
+    pub centroid: Vec3,
+    pub volume: f32,
+}
+
+fn box_piece(lo: Vec3, hi: Vec3) -> Piece {
+    let p = |x: bool, y: bool, z: bool| Vec3::new(if x { hi.x } else { lo.x }, if y { hi.y } else { lo.y }, if z { hi.z } else { lo.z });
+    let q = |a, b, c, d| vec![a, b, c, d];
+    let (f, t) = (false, true);
+    let polys = vec![
+        q(p(f, f, f), p(t, f, f), p(t, f, t), p(f, f, t)),
+        q(p(f, t, f), p(t, t, f), p(t, t, t), p(f, t, t)),
+        q(p(f, f, f), p(t, f, f), p(t, t, f), p(f, t, f)),
+        q(p(f, f, t), p(t, f, t), p(t, t, t), p(f, t, t)),
+        q(p(f, f, f), p(f, f, t), p(f, t, t), p(f, t, f)),
+        q(p(t, f, f), p(t, f, t), p(t, t, t), p(t, t, f)),
+    ];
+    let s = hi - lo;
+    let mut points = Vec::new();
+    for x in [f, t] {
+        for y in [f, t] {
+            for z in [f, t] {
+                points.push(p(x, y, z));
+            }
+        }
+    }
+    Piece { polys, points, centroid: (lo + hi) * 0.5, volume: s.x * s.y * s.z }
+}
+
+fn wedge_piece(y0: f32, y1: f32, turn: Quat) -> Piece {
+    let [b0, b1, b2, b3, t0, t1, t2, t3] = wedge_points(y0, y1).map(|p| turn * p);
+    let q = |a, b, c, d| vec![a, b, c, d];
+    let mut polys = vec![q(b0, b1, b2, b3), q(t0, t1, t2, t3), q(b0, b1, t1, t0), q(b3, b0, t0, t3), q(b1, b2, t2, t1)];
+    if y0 > 0.001 {
+        polys.push(q(b2, b3, t3, t2));
+    }
+    let points = vec![b0, b1, b2, b3, t0, t1, t2, t3];
+    let centroid = turn * Vec3::new(0.0, -0.5 + (y0 + y1) * 0.25, -0.1);
+    Piece { polys, points, centroid, volume: (y0 + y1) * 0.5 }
+}
+
+/// The convex parts of a block shape (block space; the low side of slopes
+/// and stairs at +Z, towards the player when placed).
+pub fn shape_pieces(shape: Shape) -> Vec<Piece> {
+    match shape {
+        Shape::Cube => vec![box_piece(Vec3::splat(-0.5), Vec3::splat(0.5))],
+        Shape::Slab => vec![box_piece(Vec3::splat(-0.5), Vec3::new(0.5, 0.0, 0.5))],
+        Shape::Wedge(y0, y1) => vec![wedge_piece(y0, y1, Quat::IDENTITY)],
+        Shape::Stairs => vec![box_piece(Vec3::splat(-0.5), Vec3::new(0.5, 0.0, 0.5)), box_piece(Vec3::new(-0.5, 0.0, -0.5), Vec3::new(0.5, 0.5, 0.0))],
+        Shape::CornerOuter => {
+            // Square base, apex above the back-left corner.
+            let (b0, b1, b2, b3) = (Vec3::new(-0.5, -0.5, -0.5), Vec3::new(0.5, -0.5, -0.5), Vec3::new(0.5, -0.5, 0.5), Vec3::new(-0.5, -0.5, 0.5));
+            let a = Vec3::new(-0.5, 0.5, -0.5);
+            let polys = vec![vec![b0, b1, b2, b3], vec![b0, b1, a], vec![b3, b0, a], vec![b1, b2, a], vec![b2, b3, a]];
+            vec![Piece { polys, points: vec![b0, b1, b2, b3, a], centroid: Vec3::new(-0.25, -0.25, -0.25), volume: 1.0 / 3.0 }]
+        }
+        // A slope rising to the back and one rising to the left.
+        Shape::CornerInner => vec![wedge_piece(0.0, 1.0, Quat::IDENTITY), wedge_piece(0.0, 1.0, Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2))],
+    }
 }
 
 /// Wedge corners in block space (centred): bottom 4, then top back 2

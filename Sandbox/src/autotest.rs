@@ -244,6 +244,9 @@ pub fn build() -> Scenario {
     if want("torque") {
         torque(&mut steps);
     }
+    if want("shapes") {
+        shapes(&mut steps);
+    }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
 
@@ -2143,4 +2146,50 @@ fn torque(steps: &mut Vec<(String, StepFn)>) {
             Step::Wait
         }));
     }
+}
+
+fn shapes(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("shapes: every material as slab, stairs, slope, corners", |world, ctx| {
+        let z = -60;
+        match ctx.frames {
+            1 => {
+                // A showcase: rows of materials, columns of shapes.
+                for (row, key) in ["stone", "planks", "concrete", "steel_block", "white_block", "glass"].iter().enumerate() {
+                    for i in 0..crate::content::SHAPES.len() {
+                        let b = crate::content::registry().shaped(BlockId::k(key), i).unwrap();
+                        let g = world_grid(world);
+                        world.get_mut::<VoxelGrid>(g).unwrap().set(IVec3::new(-8 + i as i32 * 2, 0, z - row as i32 * 2), crate::grid::Cell::new(b, 4));
+                    }
+                }
+                select(world, "stone");
+                teleport(world, Vec3::new(-3.5, 0.0, z as f32 + 6.0));
+            }
+            4 => {
+                // Shift + wheel picks the shape (here: stairs = 2).
+                world.resource_mut::<crate::interact::ShapeMode>().0 = 2;
+                look_at(world, Vec3::new(-0.5, 0.0, z as f32 + 3.5));
+            }
+            8 => {
+                let a = world.resource::<Target>().hit;
+                ctx.check("aiming at the floor", a.is_some_and(|a| a.normal == IVec3::Y), format!("{:?}", a.map(|a| (a.cell, a.normal))));
+                ctx.vars.insert("sh_x".into(), a.map(|a| a.cell.x as f32).unwrap_or(0.0));
+                ctx.vars.insert("sh_z".into(), a.map(|a| a.cell.z as f32).unwrap_or(0.0));
+                click(world, MouseButton::Right, true);
+            }
+            9 => click(world, MouseButton::Right, false),
+            14 => {
+                let c = IVec3::new(ctx.vars["sh_x"] as i32, 0, ctx.vars["sh_z"] as i32);
+                let placed = get_block(world, c).id;
+                ctx.check("RMB with stone in «ступенька» mode places stone stairs", placed == BlockId::k("stone_stairs"), placed.def().key.clone());
+                world.resource_mut::<crate::interact::ShapeMode>().0 = 0;
+                look_at(world, Vec3::new(-3.0, 0.0, z as f32 - 4.0));
+            }
+            24 => {
+                screenshot(world, "99_shapes");
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
 }

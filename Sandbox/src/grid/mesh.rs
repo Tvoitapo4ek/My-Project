@@ -21,34 +21,6 @@ fn opaque(c: Cell) -> bool {
     !c.is_air() && d.is_cube() && d.shape == Shape::Cube && !d.transparent
 }
 
-/// Polygons (3–4 points, block space, centred) of a shaped block.
-fn shape_polys(shape: Shape) -> Vec<Vec<Vec3>> {
-    let quad = |a: Vec3, b: Vec3, c: Vec3, d: Vec3| vec![a, b, c, d];
-    match shape {
-        Shape::Cube => vec![],
-        Shape::Slab => {
-            let (lo, hi) = (Vec3::new(-0.5, -0.5, -0.5), Vec3::new(0.5, 0.0, 0.5));
-            let p = |x: f32, y: f32, z: f32| Vec3::new(if x > 0.0 { hi.x } else { lo.x }, if y > 0.0 { hi.y } else { lo.y }, if z > 0.0 { hi.z } else { lo.z });
-            vec![
-                quad(p(-1., -1., -1.), p(1., -1., -1.), p(1., -1., 1.), p(-1., -1., 1.)),
-                quad(p(-1., 1., -1.), p(1., 1., -1.), p(1., 1., 1.), p(-1., 1., 1.)),
-                quad(p(-1., -1., -1.), p(1., -1., -1.), p(1., 1., -1.), p(-1., 1., -1.)),
-                quad(p(-1., -1., 1.), p(1., -1., 1.), p(1., 1., 1.), p(-1., 1., 1.)),
-                quad(p(-1., -1., -1.), p(-1., -1., 1.), p(-1., 1., 1.), p(-1., 1., -1.)),
-                quad(p(1., -1., -1.), p(1., -1., 1.), p(1., 1., 1.), p(1., 1., -1.)),
-            ]
-        }
-        Shape::Wedge(y0, y1) => {
-            let [b0, b1, b2, b3, t0, t1, t2, t3] = super::wedge_points(y0, y1);
-            let mut v = vec![quad(b0, b1, b2, b3), quad(t0, t1, t2, t3), quad(b0, b1, t1, t0), quad(b3, b0, t0, t3), quad(b1, b2, t2, t1)];
-            if y0 > 0.001 {
-                v.push(quad(b2, b3, t3, t2));
-            }
-            v
-        }
-    }
-}
-
 /// Emits the faces of a shaped block (slab / wedge).
 fn mesh_shape(out: &mut MeshData, grid: &VoxelGrid, c: IVec3, cell: Cell, uv: UvFn) {
     let def = cell.id.def();
@@ -56,40 +28,43 @@ fn mesh_shape(out: &mut MeshData, grid: &VoxelGrid, c: IVec3, cell: Cell, uv: Uv
     let reg = registry();
     let r = crate::models::block_rot(def.placement, cell.facing);
     let center = c.as_vec3() + Vec3::splat(0.5);
-    for poly in shape_polys(def.shape) {
-        let pts: Vec<Vec3> = poly.iter().map(|p| r * *p).collect();
-        let mut n = (pts[1] - pts[0]).cross(pts[2] - pts[0]);
-        if n.length_squared() < 1e-8 {
-            n = (pts[2] - pts[0]).cross(pts[3] - pts[0]);
+    for piece in super::shape_pieces(def.shape) {
+        let centroid = r * piece.centroid;
+        for poly in &piece.polys {
+            let pts: Vec<Vec3> = poly.iter().map(|p| r * *p).collect();
+            let mut n = (pts[1] - pts[0]).cross(pts[2] - pts[0]);
+            if n.length_squared() < 1e-8 && pts.len() > 3 {
+                n = (pts[2] - pts[0]).cross(pts[3] - pts[0]);
+            }
+            let n = n.normalize_or_zero();
+            let mid = pts.iter().copied().sum::<Vec3>() / pts.len() as f32;
+            // Outward from the (convex) piece's centre.
+            let flip = n.dot(mid - centroid) < 0.0;
+            let n = if flip { -n } else { n };
+            // A full face on the cell boundary is hidden by an opaque neighbour.
+            let axis = n.round().as_ivec3();
+            if pts.len() == 4 && axis.abs().element_sum() == 1 && n.abs().max_element() > 0.999 && pts.iter().all(|p| (p.dot(n) - 0.5).abs() < 1e-3) && poly_area(&pts) > 0.999 && opaque(grid.get(c + axis)) {
+                continue;
+            }
+            let tex = if n.y > 0.5 { top } else if n.y < -0.5 { bottom } else { side };
+            let [u0, v0, u1, v1] = uv(reg.texture_index(tex));
+            let start = out.positions.len() as u32;
+            for p in &pts {
+                let (s, t) = if n.y.abs() >= n.x.abs().max(n.z.abs()) { (p.x, p.z) } else if n.x.abs() >= n.z.abs() { (p.z, p.y) } else { (p.x, p.y) };
+                let (s, t) = ((s + 0.5).clamp(0.0, 1.0), (t + 0.5).clamp(0.0, 1.0));
+                out.positions.push((center + *p).to_array());
+                out.normals.push(n.to_array());
+                out.uvs.push([u0 + (u1 - u0) * s, v1 - (v1 - v0) * t]);
+                out.colors.push([1.0; 4]);
+            }
+            for i in 1..pts.len() as u32 - 1 {
+                if flip {
+                    out.indices.extend([start, start + i + 1, start + i]);
+                } else {
+                    out.indices.extend([start, start + i, start + i + 1]);
+                }
+            }
         }
-        let n = n.normalize_or_zero();
-        let mid = pts.iter().copied().sum::<Vec3>() / pts.len() as f32;
-        // Outward (the shapes are convex and contain the block centre side).
-        let inside_y = match def.shape {
-            Shape::Wedge(y0, y1) => -0.5 + (y0 + y1) * 0.25,
-            _ => -0.25,
-        };
-        let centroid = r * Vec3::new(0.0, inside_y, 0.0);
-        let flip = n.dot(mid - centroid) < 0.0;
-        let n = if flip { -n } else { n };
-        // A full face on the cell boundary is hidden by an opaque neighbour.
-        let axis = n.round().as_ivec3();
-        if axis.abs().element_sum() == 1 && n.abs().max_element() > 0.999 && pts.iter().all(|p| (p.dot(n) - 0.5).abs() < 1e-3) && poly_area(&pts) > 0.999 && opaque(grid.get(c + axis)) {
-            continue;
-        }
-        let tex = if n.y > 0.5 { top } else if n.y < -0.5 { bottom } else { side };
-        let [u0, v0, u1, v1] = uv(reg.texture_index(tex));
-        let start = out.positions.len() as u32;
-        for p in &pts {
-            let (s, t) = if n.y.abs() >= n.x.abs().max(n.z.abs()) { (p.x, p.z) } else if n.x.abs() >= n.z.abs() { (p.z, p.y) } else { (p.x, p.y) };
-            let (s, t) = ((s + 0.5).clamp(0.0, 1.0), (t + 0.5).clamp(0.0, 1.0));
-            out.positions.push((center + *p).to_array());
-            out.normals.push(n.to_array());
-            out.uvs.push([u0 + (u1 - u0) * s, v1 - (v1 - v0) * t]);
-            out.colors.push([1.0; 4]);
-        }
-        let order: [u32; 6] = if flip { [0, 2, 1, 0, 3, 2] } else { [0, 1, 2, 0, 2, 3] };
-        out.indices.extend(order.iter().map(|i| start + i));
     }
 }
 
@@ -224,9 +199,7 @@ pub fn chunk_hulls(grid: &VoxelGrid, key: IVec3) -> Vec<(Vec<Vec3>, f32)> {
         for z in 0..CHUNK {
             for x in 0..CHUNK {
                 let c = origin + IVec3::new(x, y, z);
-                if let Some(h) = super::cell_hull(c, grid.get(c)) {
-                    out.push(h);
-                }
+                out.extend(super::cell_hulls(c, grid.get(c)));
             }
         }
     }
@@ -336,7 +309,7 @@ mod tests {
         g.set(IVec3::ZERO, Cell::new(BlockId::k("steel_slope"), 4));
         let m = mesh_chunk(&g, IVec3::ZERO, &uv);
         assert_eq!(m.indices.len(), 5 * 6);
-        let (pts, vol) = crate::grid::cell_hull(IVec3::ZERO, g.get(IVec3::ZERO)).unwrap();
+        let (pts, vol) = crate::grid::cell_hulls(IVec3::ZERO, g.get(IVec3::ZERO))[0].clone();
         assert_eq!(pts.len(), 8);
         assert!(chunk_boxes(&g, IVec3::ZERO).is_empty(), "a wedge collides by its hull only");
         assert!((vol - 0.5).abs() < 1e-5);
@@ -348,6 +321,42 @@ mod tests {
             let n = (b - a).cross(c - a);
             let mid = (a + b + c) / 3.0;
             assert!(n.dot(mid - Vec3::new(0.5, 0.3, 0.5)) > -1e-4, "inward face");
+        }
+    }
+
+    #[test]
+    fn every_material_comes_in_every_shape() {
+        let reg = registry();
+        for key in ["stone", "planks", "concrete", "glass", "steel_block"] {
+            let base = BlockId::k(key);
+            for (i, (shape, ..)) in crate::content::SHAPES.iter().enumerate() {
+                let b = reg.shaped(base, i).unwrap_or_else(|| panic!("{key} shape {i}"));
+                assert_eq!(b.def().shape, *shape);
+                assert_eq!(reg.unshaped(b), (base, i));
+                if i > 0 {
+                    assert!(b.def().hidden, "shaped blocks stay out of the catalogue");
+                }
+            }
+        }
+        // Each shape: faces point outwards from its piece, hull volumes add up.
+        for (i, (_, _, name, vol)) in crate::content::SHAPES.iter().enumerate().skip(2) {
+            let mut g = VoxelGrid::default();
+            let b = reg.shaped(BlockId::k("stone"), i).unwrap();
+            g.set(IVec3::ZERO, Cell::new(b, 4));
+            let m = mesh_chunk(&g, IVec3::ZERO, &uv);
+            assert!(!m.indices.is_empty(), "{name}");
+            let hulls = crate::grid::cell_hulls(IVec3::ZERO, g.get(IVec3::ZERO));
+            let total: f32 = hulls.iter().map(|h| h.1).sum();
+            if *name != "внутренний угол" {
+                assert!((total - vol).abs() < 1e-4, "{name}: {total}");
+            }
+            assert!(chunk_boxes(&g, IVec3::ZERO).is_empty(), "{name} is not a full cube");
+            for p in crate::grid::shape_pieces(b.def().shape) {
+                for poly in &p.polys {
+                    let n = (poly[1] - poly[0]).cross(poly[2] - poly[0]);
+                    assert!(n.length() > 1e-6, "{name}: degenerate face");
+                }
+            }
         }
     }
 
