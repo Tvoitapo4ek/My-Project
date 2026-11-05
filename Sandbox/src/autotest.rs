@@ -831,7 +831,13 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
                 click(world, MouseButton::Right, true);
             }
             21 => click(world, MouseButton::Right, false),
-            30 => {
+            // The lever opens: drag the knob to «Физика».
+            24 => {
+                let mut l = world.resource_mut::<crate::toggle_ui::Lever>();
+                l.value = 1.0;
+                l.dragging = false;
+            }
+            34 => {
                 let c = contraptions(world);
                 let left = world_cells(world) as f32;
                 ctx.check("physics toggle: the glued car becomes one body", c.len() == 1 && c[0].3 >= 30, format!("{:?}", c.iter().map(|c| c.3).collect::<Vec<_>>()));
@@ -846,7 +852,7 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
             }
             _ => {}
         }
-        if ctx.frames > 30 && ctx.t > ctx.vars["t0"] + 4.0 {
+        if ctx.frames > 34 && ctx.t > ctx.vars["t0"] + 4.0 {
             let c = contraptions(world);
             let Some(c) = c.first() else { return Step::Next };
             let moved = (c.1.z - ctx.vars["z0"]).abs();
@@ -978,6 +984,12 @@ fn car(steps: &mut Vec<(String, StepFn)>) {
             }
             12 => click(world, MouseButton::Right, true),
             13 => click(world, MouseButton::Right, false),
+            // The lever: drag the knob back to «Блоки».
+            16 => {
+                let mut l = world.resource_mut::<crate::toggle_ui::Lever>();
+                l.value = 0.0;
+                l.dragging = false;
+            }
             22 => {
                 let n = contraptions(world).len();
                 ctx.check("toggle again: the car returns to the block grid", n == 0, format!("{n} bodies left"));
