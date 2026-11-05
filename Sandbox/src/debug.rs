@@ -1,6 +1,9 @@
 //! Debug tools.
-//! * F3 — debug menu: FPS, position, time; buttons stop/start time and set
-//!   the time of day / speed.
+//! * F3 — debug menu: FPS, frame sections (profiler), memory and CPU of the
+//!   game, the graphics adapter and driver, entity / body / chunk counts,
+//!   position, time; everything about the block under the crosshair
+//!   (kind, facing, grid, settings, speed and load, fluid, logic, engine,
+//!   items); buttons stop/start time and set the time of day / speed.
 //! * T or / — console. Commands: `help`, `time set <0-24|morning|day|
 //!   evening|night>`, `time stop|start`, `time speed <×>`, `tp <x> <y> <z>`,
 //!   `fly`, `give <key> [count]`, `clear`.
@@ -214,7 +217,10 @@ fn execute(world: &mut World) {
 #[derive(Component)]
 struct DebugRoot;
 #[derive(Component)]
-struct DebugInfo;
+pub struct DebugInfo;
+
+/// The text of the F3 menu (for scripts).
+pub type DebugInfoText = DebugInfo;
 
 #[derive(Component, Clone)]
 struct Cmd(&'static str);
@@ -260,7 +266,94 @@ fn despawn_menu(mut commands: Commands, q: Query<Entity, With<DebugRoot>>) {
     }
 }
 
-fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, prof: Res<crate::profile::Profile>, players: Query<(&Position, &Body), With<Player>>, mut q: Query<&mut Text, With<DebugInfo>>) {
+/// Memory and CPU of the game process (from `ps`, every 2 s on a thread).
+#[derive(Resource, Clone, Default)]
+pub struct SysStats(pub std::sync::Arc<std::sync::Mutex<(f32, f32)>>);
+
+fn poll_stats(stats: Res<SysStats>, time: Res<Time<Real>>, mut next: Local<f32>) {
+    if time.elapsed_secs() < *next {
+        return;
+    }
+    *next = time.elapsed_secs() + 2.0;
+    let s = stats.0.clone();
+    std::thread::spawn(move || {
+        let pid = std::process::id().to_string();
+        if let Ok(out) = std::process::Command::new("ps").args(["-o", "rss=,%cpu=", "-p", &pid]).output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let mut it = text.split_whitespace();
+            let rss = it.next().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0) / 1024.0;
+            let cpu = it.next().and_then(|v| v.replace(',', ".").parse::<f32>().ok()).unwrap_or(0.0);
+            if let Ok(mut g) = s.lock() {
+                *g = (rss, cpu);
+            }
+        }
+    });
+}
+
+/// Everything about the block under the crosshair.
+pub fn block_report(world: &World, grid: Entity, cell: IVec3) -> String {
+    let Some(g) = world.get::<crate::grid::VoxelGrid>(grid) else { return String::new() };
+    let c = g.get(cell);
+    if c.is_air() {
+        return String::new();
+    }
+    let def = c.id.def();
+    let place = if world.get::<crate::grid::WorldGrid>(grid).is_some() { "мир".to_string() } else if world.get::<crate::mounts::MountedOn>(grid).is_some() { "подвижная часть".to_string() } else { format!("тело {grid}") };
+    let mut v = vec![format!("Блок: {} ({}) · {:?} · грань {} · {} кг", def.name, def.key, cell.to_array(), crate::grid::facing_dir(c.facing).to_array().map(|x| x.to_string()).join(" "), def.mass), format!("Сетка: {place}")];
+    if let Some(body) = world.get::<LinearVelocity>(grid) {
+        v.push(format!("Скорость тела: {:.2} м/с", body.0.length()));
+    }
+    let Some(&e) = g.entities.get(&cell) else { return v.join("\n") };
+    v.push(format!("Сущность: {e}"));
+    if let Some(p) = world.get::<crate::mech::Params>(e) {
+        let s: Vec<String> = def.params.iter().zip(&p.0).map(|(d, x)| format!("{} = {}", d.label, crate::mech::param_text(&d.kind, *x))).collect();
+        if !s.is_empty() {
+            v.push(format!("Настройки: {}", s.join(", ")));
+        }
+    }
+    if let (Some(s), Some(n)) = (world.get::<crate::mech::Spin>(e), world.get::<crate::mech::NetState>(e)) {
+        v.push(format!("Вращение: {:.1} об/мин · нагрузка {:.0}/{:.0} SU ({:.0}%) · k {:.2}{}{}", s.rpm, n.stress, n.capacity, n.load * 100.0, n.k, if n.driven { " · есть источник" } else { "" }, if n.conflict { " · КОНФЛИКТ" } else { "" }));
+    }
+    if let Some(sig) = world.get::<crate::mech::Signal>(e).filter(|s| s.0 != 0.0) {
+        v.push(format!("Сигнал: {:+.2}", sig.0));
+    }
+    if let Some(f) = world.get::<crate::fluids::FluidStore>(e) {
+        v.push(format!("Жидкость: {} {:.0}/{:.0} mB", f.fluid.map(|f| f.name()).unwrap_or("пусто"), f.amount, f.cap));
+    }
+    if let Some(l) = world.get::<crate::logic::LogicState>(e) {
+        v.push(format!("Логика: вход {}, выход {}, память {}, t {:.2}", l.input, l.out, l.memory, l.t));
+    }
+    if let Some(b) = world.get::<crate::logic::Bus>(e) {
+        let names: Vec<&str> = crate::logic::colours(b.0).map(|k| crate::logic::COLORS[k].0).collect();
+        let on = world.get::<crate::logic::BusPower>(e).map(|p| p.0).unwrap_or(0);
+        v.push(format!("Шина: {} · включены {:08b}", names.join(", "), on));
+    }
+    if let Some(en) = world.get::<crate::engine::Engine>(e) {
+        v.push(format!("Двигатель: работает {}, готов {}, остановка {:?}", en.running, en.ready, en.stall));
+    }
+    if let Some(st) = world.get::<crate::storage::ItemStore>(e) {
+        let n: u32 = st.slots.iter().flatten().map(|s| s.count).sum();
+        v.push(format!("Хранилище: {} предметов в {}/{} ячейках", n, st.slots.iter().flatten().count(), st.slots.len()));
+    }
+    if let Some(r) = world.get::<crate::ropes::RopeEnd>(e) {
+        v.push(format!("Верёвка: {:.2} м", r.length));
+    }
+    v.join("\n")
+}
+
+#[derive(Resource, Default)]
+struct BlockInfo(String);
+
+fn hovered(world: &mut World) {
+    if *world.resource::<State<Ui>>().get() != Ui::Debug {
+        return;
+    }
+    let text = world.resource::<crate::interact::Target>().hit.map(|a| block_report(world, a.grid, a.cell)).unwrap_or_default();
+    world.resource_mut::<BlockInfo>().0 = text;
+}
+
+#[allow(clippy::too_many_arguments)]
+fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, prof: Res<crate::profile::Profile>, stats: Res<SysStats>, adapter: Option<Res<bevy::render::renderer::RenderAdapterInfo>>, info: Res<BlockInfo>, counts: (Query<()>, Query<(), With<Mesh3d>>, Query<(), With<crate::contraption::Contraption>>, Query<&crate::grid::VoxelGrid>), players: Query<(&Position, &Body), With<Player>>, mut q: Query<&mut Text, With<DebugInfo>>) {
     let Ok(mut t) = q.single_mut() else { return };
     let fps = diag.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|d| d.smoothed()).unwrap_or(0.0);
     let (pos, fly) = players.single().map(|(p, b)| (p.0, b.flying)).unwrap_or_default();
@@ -273,7 +366,20 @@ fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, prof: Res<crate::pr
         clock.label(),
         if clock.paused { "остановлено" } else { "идёт" },
         clock.speed / BASE_SPEED
-    ) + "\n\n" + &crate::profile::report(&prof);
+    );
+    let (rss, cpu) = stats.0.lock().map(|g| *g).unwrap_or_default();
+    let gpu = adapter.map(|a| format!("{} · {} {} · {:?}", a.name, a.driver, a.driver_info, a.backend)).unwrap_or_else(|| "—".into());
+    let chunks: usize = counts.3.iter().map(|g| g.chunks.len()).sum();
+    t.0 += &format!(
+        "\nПамять {rss:.0} МБ · CPU {cpu:.0}% (всех ядер)\nВидеокарта: {gpu}\nСущностей {} · мешей {} · тел {} · чанков {chunks}\n\n{}",
+        counts.0.iter().count(),
+        counts.1.iter().count(),
+        counts.2.iter().count(),
+        crate::profile::report(&prof)
+    );
+    if !info.0.is_empty() {
+        t.0 += &format!("\n\nПод прицелом:\n{}", info.0);
+    }
 }
 
 pub struct DebugPlugin;
@@ -282,6 +388,9 @@ impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(FrameTimeDiagnosticsPlugin::default())
             .init_resource::<Console>()
+            .init_resource::<SysStats>()
+            .init_resource::<BlockInfo>()
+            .add_systems(Update, (poll_stats.run_if(in_state(Ui::Debug)), hovered.before(menu_info)))
             .add_systems(Update, (open_keys, type_console, show_console.run_if(in_state(Ui::Console)), menu_info.run_if(in_state(Ui::Debug)), execute))
             .add_systems(OnEnter(Ui::Console), spawn_console)
             .add_systems(OnExit(Ui::Console), despawn_console)

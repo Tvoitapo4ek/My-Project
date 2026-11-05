@@ -70,10 +70,8 @@ fn toggle_view(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, s: Res<crate
 fn follow(view: Res<CameraView>, ui: Res<State<Ui>>, time: Res<Time<Real>>, players: Query<(Entity, &GlobalTransform, &Body), With<Player>>, mut cams: Query<&mut Transform, With<MainCamera>>, spatial: avian3d::prelude::SpatialQuery) {
     let (Ok((me, pt, body)), Ok(mut cam)) = (players.single(), cams.single_mut()) else { return };
     if *ui.get() == Ui::Menu {
-        // Main menu: a slow flight around the proving ground.
-        let a = time.elapsed_secs() * 0.05;
-        let p = Vec3::new(a.cos() * 46.0, 22.0, a.sin() * 46.0);
-        *cam = Transform::from_translation(p).looking_at(Vec3::new(-6.0, 0.0, 4.0), Vec3::Y);
+        // Main menu: a slow circle around the workshop diorama.
+        *cam = crate::menu_scene::camera(time.elapsed_secs());
         return;
     }
     let feet = pt.translation() - Vec3::Y * body.height() * 0.5;

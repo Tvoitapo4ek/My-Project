@@ -24,6 +24,7 @@ mod interact;
 mod inventory;
 mod lights;
 mod menu;
+mod menu_scene;
 mod logic;
 mod mech;
 mod models;
@@ -99,7 +100,8 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, profile::ProfilePlugin, save::SavePlugin, worlds::WorldsPlugin, storage::StoragePlugin, tubes::TubesPlugin, ropes::RopesPlugin, toggle_ui::ToggleUiPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, profile::ProfilePlugin, save::SavePlugin, worlds::WorldsPlugin))
+    .add_plugins((storage::StoragePlugin, tubes::TubesPlugin, ropes::RopesPlugin, toggle_ui::ToggleUiPlugin, menu_scene::MenuScenePlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

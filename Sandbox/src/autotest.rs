@@ -241,6 +241,7 @@ pub fn build() -> Scenario {
     if want("menu") {
         menu(&mut steps);
         help(&mut steps);
+        visuals(&mut steps);
     }
     if want("torque") {
         torque(&mut steps);
@@ -262,6 +263,9 @@ pub fn build() -> Scenario {
         items(&mut steps);
         workshop(&mut steps);
         hand_tools(&mut steps);
+    }
+    if only.as_ref().is_some_and(|o| o.split(',').any(|x| x == "visuals")) {
+        visuals(&mut steps);
     }
     if want("roundtrip") {
         roundtrip(&mut steps);
@@ -3327,6 +3331,88 @@ fn hand_tools(steps: &mut Vec<(String, StepFn)>) {
                 clear_area(world, o - IVec3::new(3, 0, 3), o + IVec3::new(8, 3, 6));
                 select(world, "white_block");
                 return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// The new menu, the F3 report, the hand, Ponder scenes of new blocks.
+fn visuals(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("visuals: menu diorama, F3 report, held item, new Ponder scenes", |world, ctx| {
+        let o = IVec3::new(-4, 0, -12);
+        let scenes = ["chest", "winch", "diesel_engine"];
+        let shots = ["9d_ponder_storage", "9e_ponder_winch", "9f_ponder_diesel"];
+        match ctx.frames {
+            1 => world.resource_mut::<NextState<Ui>>().set(Ui::Menu),
+            20 => {
+                let scene = world.query_filtered::<&VoxelGrid, With<crate::menu_scene::MenuScene>>().iter(world).next().map(|g| g.entities.len()).unwrap_or(0);
+                ctx.check("the menu shows the workshop diorama", scene > 20, format!("{scene} block entities"));
+                screenshot(world, "9a_menu_diorama");
+            }
+            24 => {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                set_block(world, o, "creative_motor", 0);
+                set_block(world, o + IVec3::X, "gearbox", 0);
+                teleport(world, o.as_vec3() + Vec3::new(1.5, 0.0, 3.0));
+                look_at(world, o.as_vec3() + Vec3::new(1.5, 0.5, 0.5));
+                select(world, "wrench");
+            }
+            30 => {
+                let gone = world.query_filtered::<(), With<crate::menu_scene::MenuScene>>().iter(world).count() == 0;
+                ctx.check("leaving the menu removes the diorama", gone, "");
+                screenshot(world, "9b_held_wrench");
+            }
+            32 => world.resource_mut::<NextState<Ui>>().set(Ui::Debug),
+            36 => {
+                let text = world.query_filtered::<&Text, With<crate::debug::DebugInfoText>>().iter(world).next().map(|t| t.0.clone()).unwrap_or_default();
+                ctx.check("F3 shows memory, the adapter and the block under the crosshair", text.contains("Память") && text.contains("Видеокарта") && text.contains("Коробка передач"), text.lines().take(3).collect::<Vec<_>>().join(" | "));
+                screenshot(world, "9c_debug_report");
+            }
+            40 => {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                clear_area(world, o, o + IVec3::X);
+            }
+            _ => {}
+        }
+        if ctx.frames < 44 {
+            return Step::Wait;
+        }
+        // Scene k: inventory → (3 frames) → Ponder → 20 s → shot → (3 frames) → next.
+        let k = ctx.vars.get("vis_k").copied().unwrap_or(0.0) as usize;
+        let phase = ctx.vars.get("vis_p").copied().unwrap_or(0.0) as i32;
+        let since = ctx.t - ctx.vars.get("vis_t").copied().unwrap_or(0.0);
+        let next = |ctx: &mut Ctx, p: i32| {
+            ctx.vars.insert("vis_p".into(), p as f32);
+            ctx.vars.insert("vis_t".into(), ctx.t);
+        };
+        if k >= scenes.len() {
+            if phase == 0 {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+                next(ctx, 1);
+            } else if since > 0.5 {
+                return Step::Next;
+            }
+            return Step::Wait;
+        }
+        match phase {
+            0 => {
+                world.resource_mut::<NextState<Ui>>().set(Ui::Inventory);
+                next(ctx, 1);
+            }
+            1 if since > 0.4 => {
+                world.resource_mut::<crate::ponder::Ponder>().item = Some(crate::content::ItemId::k(scenes[k]));
+                world.resource_mut::<NextState<Ui>>().set(Ui::Ponder);
+                next(ctx, 2);
+            }
+            2 if since > 20.0 => {
+                screenshot(world, shots[k]);
+                next(ctx, 3);
+            }
+            3 if since > 0.5 => {
+                ctx.vars.insert("vis_k".into(), (k + 1) as f32);
+                next(ctx, 0);
             }
             _ => {}
         }

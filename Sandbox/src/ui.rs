@@ -284,13 +284,24 @@ fn refresh_slots(
     }
 }
 
+/// Crosshair and hotbar: hidden on the menu screens.
+#[derive(Component)]
+struct HudPart;
+
+fn hud_visibility(ui: Res<State<Ui>>, mut q: Query<&mut Visibility, With<HudPart>>) {
+    let hide = matches!(ui.get(), Ui::Menu | Ui::Worlds);
+    for mut v in &mut q {
+        v.set_if_neq(if hide { Visibility::Hidden } else { Visibility::Inherited });
+    }
+}
+
 fn spawn_hud(mut commands: Commands) {
     // Crosshair.
-    commands.spawn((Node { position_type: PositionType::Absolute, left: percent(50), top: percent(50), width: px(2), height: px(16), margin: UiRect::new(px(-1), px(0), px(-8), px(0)), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.8)), Pickable::IGNORE));
-    commands.spawn((Node { position_type: PositionType::Absolute, left: percent(50), top: percent(50), width: px(16), height: px(2), margin: UiRect::new(px(-8), px(0), px(-1), px(0)), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.8)), Pickable::IGNORE));
+    commands.spawn((HudPart, Node { position_type: PositionType::Absolute, left: percent(50), top: percent(50), width: px(2), height: px(16), margin: UiRect::new(px(-1), px(0), px(-8), px(0)), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.8)), Pickable::IGNORE));
+    commands.spawn((HudPart, Node { position_type: PositionType::Absolute, left: percent(50), top: percent(50), width: px(16), height: px(2), margin: UiRect::new(px(-8), px(0), px(-1), px(0)), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.8)), Pickable::IGNORE));
     // Hotbar + held item name.
     commands
-        .spawn((Node { position_type: PositionType::Absolute, bottom: px(8), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }, Pickable::IGNORE))
+        .spawn((HudPart, Node { position_type: PositionType::Absolute, bottom: px(8), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }, Pickable::IGNORE))
         .with_children(|c| {
             c.spawn((HeldName, Text::new(""), font(16.0), TextColor(TEXT), TextShadow::default(), Pickable::IGNORE));
             c.spawn((Node { column_gap: px(2), padding: UiRect::all(px(3)), border: UiRect::all(px(2)), ..default() }, BackgroundColor(BG), BorderColor::all(FRAME), Pickable::IGNORE)).with_children(|row| {
@@ -692,7 +703,8 @@ impl Plugin for UiPlugin {
             .add_systems(Update, (toggle_inventory, refresh_slots, held_name, toasts))
             .add_systems(OnEnter(Ui::Inventory), open_screen)
             .add_systems(OnExit(Ui::Inventory), close_screen)
-            .add_systems(Update, (type_search, update_screen, cursor_icon, tooltip).chain().run_if(in_state(Ui::Inventory)));
+            .add_systems(Update, (type_search, update_screen, cursor_icon, tooltip).chain().run_if(in_state(Ui::Inventory)))
+            .add_systems(Update, hud_visibility);
     }
 }
 

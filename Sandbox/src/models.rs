@@ -735,29 +735,47 @@ pub fn goggles_parts() -> Vec<Part> {
 /// Hand-held tool models (local −Z = forward, origin at the grip).
 pub fn tool_model(tool: Tool) -> Vec<Part> {
     match tool {
-        Tool::Wrench => vec![
-            part([0.07, 0.07, 0.3], "red_grip", [0.0, 0.0, 0.05]),
-            part([0.09, 0.09, 0.05], "brass", [0.0, 0.0, 0.22]),
-            part([0.09, 0.09, 0.05], "brass", [0.0, 0.0, -0.11]),
-            part([0.05, 0.05, 0.22], "steel", [0.0, 0.0, -0.22]),
-            part([0.16, 0.06, 0.07], "steel", [0.0, 0.0, -0.34]),
-            part([0.05, 0.06, 0.12], "steel", [0.06, 0.0, -0.42]),
-            part([0.05, 0.06, 0.1], "brass", [-0.06, 0.0, -0.41]),
-        ],
+        Tool::Wrench => {
+            // Like Create's: a red grip, a steel shaft with brass collars and
+            // a brass cog for a head (it turns blocks).
+            let mut v = vec![
+                part([0.07, 0.07, 0.24], "red_grip", [0.0, 0.0, 0.08]),
+                part([0.085, 0.085, 0.04], "brass", [0.0, 0.0, 0.21]),
+                part([0.085, 0.085, 0.04], "brass", [0.0, 0.0, -0.05]),
+                part([0.05, 0.05, 0.24], "steel", [0.0, 0.0, -0.19]),
+                part([0.18, 0.06, 0.18], "brass", [0.0, 0.0, -0.36]),
+                part([0.18, 0.06, 0.18], "brass", [0.0, 0.0, -0.36]).rot(Quat::from_rotation_y(FRAC_PI_4)),
+                part([0.08, 0.08, 0.08], "steel", [0.0, 0.0, -0.36]),
+            ];
+            for i in 0..8 {
+                let a = i as f32 / 8.0 * TAU;
+                v.push(part([0.05, 0.05, 0.05], "brass", [a.cos() * 0.12, 0.0, -0.36 + a.sin() * 0.12]).rot(Quat::from_rotation_y(-a)));
+            }
+            v
+        }
         Tool::Glue => vec![
-            part([0.14, 0.18, 0.14], "brass", [0.0, 0.0, 0.0]),
-            part([0.16, 0.04, 0.16], "steel", [0.0, 0.1, 0.0]),
-            part([0.05, 0.08, 0.05], "steel", [0.0, 0.15, 0.0]),
-            part([0.1, 0.08, 0.1], "glow_green", [0.0, -0.02, 0.06]),
+            // A glass bottle of green glue, steel cap and a nozzle.
+            part([0.13, 0.16, 0.13], "glass", [0.0, 0.0, 0.0]),
+            part([0.1, 0.12, 0.1], "glow_green", [0.0, -0.01, 0.0]),
+            part([0.14, 0.03, 0.14], "brass", [0.0, -0.08, 0.0]),
+            part([0.1, 0.05, 0.1], "steel", [0.0, 0.1, 0.0]),
+            part([0.04, 0.08, 0.04], "steel", [0.0, 0.16, 0.0]),
+            part([0.02, 0.03, 0.02], "glow_green", [0.0, 0.21, 0.0]),
         ],
         Tool::Goggles => goggles_parts(),
         Tool::WaterBucket => vec![
-            part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),
-            part([0.16, 0.02, 0.16], "water", [0.0, 0.1, 0.0]),
-            part([0.22, 0.03, 0.22], "brass", [0.0, 0.1, 0.0]),
-            part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
-            part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
-            part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
+            // A tapered steel bucket with hoops, water inside, an arched brass handle.
+            part([0.16, 0.06, 0.16], "steel", [0.0, -0.08, 0.0]),
+            part([0.19, 0.08, 0.19], "steel", [0.0, -0.01, 0.0]),
+            part([0.22, 0.07, 0.22], "steel", [0.0, 0.065, 0.0]),
+            part([0.2, 0.015, 0.2], "brass", [0.0, -0.045, 0.0]),
+            part([0.235, 0.015, 0.235], "brass", [0.0, 0.03, 0.0]),
+            part([0.18, 0.02, 0.18], "water", [0.0, 0.09, 0.0]),
+            part([0.02, 0.1, 0.02], "brass", [0.11, 0.14, 0.0]),
+            part([0.02, 0.1, 0.02], "brass", [-0.11, 0.14, 0.0]),
+            part([0.08, 0.02, 0.02], "brass", [0.075, 0.2, 0.0]).rot(Quat::from_rotation_z(0.5)),
+            part([0.08, 0.02, 0.02], "brass", [-0.075, 0.2, 0.0]).rot(Quat::from_rotation_z(-0.5)),
+            part([0.08, 0.02, 0.02], "brass", [0.0, 0.22, 0.0]),
         ],
         Tool::Crowbar => vec![
             // A steel bar with a curved claw at the front (−Z), red grip.
@@ -799,20 +817,28 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             v
         }
         Tool::DieselBucket => vec![
-            // A steel bucket with an amber fill and a brass handle.
-            part([0.2, 0.2, 0.2], "steel", [0.0, 0.0, 0.0]),
-            part([0.16, 0.02, 0.16], "diesel", [0.0, 0.1, 0.0]),
-            part([0.22, 0.03, 0.22], "brass", [0.0, 0.1, 0.0]),
-            part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
-            part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
-            part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
+            // A tapered steel bucket with hoops, diesel inside, an arched brass handle.
+            part([0.16, 0.06, 0.16], "steel", [0.0, -0.08, 0.0]),
+            part([0.19, 0.08, 0.19], "steel", [0.0, -0.01, 0.0]),
+            part([0.22, 0.07, 0.22], "steel", [0.0, 0.065, 0.0]),
+            part([0.2, 0.015, 0.2], "brass", [0.0, -0.045, 0.0]),
+            part([0.235, 0.015, 0.235], "brass", [0.0, 0.03, 0.0]),
+            part([0.18, 0.02, 0.18], "diesel", [0.0, 0.09, 0.0]),
+            part([0.02, 0.1, 0.02], "brass", [0.11, 0.14, 0.0]),
+            part([0.02, 0.1, 0.02], "brass", [-0.11, 0.14, 0.0]),
+            part([0.08, 0.02, 0.02], "brass", [0.075, 0.2, 0.0]).rot(Quat::from_rotation_z(0.5)),
+            part([0.08, 0.02, 0.02], "brass", [-0.075, 0.2, 0.0]).rot(Quat::from_rotation_z(-0.5)),
+            part([0.08, 0.02, 0.02], "brass", [0.0, 0.22, 0.0]),
         ],
         Tool::Blueprint => vec![
-            // An open book of blue drawings.
-            part([0.34, 0.03, 0.26], "leather", [0.0, -0.02, 0.0]),
-            part([0.15, 0.03, 0.24], "blueprint", [-0.08, 0.0, 0.0]).rot(Quat::from_rotation_z(0.12)),
-            part([0.15, 0.03, 0.24], "blueprint", [0.08, 0.0, 0.0]).rot(Quat::from_rotation_z(-0.12)),
-            part([0.02, 0.04, 0.26], "brass", [0.0, 0.0, 0.0]),
+            // A rolled blueprint with brass end caps and a sheet hanging open.
+            part([0.09, 0.09, 0.32], "blueprint", [0.0, 0.0, 0.0]),
+            part([0.09, 0.09, 0.32], "blueprint", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_z(FRAC_PI_4)),
+            part([0.11, 0.11, 0.03], "brass", [0.0, 0.0, 0.17]),
+            part([0.11, 0.11, 0.03], "brass", [0.0, 0.0, -0.17]),
+            part([0.2, 0.01, 0.28], "blueprint", [0.12, -0.05, 0.0]).rot(Quat::from_rotation_z(-0.5)),
+            part([0.02, 0.012, 0.2], "seg_off", [0.12, -0.04, 0.0]).rot(Quat::from_rotation_z(-0.5)),
+            part([0.03, 0.03, 0.34], "leather", [0.0, 0.05, 0.0]),
         ],
         Tool::GravityGun | Tool::PhysGun => {
             let glow = if tool == Tool::GravityGun { "glow_amber" } else { "glow_cyan" };

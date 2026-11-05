@@ -42,6 +42,10 @@ pub enum Op {
     Chain(IVec3, IVec3, i8, i8),
     /// Telemetry sensor → display.
     Link(IVec3, IVec3),
+    /// Items into a storage.
+    Items(IVec3, &'static str, u32),
+    /// A rope from the first block (winch / anchor) to the second.
+    Rope(IVec3, IVec3),
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +132,8 @@ pub fn scene(key: &str) -> Option<Vec<Step>> {
             st("Дизелю нужно топливо: бесконечный бак дизеля и труба.", vec![Block(v(-3, 0, 0), "creative_tank", 2), Block(v(-2, 0, 0), "fluid_pipe", 0)]),
             st("Двигатель берёт топливо с любой стороны, кроме выхода спереди.", vec![Block(v(-1, 0, 0), "diesel_engine", 0)]),
             st("Работает, пока над ним пусто (воздух): 10 mB/с, 2048 SU.", vec![Block(v(0, 0, 0), "shaft", 0), Block(v(1, 0, 0), "shaft", 0)]),
+            st("Модули в ряд — один двигатель: мощность складывается, выход у переднего.", vec![Block(v(0, 0, 0), "diesel_engine", 0), Block(v(1, 0, 0), "diesel_engine", 0), Block(v(2, 0, 0), "shaft", 0)]),
+            st("Выхлоп закрыт или под водой? Шноркель: труба вверх, открытым концом в воздух.", vec![Block(v(0, 1, 0), "stone", 2), Block(v(0, 0, 1), "fluid_pipe", 2), Block(v(0, 1, 1), "fluid_pipe", 2), Block(v(0, 2, 1), "fluid_pipe", 2)]),
         ],
         "flywheel" => vec![
             st("Маховик стоит на валу и крутится с ним.", [motor_line(), vec![Block(v(0, 0, 0), "flywheel", 0), Block(v(1, 0, 0), "shaft", 0)]].concat()),
@@ -147,9 +153,35 @@ pub fn scene(key: &str) -> Option<Vec<Step>> {
             st("Звёздочка крутится от вала, как колесо.", vec![Block(v(1, 0, -2), "creative_motor", 1), Block(v(0, 0, -2), "track_sprocket", 1)]),
             st("Катки рядом (та же ось) крутятся вместе — лента гусеницы натягивается сама.", (-1..=2).map(|z| Block(v(0, 0, z), "track_roller", 1)).collect()),
         ],
-        "suspension" | "wheel" => vec![
+        "suspension" | "wheel" | "wheel_small" | "wheel_large" => vec![
             st("Подвеска ставится на кузов, колесо — на подвеску.", vec![Block(v(-1, 0, 0), "steel_block", 2), Block(v(0, 0, 0), "suspension", 0), Block(v(1, 0, 0), "wheel", 0)]),
+            st("Колёса трёх размеров: малое, обычное, большое.", vec![Block(v(-1, 0, -2), "steel_block", 2), Block(v(0, 0, -2), "suspension", 0), Block(v(1, 0, -2), "wheel_small", 0), Block(v(-1, 0, 2), "steel_block", 2), Block(v(0, 0, 2), "suspension", 0), Block(v(1, 0, 2), "wheel_large", 0)]),
+            st("Ключом: поворот, жёсткость, амортизатор, обратный руль (для задних колёс).", vec![Param(v(0, 0, 0), "steer", 45.0)]),
             st("Сигнал с пульта (датчик) или логика поворачивает колесо; на физической машине пружинит.", vec![Block(v(0, 1, 0), "lever", 3), Lever(v(0, 1, 0))]),
+        ],
+        "chest" | "barrel" | "item_container" | "item_tube" | "item_drive" => vec![
+            st("Хранилища: сундук, бочка, контейнер. ПКМ — открыть.", vec![Block(v(-3, 0, 0), "chest", 4), Block(v(3, 1, 0), "barrel", 2), Block(v(-3, 0, 3), "item_container", 2), Block(v(-2, 0, 3), "item_container", 2), Block(v(-3, 1, 3), "item_container", 2), Items(v(-3, 0, 0), "stone", 64), Items(v(-3, 0, 0), "planks", 64)]),
+            st("Соседние контейнеры — одно хранилище, как цистерна.", vec![]),
+            st("Предметные трубы соединяют хранилища.", vec![Block(v(-2, 0, 0), "item_tube", 0), Block(v(0, 0, 0), "item_tube", 0), Block(v(1, 0, 0), "item_tube", 0), Block(v(2, 0, 0), "item_tube", 0), Block(v(2, 1, 0), "item_tube", 2)]),
+            st("Конвейерный привод крутят как шестерню — он везёт пачки предметов вперёд.", vec![Block(v(-1, 0, 0), "item_drive", 0), Block(v(-1, 0, -1), "cogwheel", 0), Block(v(-2, 0, -1), "creative_motor", 0)]),
+        ],
+        "hand_crank" => vec![
+            st("Ручка ставится на вал.", vec![Block(v(-1, 0, 0), "shaft", 0), Block(v(0, 0, 0), "shaft", 0), Block(v(1, 0, 0), "hand_crank", 0)]),
+            st("Удерживайте ПКМ на ручке — 32 об/мин в вал за ней.", vec![Block(v(-2, 0, 0), "mechanical_display", 4)]),
+        ],
+        "winch" | "rope_anchor" | "rope" => vec![
+            st("Лебёдка под стрелой крана, верёвка выходит снизу.", vec![Block(v(3, 0, 0), "steel_block", 2), Block(v(3, 1, 0), "steel_block", 2), Block(v(3, 2, 0), "steel_block", 2), Block(v(3, 3, 0), "steel_block", 2), Block(v(2, 3, 0), "steel_block", 2), Block(v(1, 3, 0), "steel_block", 2), Block(v(1, 2, 0), "winch", 3)]),
+            st("Крепление верёвки — на грузе.", vec![Block(v(1, 0, 0), "steel_block", 2), Block(v(1, 1, 0), "rope_anchor", 3)]),
+            st("Верёвкой (инструмент): ЛКМ по лебёдке, ЛКМ по креплению.", vec![Rope(v(1, 2, 0), v(1, 1, 0))]),
+            st("Барабан крутят сбоку: наматывает — груз поднимается.", vec![Block(v(0, 2, 0), "shaft", 0), Block(v(-1, 2, 0), "hand_crank", 1)]),
+        ],
+        "fluid_valve" => vec![
+            st("Вентиль — труба с маховиком.", vec![Block(v(-3, 0, 0), "creative_tank", 2), Block(v(-2, 0, 0), "fluid_pipe", 0), Block(v(-1, 0, 0), "fluid_valve", 0), Block(v(0, 0, 0), "fluid_pipe", 0), Block(v(1, 0, 0), "fluid_tank", 2)]),
+            st("ПКМ — закрыт: жидкость не идёт. Сигнал логики тоже закрывает его.", vec![Block(v(-1, 0, 0), "fluid_valve_closed", 0), Block(v(-1, 1, 0), "lever", 3)]),
+        ],
+        "physics_toggle" => vec![
+            st("Переключатель физики и приклеенные к нему блоки — одна машина.", vec![Block(v(-1, 0, 0), "steel_block", 2), Block(v(0, 0, 0), "steel_block", 2), Block(v(1, 0, 0), "steel_block", 2), Block(v(0, 1, 0), "physics_toggle", 2), GlueBox(v(-1, 0, 0), v(1, 1, 0))]),
+            st("ПКМ по нему — рычаг: тяните ползунок вправо — физика, влево — обратно в сетку.", vec![]),
         ],
         "telemetry_sensor" | "mechanical_display" | "speedometer" => vec![
             st("Механический экран работает, пока его крутят сбоку.", vec![Block(v(-2, 0, 0), "creative_motor", 0), Block(v(-1, 0, 0), "shaft", 0), Block(v(0, 0, 0), "mechanical_display", 4)]),
@@ -457,6 +489,19 @@ fn apply_pending(world: &mut World) {
                     && let Some(mut l) = world.get_mut::<crate::signal::Linked>(e)
                 {
                     l.0 = Some(crate::signal::PanelRef { grid: g, cell: b });
+                }
+            }
+            Items(c, key, n) => {
+                if let Some(e) = ent(world, c)
+                    && let Some(item) = crate::content::registry().item(key)
+                    && let Some(mut s) = world.get_mut::<crate::storage::ItemStore>(e)
+                {
+                    s.insert(crate::inventory::Stack::new(item, n));
+                }
+            }
+            Rope(a, b) => {
+                if let (Some(ea), Some(eb)) = (ent(world, a), ent(world, b)) {
+                    world.entity_mut(ea).insert(crate::ropes::RopeEnd::new(eb, 1.2));
                 }
             }
             _ => {}

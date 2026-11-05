@@ -282,9 +282,11 @@ pub struct MenuState {
 fn button(p: &mut ChildSpawnerCommands, label: &str, b: MenuButton, width: f32) {
     p.spawn((b, Node { width: px(width), height: px(40), justify_content: JustifyContent::Center, align_items: AlignItems::Center, border: UiRect::all(px(2)), ..default() }, BackgroundColor(BUTTON), BorderColor::all(FRAME)))
         .observe(on_button)
-        .observe(|ev: On<PointerOver>, mut q: Query<&mut BackgroundColor>| {
+        .observe(|ev: On<PointerOver>, mut q: Query<&mut BackgroundColor>, mut sounds: MessageWriter<crate::sound::Sfx>| {
             if let Ok(mut c) = q.get_mut(ev.entity) {
                 c.0 = BUTTON_HOVER;
+                // A quiet tick on hover.
+                sounds.write(crate::sound::Sfx { name: "ui_click", at: None, volume: 0.15 });
             }
         })
         .observe(|ev: On<PointerOut>, mut q: Query<&mut BackgroundColor>| {
@@ -305,12 +307,20 @@ fn framed(root: &mut ChildSpawnerCommands, width: f32, f: impl FnOnce(&mut Child
         });
 }
 
-fn open_menu(mut commands: Commands) {
+fn open_menu(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    // The app icon (a brass cog on riveted steel) above the title.
+    let logo = Image::from_buffer(include_bytes!("../tools/macos/icon.png"), bevy::image::ImageType::Extension("png"), bevy::image::CompressedImageFormats::NONE, true, bevy::image::ImageSampler::nearest(), bevy::asset::RenderAssetUsages::default()).ok().map(|i| images.add(i));
     commands
-        .spawn((Screen, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), padding: UiRect::left(px(80)), align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.35))))
+        .spawn((Screen, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), padding: UiRect::left(px(80)), align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::NONE)))
         .with_children(|root| {
+            // A soft dark band behind the panel, the diorama stays bright.
+            root.spawn((Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: px(520), height: percent(100), ..default() }, BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.45)), Pickable::IGNORE));
             framed(root, 340.0, |p| {
+                if let Some(l) = logo.clone() {
+                    p.spawn((ImageNode::new(l), Node { width: px(96), height: px(96), ..default() }));
+                }
                 p.spawn((Text::new("SANDBOX"), font(40.0), TextColor(ACCENT)));
+                p.spawn((Node { width: px(220), height: px(3), ..default() }, BackgroundColor(Color::srgb(0.45, 0.32, 0.12))));
                 p.spawn((Text::new("инженерный полигон"), font(15.0), TextColor(DIM), Node { margin: UiRect::bottom(px(12)), ..default() }));
                 button(p, "Играть", MenuButton::Play, 260.0);
                 button(p, "Настройки", MenuButton::Options, 260.0);
