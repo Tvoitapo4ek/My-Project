@@ -1,0 +1,30 @@
+// Текстуры блоков. Картинка ищется в mods/*/textures/blocks/<name>.png, затем в
+// assets/textures/blocks/<name>.png; если файла нет — рисуется процедурно (procedural).
+// alpha: Opaque | Blend | Mask; emissive — свечение (линейный RGB); shadows — отбрасывать тень.
+[
+    (name: "grass"),
+    (name: "grass_side"),
+    (name: "dirt"),
+    (name: "stone"),
+    (name: "sand"),
+    (name: "water", alpha: Blend, roughness: 0.08, reflectance: 0.5, double_sided: true, shadows: false),
+    (name: "log_side"),
+    (name: "log_top"),
+    (name: "leaves"),
+    (name: "iron_ore"),
+    (name: "copper_ore"),
+    (name: "coal_ore"),
+    (name: "aether", emissive: (0.25, 1.0, 1.3), roughness: 0.2),
+    (name: "ancient", emissive: (0.05, 0.25, 0.22)),
+    (name: "planks"),
+    (name: "bricks"),
+    (name: "glass", alpha: Blend, roughness: 0.05, reflectance: 0.6, shadows: false),
+    (name: "metal", metallic: 0.75, roughness: 0.4),
+    (name: "gravel"),
+    (name: "bedrock"),
+    (name: "tall_grass", alpha: Mask, double_sided: true, shadows: false),
+    (name: "berry", alpha: Mask, double_sided: true, shadows: false),
+    (name: "clay"),
+    (name: "moss"),
+    (name: "agitated_aether", emissive: (1.1, 0.25, 0.65), roughness: 0.25),
+]

@@ -1,0 +1,159 @@
+//! Scripted end-to-end scenario (`--autotest`).
+//!
+//! Runs the real game (window, renderer, physics) and drives it through a
+//! list of steps with exclusive `World` access: it simulates player intent,
+//! uses the same public APIs the tools use, and checks observable results
+//! (positions, block states, joints, inventories, save files). Each check is
+//! logged as PASS/FAIL; the process exits with code 1 if any check failed.
+//! Screenshots are written when `--screenshots <dir>` is given.
+
+pub mod scenario;
+pub mod scenario3;
+pub mod scenario4;
+pub mod scenario5;
+pub mod scenario6;
+pub mod scenario7;
+pub mod scenario8;
+pub mod scenario9;
+pub mod scenario_t2;
+pub mod scenario_t3;
+pub mod scenario_v1;
+pub mod scenario_v2;
+pub mod scenario_v3;
+pub mod scenario_v4;
+pub mod scenario_v5;
+pub mod scenario_v6;
+pub mod showcase;
+
+use bevy::{
+    prelude::*,
+    render::view::screenshot::{Screenshot, save_to_disk},
+};
+
+use crate::core::config::LaunchOptions;
+
+/// Result of one tick of a step.
+pub enum Step {
+    /// Keep running this step next frame.
+    Wait,
+    /// Step finished; go to the next one.
+    Next,
+}
+
+pub type StepFn = Box<dyn FnMut(&mut World, &mut Ctx) -> Step + Send + Sync>;
+
+/// Mutable context shared by the steps.
+#[derive(Default)]
+pub struct Ctx {
+    /// Seconds spent in the current step.
+    pub t: f32,
+    /// Frames spent in the current step.
+    pub frames: u32,
+    pub passed: Vec<String>,
+    pub failed: Vec<String>,
+    /// Scratch storage between steps.
+    pub vars: std::collections::HashMap<String, f32>,
+    pub entities: std::collections::HashMap<String, Entity>,
+}
+
+impl Ctx {
+    pub fn check(&mut self, name: &str, ok: bool, detail: impl std::fmt::Display) {
+        if ok {
+            info!("[AUTOTEST] PASS {name}: {detail}");
+            self.passed.push(name.to_string());
+        } else {
+            error!("[AUTOTEST] FAIL {name}: {detail}");
+            self.failed.push(format!("{name}: {detail}"));
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct Scenario {
+    pub steps: Vec<(String, StepFn)>,
+    pub index: usize,
+    pub ctx: Ctx,
+    pub elapsed_total: f32,
+}
+
+fn run_scenario(world: &mut World) {
+    let dt = world.resource::<Time>().delta_secs();
+    let Some(mut scenario) = world.remove_resource::<Scenario>() else {
+        return;
+    };
+    scenario.elapsed_total += dt;
+    if scenario.elapsed_total > 2400.0 {
+        scenario.ctx.failed.push("scenario timeout".into());
+        scenario.index = scenario.steps.len();
+    }
+    if scenario.index < scenario.steps.len() {
+        let idx = scenario.index;
+        scenario.ctx.t += dt;
+        scenario.ctx.frames += 1;
+        let (name, step) = &mut scenario.steps[idx];
+        if scenario.ctx.frames == 1 {
+            let fps = world
+                .resource::<bevy::diagnostic::DiagnosticsStore>()
+                .get(&bevy::diagnostic::FrameTimeDiagnosticsPlugin::FPS)
+                .and_then(|d| d.smoothed())
+                .unwrap_or(0.0);
+            let entities = world.entities().count_spawned();
+            let bodies = world
+                .query::<&avian3d::prelude::RigidBody>()
+                .iter(world)
+                .count();
+            info!(
+                "[AUTOTEST] step {}: {}  (fps {fps:.1}, entities {entities}, bodies {bodies})",
+                idx + 1,
+                name
+            );
+        }
+        let result = step(world, &mut scenario.ctx);
+        if matches!(result, Step::Next) {
+            scenario.index += 1;
+            scenario.ctx.t = 0.0;
+            scenario.ctx.frames = 0;
+        }
+    } else if scenario.ctx.t < 1.5 {
+        // Let pending screenshots reach the disk before exiting.
+        scenario.ctx.t += dt;
+    } else {
+        let failed = scenario.ctx.failed.len();
+        info!(
+            "[AUTOTEST] finished: {} passed, {} failed",
+            scenario.ctx.passed.len(),
+            failed
+        );
+        for f in &scenario.ctx.failed {
+            error!("[AUTOTEST]   failed: {f}");
+        }
+        std::process::exit(if failed == 0 { 0 } else { 1 });
+    }
+    world.insert_resource(scenario);
+}
+
+/// Requests a screenshot of the primary window if screenshots are enabled.
+pub fn screenshot(world: &mut World, name: &str) {
+    let dir = world.resource::<LaunchOptions>().screenshot_dir.clone();
+    if let Some(dir) = dir {
+        let _ = std::fs::create_dir_all(&dir);
+        let path = format!("{dir}/{name}.png");
+        world
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path));
+    }
+}
+
+pub struct AutotestPlugin;
+
+impl Plugin for AutotestPlugin {
+    fn build(&self, app: &mut App) {
+        let enabled = app.world().resource::<LaunchOptions>().autotest;
+        if !enabled {
+            return;
+        }
+        let showcase = app.world().resource::<LaunchOptions>().showcase;
+        app.insert_resource(if showcase { showcase::build() } else { scenario::build() })
+            .add_systems(PreUpdate, run_scenario.after(bevy::input::InputSystems));
+    }
+}

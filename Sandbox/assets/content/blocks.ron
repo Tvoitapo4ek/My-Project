@@ -1,0 +1,282 @@
+// Blocks. Every block is also an item with the same key.
+//
+//   textures   — cube blocks: (top, sides, bottom) from assets/textures/<name>.png
+//   mech       — behaviour (see content.rs `Mech`); mechanisms are drawn by models
+//                (mech/model.rs) instead of textures
+//   placement  — None | Face (along the clicked face) | Attach (into the clicked
+//                block) | Horizontal (facing the player)
+//   collision  — Full | None | Box(x, y, z) in block space (Y = block facing)
+//   params     — settings changed with the wrench:
+//                Number(min, max, step, unit) | Choice([...]) | Key (keyboard key)
+//   mass       — kg when the block becomes physical
+[
+    // --- building -----------------------------------------------------------
+    (key: "white_block", name: "Белый блок", category: "building",
+     textures: Some(("white", "white", "white")), mass: 100.0),
+    // The proving ground: dark concrete, lighter marking lines.
+    (key: "concrete", name: "Бетон", category: "building",
+     textures: Some(("concrete", "concrete", "concrete")), mass: 180.0),
+    (key: "concrete_line", name: "Бетон разметки", category: "building",
+     textures: Some(("concrete_line", "concrete_line", "concrete_line")), mass: 180.0),
+    (key: "stone", name: "Камень", category: "building",
+     textures: Some(("stone", "stone", "stone")), mass: 150.0),
+    (key: "planks", name: "Доски", category: "building",
+     textures: Some(("planks", "planks", "planks")), mass: 40.0, buoyancy: Some(1000.0)),
+    (key: "steel_block", name: "Стальной блок", category: "building",
+     textures: Some(("steel", "steel", "steel")), mass: 200.0),
+    (key: "steel_frame", name: "Стальная рама", category: "building",
+     textures: Some(("steel_frame", "steel_frame", "steel_frame")), transparent: true, mass: 60.0, buoyancy: Some(800.0)),
+    (key: "steel_casing", name: "Стальной корпус", category: "building",
+     textures: Some(("steel_casing", "steel_casing", "steel_casing")), mass: 120.0),
+    // Sliding door, two blocks tall: RMB or a signal opens it.
+    (key: "sliding_door", name: "Раздвижная дверь", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: Box(1.0, 0.2, 1.0), mass: 60.0),
+    (key: "sliding_door_top", name: "Раздвижная дверь (верх)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: Box(1.0, 0.2, 1.0), mass: 60.0, hidden: true),
+    (key: "sliding_door_open", name: "Раздвижная дверь (открыта)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: None, mass: 60.0, hidden: true),
+    (key: "sliding_door_top_open", name: "Раздвижная дверь (верх, открыта)", category: "building", mech: Some(SlidingDoor), placement: Horizontal,
+     collision: None, mass: 60.0, hidden: true),
+    // RMB with a casing on a shaft / pipe puts it in a casing.
+    (key: "copper_casing", name: "Медный корпус", category: "building",
+     textures: Some(("copper_casing", "copper_casing", "copper_casing")), mass: 120.0),
+    (key: "glass", name: "Стекло", category: "building",
+     textures: Some(("glass", "glass", "glass")), transparent: true, mass: 30.0, buoyancy: Some(1000.0)),
+    // Shapes. shape: Slab (half block against the clicked face) |
+    // Wedge(front height, back height) — a smooth slope rising away from the
+    // player. Chain them for long ramps: 45° (0→1), ≈27° (0→½, ½→1),
+    // ≈14° (0→¼ … ¾→1).
+    // Kept for the proving ground; in the catalogue the steel block's own
+    // shapes (Shift + wheel) replace them.
+    (key: "steel_slab", name: "Стальная плита", category: "building", shape: Slab, placement: Attach,
+     textures: Some(("steel", "steel", "steel")), mass: 100.0, hidden: true),
+    (key: "steel_slope", name: "Стальной скос 45°", category: "building", shape: Wedge(0.0, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 100.0, hidden: true),
+    (key: "steel_slope_half_low", name: "Скос 27° — нижний", category: "building", shape: Wedge(0.0, 0.5), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 50.0),
+    (key: "steel_slope_half_high", name: "Скос 27° — верхний", category: "building", shape: Wedge(0.5, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 150.0),
+    (key: "steel_slope_q1", name: "Скос 14° — 1/4", category: "building", shape: Wedge(0.0, 0.25), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 25.0),
+    (key: "steel_slope_q2", name: "Скос 14° — 2/4", category: "building", shape: Wedge(0.25, 0.5), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 75.0),
+    (key: "steel_slope_q3", name: "Скос 14° — 3/4", category: "building", shape: Wedge(0.5, 0.75), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 125.0),
+    (key: "steel_slope_q4", name: "Скос 14° — 4/4", category: "building", shape: Wedge(0.75, 1.0), placement: Horizontal,
+     textures: Some(("steel", "steel", "steel")), mass: 175.0),
+
+    // --- mechanisms ---------------------------------------------------------
+    (key: "creative_motor", name: "Креативный мотор", category: "mechanisms", mech: Some(Motor),
+     placement: Face, mass: 120.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
+        (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
+        // Stress units it can drive (like Create's capacity).
+        (key: "capacity", label: "Мощность", kind: Number(min: 1024.0, max: 65536.0, step: 1024.0, unit: "SU"), default: 16384.0),
+     ]),
+    // Stores energy: covers up to 1000 SU of overload for 2 s.
+    (key: "flywheel", name: "Маховик", category: "mechanisms", mech: Some(Flywheel), placement: Face,
+     collision: Box(0.9, 0.5, 0.9), mass: 150.0),
+    (key: "shaft", name: "Вал", category: "mechanisms", mech: Some(Shaft), placement: Face,
+     collision: Box(0.375, 1.0, 0.375), mass: 15.0),
+    (key: "cogwheel", name: "Шестерня", category: "mechanisms", mech: Some(Cog), placement: Face,
+     collision: Box(0.9, 0.35, 0.9), mass: 20.0),
+    (key: "large_cogwheel", name: "Большая шестерня", category: "mechanisms", mech: Some(LargeCog), placement: Face,
+     collision: Box(0.9, 0.35, 0.9), mass: 40.0),
+    (key: "gearbox", name: "Коробка передач", category: "mechanisms", mech: Some(Gearbox), placement: Face, mass: 80.0),
+    // Ports up, down, left and right (as seen when placing it).
+    (key: "vertical_gearbox", name: "Вертикальная коробка передач", category: "mechanisms", mech: Some(VerticalGearbox), placement: Horizontal, mass: 80.0),
+    (key: "clutch", name: "Муфта (стоп по сигналу)", category: "mechanisms", mech: Some(Clutch), placement: Face, mass: 60.0),
+    (key: "gearshift", name: "Реверс (по сигналу)", category: "mechanisms", mech: Some(Gearshift), placement: Face, mass: 60.0),
+    (key: "speed_controller", name: "Регулятор скорости", category: "mechanisms", mech: Some(SpeedController),
+     placement: Face, mass: 70.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 32.0),
+        // Signal "+" blends to +signal_speed, "−" to −signal_speed (a throttle
+        // when speed = 0).
+        (key: "signal_speed", label: "Скорость по сигналу", kind: Number(min: -256.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 128.0),
+     ]),
+    // Turns the structure glued on its face (a separate body on a hinge):
+    // speed from the shaft at its back; a signal holds «Угол фиксации».
+    (key: "mechanical_bearing", name: "Механический подшипник", category: "mechanisms", mech: Some(Bearing),
+     placement: Face, mass: 60.0,
+     params: [
+        (key: "hold_angle", label: "Угол фиксации", kind: Number(min: 0.0, max: 345.0, step: 15.0, unit: "°"), default: 90.0),
+     ]),
+    // Pushes / pulls the structure glued in front: one block per turn of
+    // the shaft at its back, up to «Ход» blocks.
+    (key: "mechanical_piston", name: "Механический поршень", category: "mechanisms", mech: Some(Piston),
+     placement: Face, mass: 80.0,
+     params: [
+        (key: "length", label: "Ход", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: "бл."), default: 4.0),
+     ]),
+    // ---- fluids (mB; bucket = 1000, tank block = 16 000)
+    // Tanks next to each other join: a line 1×N or a 1×1 / 2×2 / 3×3 column.
+    (key: "fluid_tank", name: "Цистерна", category: "mechanisms", mech: Some(FluidTank),
+     placement: None, mass: 100.0, buoyancy: Some(1000.0),
+     params: [
+        // Ballast: a pump with an end in the water outside fills / empties it.
+        (key: "mode", label: "Режим", kind: Choice(["Хранение", "Балласт"]), default: 0.0),
+     ]),
+    (key: "fluid_pipe", name: "Труба", category: "mechanisms", mech: Some(Pipe), placement: Face,
+     collision: Box(0.44, 1.0, 0.44), mass: 10.0),
+    // RMB turns the handwheel: open (passes along its axis) / shut. A
+    // logic signal shuts it while it lasts.
+    (key: "fluid_valve", name: "Вентиль", category: "mechanisms", mech: Some(Valve), placement: Face,
+     collision: Box(0.5, 1.0, 0.5), mass: 15.0),
+    (key: "fluid_valve_closed", name: "Вентиль (закрыт)", category: "mechanisms", mech: Some(Valve), placement: Face,
+     collision: Box(0.5, 1.0, 0.5), mass: 15.0, hidden: true),
+    (key: "cased_pipe", name: "Труба в кожухе", category: "mechanisms", mech: Some(CasedPipe), placement: Face, mass: 10.0),
+    (key: "cased_shaft", name: "Вал в кожухе", category: "mechanisms", mech: Some(CasedShaft), placement: Face, mass: 40.0),
+    // Driven like a cogwheel (axis = facing); moves |RPM| × 8 mB/s.
+    (key: "mechanical_pump", name: "Механическая помпа", category: "mechanisms", mech: Some(Pump),
+     placement: Face, mass: 70.0,
+     params: [
+        (key: "direction", label: "Направление", kind: Choice(["Вперёд", "Назад"]), default: 0.0),
+     ]),
+    // Burns 10 mB/s of diesel; output shaft at the front, fuel on the other
+    // sides, the exhaust on top must be free and out of the water.
+    (key: "diesel_engine", name: "Дизельный двигатель", category: "mechanisms", mech: Some(DieselEngine),
+     placement: Horizontal, mass: 250.0,
+     params: [
+        (key: "speed", label: "Скорость", kind: Number(min: 0.0, max: 256.0, step: 8.0, unit: "об/мин"), default: 64.0),
+        (key: "direction", label: "Направление", kind: Choice(["По часовой", "Против часовой"]), default: 0.0),
+     ]),
+    // ---- belts (laid with the belt tool) and tracks
+    (key: "belt_pulley", name: "Шкив ленты", category: "mechanisms", mech: Some(BeltPulley), placement: Face, mass: 40.0, hidden: true),
+    (key: "belt", name: "Лента", category: "mechanisms", mech: Some(Belt), placement: Face,
+     collision: Box(1.0, 0.7, 1.0), mass: 10.0, hidden: true),
+    (key: "belt_slope", name: "Лента (наклон)", category: "mechanisms", mech: Some(Belt), placement: Horizontal,
+     shape: Wedge(0.0, 1.0), mass: 15.0, hidden: true),
+    // Facing outwards like a wheel; the shaft at its back drives it. Road
+    // wheels beside it (same axis) turn with it.
+    (key: "track_sprocket", name: "Ведущая звёздочка гусеницы", category: "mechanisms", mech: Some(TrackDrive), placement: Face,
+     collision: None, mass: 60.0),
+    (key: "track_roller", name: "Опорный каток гусеницы", category: "mechanisms", mech: Some(TrackRoller), placement: Face,
+     collision: None, mass: 40.0),
+    (key: "piston_pole", name: "Шток поршня", category: "mechanisms", mech: Some(PistonPole),
+     placement: Face, collision: Box(0.34, 1.0, 0.34), mass: 20.0, hidden: true),
+    // Measures the speed of the physical contraption it stands on (km/h);
+    // 0 in the world grid. Read it with a telemetry sensor.
+    (key: "speedometer", name: "Спидометр", category: "control", mech: Some(Speedometer),
+     placement: Horizontal, mass: 20.0),
+    (key: "suspension", name: "Подвеска", category: "mechanisms", mech: Some(Suspension), placement: Face,
+     collision: Box(0.7, 0.7, 0.7), mass: 60.0,
+     params: [
+        (key: "steer", label: "Поворот", kind: Number(min: 0.0, max: 45.0, step: 5.0, unit: "°"), default: 30.0),
+        (key: "stiffness", label: "Жёсткость", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),
+        (key: "damping", label: "Амортизатор", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),
+        // Rear wheels steering the other way: a tighter turn.
+        (key: "invert", label: "Руль", kind: Choice(["Прямой", "Обратный"]), default: 0.0),
+     ]),
+    // The wheel touches the ground through the suspension's spring (no
+    // collider of its own), so it rolls smoothly in physics mode.
+    (key: "wheel", name: "Колесо", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 30.0),
+    (key: "wheel_small", name: "Колесо малое", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 18.0),
+    (key: "wheel_large", name: "Колесо большое", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 60.0),
+
+    // --- control ------------------------------------------------------------
+    (key: "seat", name: "Сиденье", category: "control", mech: Some(Seat), placement: Horizontal, mass: 30.0),
+    (key: "control_panel", name: "Пульт управления", category: "control", mech: Some(ControlPanel),
+     placement: Horizontal, mass: 40.0),
+    (key: "sensor", name: "Датчик", category: "control", mech: Some(Sensor), placement: Attach,
+     collision: None, mass: 5.0,
+     params: [
+        (key: "key_pos", label: "Клавиша (+)", kind: Key, default: 1.0),
+        (key: "key_neg", label: "Клавиша (−)", kind: Key, default: 0.0),
+     ]),
+    // Attached to a block (faces into it): speedometer → km/h, suspension →
+    // steering angle (°), anything turning → RPM. Wrench: LMB on it, then
+    // LMB on a mechanical display — linked.
+    (key: "telemetry_sensor", name: "Датчик телеметрии", category: "control", mech: Some(TelemetrySensor),
+     placement: Attach, collision: None, mass: 5.0),
+    // Shows the value of a linked telemetry sensor. Works only while it
+    // turns: drive it from the side (cogwheel or shaft on its left/right).
+    (key: "mechanical_display", name: "Механический экран", category: "control", mech: Some(MechanicalDisplay),
+     placement: Horizontal, mass: 50.0,
+     params: [
+        (key: "style", label: "Вид", kind: Choice(["Цифры", "Стрелка"]), default: 0.0),
+        (key: "max_val", label: "Максимум шкалы", kind: Number(min: 32.0, max: 256.0, step: 32.0, unit: ""), default: 128.0),
+     ]),
+    // Shines along its facing. Each press of the key on a linked sensor
+    // switches it on / off (put the sensor on the headlight).
+    (key: "headlight", name: "Фара", category: "control", mech: Some(Headlight), placement: Face,
+     collision: Box(0.8, 0.5, 0.8), mass: 15.0),
+    // RMB with the diesel bucket: +1000 mB into the pipe network.
+    (key: "fluid_port", name: "Заливной порт", category: "control", mech: Some(FluidPort), placement: Face, mass: 30.0),
+    // ---- logic: on / off signals through neighbours and wires (no decay)
+    // A wire lies on the face it was put on; same colours join.
+    // A wire bus: up to 8 colours in one block (RMB with a wire adds the
+    // chosen colour, LMB with the wrench takes it out).
+    (key: "wire", name: "Провод (шина)", category: "logic", mech: Some(Wire),
+     collision: None, mass: 2.0),
+    (key: "button", name: "Кнопка", category: "logic", mech: Some(Button), placement: Attach,
+     collision: Box(0.4, 0.2, 0.3), mass: 5.0),
+    (key: "lever", name: "Рычаг", category: "logic", mech: Some(Lever), placement: Attach,
+     collision: Box(0.5, 0.3, 0.6), mass: 10.0),
+    (key: "timer_block", name: "Таймер", category: "logic", mech: Some(Timer), placement: Horizontal, mass: 30.0,
+     params: [
+        (key: "interval", label: "Интервал", kind: Number(min: 0.5, max: 60.0, step: 0.5, unit: "с"), default: 1.0),
+     ]),
+    (key: "pulse_generator", name: "Генератор импульсов", category: "logic", mech: Some(PulseGenerator),
+     placement: Horizontal, collision: Box(0.9, 0.4, 0.9), mass: 20.0),
+    // Inputs: left, right, back; output: the front (the arrow).
+    (key: "logic_gate", name: "Логический элемент", category: "logic", mech: Some(LogicGate),
+     placement: Horizontal, collision: Box(0.9, 0.4, 0.9), mass: 20.0,
+     params: [
+        (key: "mode", label: "Режим", kind: Choice(["И", "ИЛИ", "НЕ", "RS-триггер"]), default: 0.0),
+     ]),
+    (key: "flasher_light", name: "Мигалка", category: "logic", mech: Some(Flasher), placement: Face,
+     collision: Box(0.6, 0.7, 0.6), mass: 10.0),
+    // Endless source for its pipe network (creative).
+    (key: "creative_tank", name: "Бесконечный бак", category: "mechanisms", mech: Some(CreativeTank), placement: None, mass: 100.0,
+     params: [
+        (key: "fluid", label: "Жидкость", kind: Choice(["Вода", "Дизель"]), default: 1.0),
+     ]),
+    // Attached to a block like a telemetry sensor; a logic signal (all
+    // sides) while the reading is at or above / at or below the threshold.
+    (key: "threshold_sensor", name: "Пороговый датчик", category: "logic", mech: Some(ThresholdSensor), placement: Attach,
+     collision: None, mass: 5.0,
+     params: [
+        (key: "threshold", label: "Порог", kind: Number(min: 0.0, max: 256.0, step: 4.0, unit: ""), default: 50.0),
+        (key: "compare", label: "Сигнал, когда", kind: Choice(["не меньше порога", "не больше порога"]), default: 0.0),
+     ]),
+    // Wireless: a transmitter on channel N powers every receiver on N.
+    (key: "radio_transmitter", name: "Радиопередатчик", category: "logic", mech: Some(RadioTransmitter), placement: None, mass: 15.0,
+     params: [
+        (key: "channel", label: "Канал", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: ""), default: 1.0),
+     ]),
+    (key: "radio_receiver", name: "Радиоприёмник", category: "logic", mech: Some(RadioReceiver), placement: None, mass: 15.0,
+     params: [
+        (key: "channel", label: "Канал", kind: Number(min: 1.0, max: 16.0, step: 1.0, unit: ""), default: 1.0),
+     ]),
+    (key: "lamp", name: "Лампа", category: "logic", mech: Some(Lamp), placement: Face,
+     collision: Box(0.7, 0.7, 0.7), mass: 10.0),
+    (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
+    // --- storage and item tubes ---------------------------------------------
+    // RMB opens them. Containers next to each other are one storage.
+    (key: "chest", name: "Сундук", category: "logistics", mech: Some(Chest), placement: Horizontal,
+     collision: Box(0.88, 0.88, 0.88), mass: 40.0, buoyancy: Some(300.0)),
+    (key: "barrel", name: "Бочка", category: "logistics", mech: Some(Barrel), placement: Face,
+     collision: Box(0.86, 1.0, 0.86), mass: 30.0, buoyancy: Some(300.0)),
+    (key: "item_container", name: "Контейнер", category: "logistics", mech: Some(Container), mass: 80.0, buoyancy: Some(400.0)),
+    // Tubes join storages; a drive turned by a shaft moves items from the
+    // tubes behind it to the tubes in front, |RPM| / 16 packets a second.
+    (key: "item_tube", name: "Предметная труба", category: "logistics", mech: Some(ItemTube), placement: Face,
+     collision: Box(0.62, 1.0, 0.62), mass: 12.0),
+    // Hold RMB on it: 32 RPM into the block behind it.
+    (key: "hand_crank", name: "Ручка", category: "mechanisms", mech: Some(HandCrank), placement: Face,
+     collision: Box(0.5, 0.5, 0.5), mass: 10.0),
+    // The drum is turned from its sides; the rope leaves from its face.
+    (key: "winch", name: "Лебёдка", category: "mechanisms", mech: Some(Winch), placement: Face, mass: 90.0),
+    (key: "rope_anchor", name: "Крепление верёвки", category: "mechanisms", mech: Some(RopeAnchor), placement: Attach,
+     collision: None, mass: 5.0),
+    (key: "item_drive", name: "Конвейерный привод", category: "logistics", mech: Some(ItemDrive), placement: Face, mass: 60.0,
+     params: [
+        (key: "direction", label: "Направление", kind: Choice(["Вперёд", "Назад"]), default: 0.0),
+        (key: "batch", label: "Пачка", kind: Number(min: 1.0, max: 64.0, step: 1.0, unit: "шт."), default: 8.0),
+     ]),
+]

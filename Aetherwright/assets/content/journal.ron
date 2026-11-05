@@ -1,0 +1,82 @@
+// Журнал исследователя: записи открываются постепенно.
+//
+// ТЕСТОВЫЕ ЗАПИСИ интерфейса (раздел 24). Они описывают только то, что уже
+// есть в прототипе, и НЕ являются лором мира: история, география и
+// цивилизации междумирья — открытые вопросы концепта.
+//
+// Поля:
+//   key       — постоянный идентификатор (на него ссылаются сохранения);
+//   category  — Creatures | Plants | Materials | Biomes | Ruins |
+//               Technologies | Magic | Anomalies;
+//   unlock    — Always | ScanBlock("ключ блока") | ScanObject("часть названия")
+//               | Obtain("ключ предмета");
+//   image     — None | Texture("имя текстуры") | Item("ключ предмета")
+//               | Scheme([(x0, y0, x1, y1), ...])  (линии в долях 0..1);
+//   hypothesis — предположения исследователя (необязательно).
+// Мод может добавить mods/<мод>/content/journal.ron — записи с тем же key
+// заменяют встроенные.
+[
+    (key: "hollowling", category: Creatures, title: "Пустотник",
+     text: "Существо, появляющееся рядом с раздражённой магией. Нападает при сближении, получает урон от клинка, болтов и эфирного фокуса.",
+     hypothesis: "Чем сильнее раздражённое поле, тем чаще они встречаются?",
+     image: Scheme([(0.3, 0.7, 0.5, 0.3), (0.5, 0.3, 0.7, 0.7), (0.3, 0.7, 0.7, 0.7), (0.42, 0.5, 0.58, 0.5)]),
+     unlock: ScanObject("Пустотник")),
+
+    (key: "tree", category: Plants, title: "Дерево",
+     text: "Ствол даёт древесину, листва — волокно. Из древесины на верстаке и руками делают доски.",
+     image: Texture("log_side"), unlock: ScanBlock("log")),
+    (key: "berry_bush", category: Plants, title: "Ягодный куст",
+     text: "Съедобные ягоды утоляют голод. Куст растёт на траве.",
+     image: Item("berries"), unlock: ScanBlock("berry_bush")),
+    (key: "grass", category: Plants, title: "Трава",
+     text: "Плодородный слой почвы и высокая трава, из которой получают волокно.",
+     image: Texture("grass"), unlock: Always),
+
+    (key: "stone", category: Materials, title: "Камень",
+     text: "Плотная горная порода, основной строительный материал. Дробилка превращает его в гравий.",
+     image: Texture("stone"), unlock: Always),
+    (key: "iron_ore", category: Materials, title: "Железная руда",
+     text: "Переплавляется в плавильне в металл. Металл нужен для деталей и механизмов.",
+     image: Texture("iron_ore"), unlock: ScanBlock("iron_ore")),
+    (key: "copper_ore", category: Materials, title: "Медная руда",
+     text: "Даёт медь — проводник энергии для ячеек и динамо-машин.",
+     image: Texture("copper_ore"), unlock: ScanBlock("copper_ore")),
+    (key: "ancient_stone", category: Materials, title: "Древний камень",
+     text: "Камень, пропитанный древней магией. Базовый бур его не берёт — нужен модуль бурения II.",
+     hypothesis: "Древняя магия — самая медленная и устойчивая. Её источник неизвестен.",
+     image: Texture("ancient"), unlock: ScanBlock("ancient_stone")),
+
+    (key: "lowlands", category: Biomes, title: "Равнины и озёра",
+     text: "Холмистая местность с лесами, озёрами в низинах и выходами руды на склонах.",
+     unlock: Always),
+
+    (key: "ruins_unknown", category: Ruins, title: "Следы строений",
+     text: "Записей пока нет: руины ещё не найдены.",
+     unlock: Obtain("__never__")),
+
+    (key: "manipulator", category: Technologies, title: "Манипулятор",
+     text: "Основной инструмент: добыча, сканирование, резка, механика и выделение. Модули расширяют его возможности.",
+     image: Scheme([(0.2, 0.6, 0.6, 0.6), (0.6, 0.6, 0.8, 0.4), (0.6, 0.6, 0.8, 0.8), (0.2, 0.5, 0.2, 0.7)]),
+     unlock: Always),
+    (key: "engine", category: Technologies, title: "Двигатель",
+     text: "Вращает присоединённый шарниром вал, колесо или шестерню. Питается от энергоячейки в той же конструкции.",
+     image: Item("engine"), unlock: Obtain("engine")),
+    (key: "power_cell", category: Technologies, title: "Энергоячейка",
+     text: "Хранит энергию для двигателей своей конструкции. Заряжается эфирной динамо-машиной.",
+     image: Item("power_cell"), unlock: Obtain("power_cell")),
+
+    (key: "calm_aether", category: Magic, title: "Естественная магия",
+     text: "Кристаллы эфира излучают естественную магию. Её можно накапливать в эфирном накопителе и превращать в энергию.",
+     hypothesis: "Магия подчиняется тем же законам, что и механика: сбор, накопление, передача, преобразование.",
+     image: Texture("aether"), unlock: ScanBlock("aether_crystal")),
+
+    (key: "agitated_anomaly", category: Anomalies, title: "Раздражённая аномалия",
+     text: "Скопление раздражённых кристаллов. Периодически выпускает импульс, отталкивающий предметы и персонажа.",
+     hypothesis: "Можно ли стабилизировать аномалию накопителем?",
+     image: Texture("agitated_aether"), unlock: ScanBlock("agitated_crystal")),
+
+    (key: "gravity_anomaly", category: Anomalies, title: "Гравитационная аномалия",
+     text: "Генератор, сжигая раздражённый эфир в нестабильной среде, меняет силу тяжести в шаре вокруг себя: предметы становятся легче, невесомыми, тянутся вверх или тяжелеют. Инерция остаётся. Без стабилизатора аномалия «гуляет»; после остановки генератора она может остаться.",
+     hypothesis: "Стабилизатор не отменяет аномалию, а только удерживает её. Что будет, если он отключится?",
+     image: Item("anomaly_generator"), unlock: Obtain("anomaly_generator")),
+]
