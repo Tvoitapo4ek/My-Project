@@ -145,6 +145,8 @@ pub fn layer_of(group: &str) -> Layer {
         "pole" => Layer::Pole,
         "cap_front" => Layer::CapFront,
         "cap_back" => Layer::CapBack,
+        "spring" => Layer::Spring,
+        "arm" => Layer::Arm,
         g => match g.strip_prefix("port").and_then(|i| i.parse::<u8>().ok()) {
             Some(i) if i < 6 => Layer::Port(i),
             _ => Layer::Body,
@@ -310,6 +312,8 @@ fn layer_name(l: Layer) -> String {
         Layer::Port(i) => format!("port{i}"),
         Layer::CapFront => "cap_front".into(),
         Layer::CapBack => "cap_back".into(),
+        Layer::Spring => "spring".into(),
+        Layer::Arm => "arm".into(),
     }
 }
 

@@ -82,11 +82,11 @@ fn build(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: 
                 let (scale, shift) = match m {
                     crate::content::Mech::LargeCog => (0.62, Vec3::ZERO),
                     // The sensor plate sits on the face of its block.
-                    crate::content::Mech::Sensor => (1.5, Vec3::new(0.0, -0.55, 0.0)),
+                    crate::content::Mech::Sensor | crate::content::Mech::TelemetrySensor | crate::content::Mech::ThresholdSensor | crate::content::Mech::RopeAnchor | crate::content::Mech::HandCrank => (1.5, Vec3::new(0.0, -0.5, 0.0)),
                     _ => (0.95, Vec3::ZERO),
                 };
                 let node = commands.spawn((Transform::from_rotation(models::block_rot(def.placement, facing)).with_scale(Vec3::splat(scale)).with_translation(shift), Visibility::default(), layer.clone(), ChildOf(root))).id();
-                spawn_parts(&mut commands, node, &models::block_model(m), &mut meshes, &mut cache, &mats, false);
+                spawn_parts(&mut commands, node, &models::model_of(b), &mut meshes, &mut cache, &mats, false);
             }
             ItemKind::Tool(t) => {
                 // Tool models start at the grip and point along −Z: centre them.

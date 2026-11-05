@@ -8,6 +8,7 @@
 pub mod blueprint;
 pub mod glue;
 pub mod guns;
+pub mod hand;
 pub mod viewmodel;
 
 use bevy::prelude::*;
@@ -35,7 +36,8 @@ fn wrench(
     mut players: Query<(&Inventory, &mut Body), With<Player>>,
     mut grids: Query<&mut VoxelGrid>,
     blocks: Query<&BlockEntity>,
-    mut params: Query<&mut crate::mech::Params>,
+    mut buses: Query<&mut crate::logic::Bus>,
+    wire_color: Res<crate::logic::WireColor>,
     mut sensors: Query<&mut Linked>,
     mut link: ResMut<LinkMode>,
     mut editing: ResMut<Editing>,
@@ -85,14 +87,20 @@ fn wrench(
     let here = PanelRef { grid: a.grid, cell: a.cell };
     match (def.mech, link.0) {
         (Some(Mech::Wire), _) => {
-            // Next colour.
+            // Take the chosen colour out of the bus.
             if let Some(e) = entity
-                && let Ok(mut p) = params.get_mut(e)
-                && let Some((i, _)) = def.param("color")
+                && let Ok(mut b) = buses.get_mut(e)
             {
-                p.0[i] = (p.0[i] + 1.0).rem_euclid(crate::logic::COLORS.len() as f32);
-                toasts.write(toast(format!("Провод: {}", crate::logic::COLORS[p.0[i] as usize].0)));
-                sounds.write(crate::sound::sfx("ui_click"));
+                let k = wire_color.0;
+                if b.0 & (1 << k) == 0 {
+                    toasts.write(toast(format!("{} в этой шине нет (Shift + колесо с проводом — выбрать цвет)", crate::logic::COLORS[k].0)));
+                } else if b.0.count_ones() == 1 {
+                    toasts.write(toast("Последний провод шины — сломайте блок"));
+                } else {
+                    b.0 &= !(1 << k);
+                    toasts.write(toast(format!("{} провод убран из шины", crate::logic::COLORS[k].0)));
+                    sounds.write(crate::sound::sfx("ui_click"));
+                }
             }
         }
         (Some(Mech::ControlPanel), _) => {
@@ -143,6 +151,6 @@ pub struct ToolsPlugin;
 impl Plugin for ToolsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, wrench.after(crate::interact::InteractSet))
-            .add_plugins((glue::GluePlugin, guns::GunsPlugin, viewmodel::ViewmodelPlugin, blueprint::BlueprintPlugin));
+            .add_plugins((glue::GluePlugin, guns::GunsPlugin, viewmodel::ViewmodelPlugin, blueprint::BlueprintPlugin, hand::HandPlugin));
     }
 }

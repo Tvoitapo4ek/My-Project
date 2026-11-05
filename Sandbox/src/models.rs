@@ -112,6 +112,57 @@ pub fn wheel_parts(layer: Layer) -> Vec<Part> {
     v
 }
 
+/// A probe clamped onto the face of the block it reads (+Y side): a
+/// bolted plate with jaws over the block's edges, a gauge housing with its
+/// dial facing out (−Y), a lens of `lens` and a cable of `cable` into the
+/// block. Sensors, telemetry and threshold sensors share it.
+fn probe(lens: &'static str, cable: &'static str) -> Vec<Part> {
+    let mut v = vec![
+        part([0.64, 0.07, 0.64], "steel", [0.0, 0.465, 0.0]),
+        // Jaws over two edges of the block.
+        part([0.06, 0.2, 0.5], "steel", [0.34, 0.46, 0.0]),
+        part([0.06, 0.2, 0.5], "steel", [-0.34, 0.46, 0.0]),
+        part([0.36, 0.2, 0.36], "steel_casing", [0.0, 0.33, 0.0]),
+        part([0.3, 0.04, 0.3], "brass", [0.0, 0.22, 0.0]),
+        part([0.24, 0.03, 0.24], "screen", [0.0, 0.2, 0.0]),
+        part([0.1, 0.02, 0.1], lens, [0.0, 0.185, 0.0]),
+        // Cable from the housing into the plate.
+        part([0.05, 0.05, 0.22], cable, [0.12, 0.4, 0.24]),
+        part([0.05, 0.12, 0.05], cable, [0.12, 0.33, 0.33]),
+    ];
+    for (x, z) in [(0.26f32, 0.26f32), (-0.26, 0.26), (0.26, -0.26), (-0.26, -0.26)] {
+        v.push(part([0.06, 0.04, 0.06], "brass", [x, 0.42, z]));
+    }
+    v
+}
+
+/// Wheel radius of a wheel block (m): small, standard, large.
+pub fn wheel_radius(id: crate::content::BlockId) -> f32 {
+    match id.def().key.as_str() {
+        "wheel_small" => 0.45,
+        "wheel_large" => 0.9,
+        _ => 0.6,
+    }
+}
+
+/// The model of a block (wheels come in sizes).
+pub fn model_of(id: crate::content::BlockId) -> Vec<Part> {
+    let Some(m) = id.def().mech else { return Vec::new() };
+    if m == Mech::Wheel && id.def().key != "wheel" {
+        let k = wheel_radius(id) / 0.6;
+        // Wider with the size, pulled in towards the suspension.
+        return wheel_parts(Layer::Rotor)
+            .into_iter()
+            .map(|mut p| {
+                p.size = Vec3::new(p.size.x * k, p.size.y * k.sqrt(), p.size.z * k);
+                p.at = Vec3::new(p.at.x * k, p.at.y * k.sqrt() - 0.24 * k.sqrt(), p.at.z * k);
+                p
+            })
+            .collect();
+    }
+    block_model(m)
+}
+
 /// The model of a mechanism: `assets/models/<key>.bbmodel` if present,
 /// otherwise the built-in one.
 pub fn block_model(mech: Mech) -> Vec<Part> {
@@ -181,16 +232,31 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             v
         }
         Mech::Suspension => {
-            // Bracket (bolted to the chassis), coil spring, knuckle with
-            // the axle stub pointing at the wheel (+Y).
+            // Like the reference: a bolted chassis bracket (−Y), a copper
+            // coil-over (spring around a damper) standing beside the hub, a
+            // trailing arm from the bracket to the knuckle, the knuckle with
+            // the axle stub towards the wheel (+Y). The spring stretches and
+            // the arm drops with the wheel's travel (`vehicle`).
             let mut v = vec![
-                part([0.8, 0.16, 0.8], "steel", [0.0, -0.42, 0.0]),
-                part([0.16, 0.7, 0.16], "steel", [0.0, -0.1, -0.3]),
+                part([0.86, 0.12, 0.86], "steel", [0.0, -0.44, 0.0]),
+                part([0.2, 0.06, 0.2], "brass", [0.3, -0.37, 0.3]),
+                part([0.2, 0.06, 0.2], "brass", [-0.3, -0.37, 0.3]),
+                part([0.2, 0.06, 0.2], "brass", [0.3, -0.37, -0.3]),
+                part([0.2, 0.06, 0.2], "brass", [-0.3, -0.37, -0.3]),
+                // Upper spring seat on a post.
+                part([0.14, 0.5, 0.14], "steel", [0.0, -0.18, -0.32]),
+                part([0.3, 0.06, 0.3], "steel", [0.0, 0.08, -0.26]),
             ];
-            for i in 0..4 {
-                v.push(part([0.3, 0.06, 0.3], "copper", [0.0, -0.3 + i as f32 * 0.12, 0.05]).rot(Quat::from_rotation_y(i as f32 * 0.4)));
+            // Coil-over: damper body + coils (stretch together).
+            v.push(part([0.09, 0.5, 0.09], "steel_casing", [0.0, -0.16, -0.06]).layer(Layer::Spring));
+            for i in 0..5 {
+                v.push(part([0.26, 0.05, 0.26], "copper", [0.0, -0.36 + i as f32 * 0.09, -0.06]).rot(Quat::from_rotation_y(i as f32 * 0.5)).layer(Layer::Spring));
             }
+            // Trailing arm and the knuckle with the axle stub.
+            v.push(part([0.12, 0.12, 0.62], "steel", [0.22, -0.3, 0.02]).layer(Layer::Arm));
+            v.push(part([0.12, 0.12, 0.62], "steel", [-0.22, -0.3, 0.02]).layer(Layer::Arm));
             v.push(part([0.42, 0.24, 0.42], "steel_casing", [0.0, 0.18, 0.0]).layer(Layer::Steer));
+            v.push(part([0.48, 0.06, 0.48], "brass", [0.0, 0.31, 0.0]).layer(Layer::Steer));
             v.push(part([0.2, 0.36, 0.2], "shaft", [0.0, 0.36, 0.0]).layer(Layer::Rotor));
             v
         }
@@ -220,13 +286,7 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             part([0.06, 0.34, 0.06], "steel", [0.2, 0.25, -0.2]),
             part([0.12, 0.12, 0.12], "red_grip", [0.2, 0.42, -0.2]),
         ],
-        Mech::Sensor => vec![
-            // A plate on the face of the block it controls (+Y side).
-            part([0.6, 0.12, 0.6], "steel", [0.0, 0.44, 0.0]),
-            part([0.44, 0.08, 0.44], "brass", [0.0, 0.36, 0.0]),
-            part([0.16, 0.08, 0.16], "glow_green", [0.0, 0.3, 0.0]),
-            part([0.05, 0.3, 0.05], "steel", [0.18, 0.22, 0.18]),
-        ],
+        Mech::Sensor => probe("glow_green", "brass"),
         Mech::Speedometer => {
             // Dark casing, brass rim, an impeller in a side window and a
             // pitot tube on top.
@@ -245,14 +305,7 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             v.push(part([0.07, 0.07, 0.04], "red_grip", [0.0, -0.12, 0.48]));
             v
         }
-        Mech::TelemetrySensor => vec![
-            // A plate on the face of the block it reads (+Y side), with a
-            // cyan lens and a cable stub.
-            part([0.6, 0.12, 0.6], "steel", [0.0, 0.44, 0.0]),
-            part([0.44, 0.08, 0.44], "copper", [0.0, 0.36, 0.0]),
-            part([0.18, 0.08, 0.18], "glow_cyan", [0.0, 0.3, 0.0]),
-            part([0.1, 0.2, 0.1], "brass", [-0.2, 0.26, 0.2]),
-        ],
+        Mech::TelemetrySensor => probe("glow_cyan", "copper"),
         Mech::MechanicalDisplay => {
             // Front = local +Z. The face (digits / dial) is added by
             // `telemetry`; here: casing, brass frame and side gear rings.
@@ -330,13 +383,12 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             v.push(part([0.2, 0.2, 0.2], "glow_amber", [0.0, 0.0, 0.0]));
             v
         }
-        Mech::ThresholdSensor => vec![
-            // A plate on the block it reads (+Y), a brass dial and a lens
-            // (lit while its signal is on).
-            part([0.6, 0.12, 0.6], "steel", [0.0, 0.44, 0.0]),
-            part([0.44, 0.08, 0.44], "brass", [0.0, 0.36, 0.0]),
-            part([0.04, 0.2, 0.04], "red_grip", [0.12, 0.24, 0.0]),
-        ],
+        Mech::ThresholdSensor => {
+            let mut v = probe("glow_amber", "brass");
+            // A red needle set to the threshold.
+            v.push(part([0.03, 0.02, 0.14], "red_grip", [0.03, 0.145, 0.02]).rot(Quat::from_rotation_y(0.6)));
+            v
+        }
         Mech::RadioTransmitter | Mech::RadioReceiver => {
             // A steel box with an antenna; front lamp (red: sends, green:
             // receives).
@@ -422,7 +474,7 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             v.push(part([0.88, 0.04, 0.88], "steel", [0.0, -0.46, 0.0]));
             v
         }
-        Mech::Wire => crate::logic::wire_parts(&[], 0, false),
+        Mech::Wire => crate::logic::bus_parts(1, 0, &[(IVec3::X, 1), (IVec3::NEG_X, 1)]),
         Mech::Button => vec![
             // On the face behind it (+Y); the cap moves in when pressed.
             part([0.44, 0.06, 0.34], "steel", [0.0, 0.46, 0.0]),
@@ -706,6 +758,22 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
             part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
             part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
+        ],
+        Tool::Crowbar => vec![
+            // A steel bar with a curved claw at the front (−Z), red grip.
+            part([0.05, 0.05, 0.62], "steel", [0.0, 0.0, -0.2]),
+            part([0.05, 0.14, 0.05], "steel", [0.0, 0.06, -0.52]).rot(Quat::from_rotation_x(-0.5)),
+            part([0.06, 0.04, 0.08], "steel", [0.0, 0.13, -0.47]),
+            part([0.07, 0.07, 0.22], "red_grip", [0.0, 0.0, 0.08]),
+            part([0.06, 0.03, 0.07], "steel", [0.0, -0.03, 0.18]),
+        ],
+        Tool::Flashlight => vec![
+            // A steel tube, brass head and switch, a warm lens at the front.
+            part([0.09, 0.09, 0.3], "steel", [0.0, 0.0, -0.05]),
+            part([0.13, 0.13, 0.08], "brass", [0.0, 0.0, -0.22]),
+            part([0.09, 0.09, 0.02], "glow_lamp", [0.0, 0.0, -0.265]),
+            part([0.03, 0.03, 0.05], "red_grip", [0.0, 0.055, 0.0]),
+            part([0.1, 0.1, 0.03], "brass", [0.0, 0.0, 0.1]),
         ],
         Tool::Rope => vec![
             // A coil of rope with a brass hook.

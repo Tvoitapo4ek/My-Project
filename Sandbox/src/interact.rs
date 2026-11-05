@@ -190,6 +190,7 @@ fn edit_blocks(
     mut grids: Query<(&mut VoxelGrid, &GlobalTransform)>,
     mut edited: MessageWriter<Edited>,
     mut used: MessageWriter<UseBlock>,
+    mut toggles: MessageWriter<crate::toggle_ui::ToggleRequest>,
     mut toasts: MessageWriter<Toast>,
     mut shape_mode: ResMut<ShapeMode>,
 ) {
@@ -206,7 +207,21 @@ fn edit_blocks(
         && (!body.crouching || held.is_none())
     {
         body.swing = 1.0;
-        used.write(UseBlock { grid: a.grid, cell: a.cell, mech: m });
+        if m == Mech::PhysicsToggle {
+            // The lever screen decides (drag the knob to the other end).
+            toggles.write(crate::toggle_ui::ToggleRequest { grid: a.grid, cell: a.cell });
+        } else {
+            used.write(UseBlock { grid: a.grid, cell: a.cell, mech: m });
+        }
+        return;
+    }
+    // A wire in hand on a bus: add its colour instead of placing a block.
+    if clicks.right
+        && held.is_some_and(|s| s.item.def().key == "wire")
+        && grid.get(a.cell).id.def().mech == Some(Mech::Wire)
+    {
+        body.swing = 1.0;
+        used.write(UseBlock { grid: a.grid, cell: a.cell, mech: Mech::Wire });
         return;
     }
     // Tools handle their own clicks.

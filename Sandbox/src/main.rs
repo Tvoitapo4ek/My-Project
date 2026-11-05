@@ -40,6 +40,7 @@ mod sound;
 mod storage;
 mod ropes;
 mod sky;
+mod toggle_ui;
 mod tracks;
 mod tubes;
 mod style;
@@ -98,7 +99,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, profile::ProfilePlugin, save::SavePlugin, worlds::WorldsPlugin, storage::StoragePlugin, tubes::TubesPlugin, ropes::RopesPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, profile::ProfilePlugin, save::SavePlugin, worlds::WorldsPlugin, storage::StoragePlugin, tubes::TubesPlugin, ropes::RopesPlugin, toggle_ui::ToggleUiPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

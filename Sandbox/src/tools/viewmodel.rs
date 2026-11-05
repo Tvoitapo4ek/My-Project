@@ -56,7 +56,8 @@ fn update_hand(
                     ItemKind::Block(b) => {
                         if let Some(m) = b.def().mech {
                             let node = commands.spawn((Transform::from_scale(Vec3::splat(0.3)).with_rotation(Quat::from_rotation_y(0.5)), Visibility::default(), ChildOf(e))).id();
-                            spawn_parts(&mut commands, node, &models::block_model(m), &mut meshes, &mut cache, &mats, false);
+                            spawn_parts(&mut commands, node, &models::model_of(b), &mut meshes, &mut cache, &mats, false);
+                            let _ = m;
                         }
                     }
                 }

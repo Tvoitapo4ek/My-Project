@@ -264,6 +264,10 @@ pub enum Tool {
     Belt,
     /// Ties a rope between winches and anchors (`ropes`).
     Rope,
+    /// Knocks bodies about (`tools::hand`).
+    Crowbar,
+    /// A beam along the view (`tools::hand`).
+    Flashlight,
 }
 
 #[derive(Debug, Clone, Deserialize)]

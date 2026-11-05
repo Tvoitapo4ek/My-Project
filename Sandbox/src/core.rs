@@ -32,6 +32,8 @@ pub enum Ui {
     Paint,
     /// Saved worlds (main menu → «Играть»).
     Worlds,
+    /// The physics toggle's lever.
+    Assemble,
 }
 
 /// Keys a control-panel channel can use (index 0 = none). Shift leaves

@@ -134,8 +134,6 @@ fn toggle(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCursor
     }
 }
 
-/// Slightly over half a block: blocks at axle height clear the ground.
-pub const WHEEL_RADIUS: f32 = 0.6;
 /// Track road wheels touch the ground at the bottom of their cell.
 pub const TRACK_RADIUS: f32 = 0.5;
 const TRAVEL: f32 = 0.35;
@@ -190,7 +188,12 @@ pub fn drive(
                 let Some((sb, steer, _, params)) = s else { continue };
                 (params.get(sb.id, "stiffness") / 5.0, steer.0)
             };
-            let radius = if track { TRACK_RADIUS } else { WHEEL_RADIUS };
+            let damping = if track {
+                0.6
+            } else {
+                grid.entities.get(&(wb.cell - wb.dir())).and_then(|se| susp.get(*se).ok()).map(|(b, _, _, p)| p.get(b.id, "damping").max(1.0) / 5.0 * 0.6).unwrap_or(0.6)
+            };
+            let radius = if track { TRACK_RADIUS } else { crate::models::wheel_radius(wb.id) };
             let center = t.transform_point(wb.cell.as_vec3() + Vec3::splat(0.5));
             let axle0 = t.rotation * wb.dir().as_vec3();
             let axle = Quat::from_axis_angle(up, steer_angle) * axle0;
@@ -227,7 +230,7 @@ pub fn drive(
             let contact = center - up * ground;
             let v = forces.velocity_at_point(contact);
             // Spring + damper along the body's up.
-            let damp = 2.0 * (k * per_wheel).sqrt() * 0.6;
+            let damp = 2.0 * (k * per_wheel).sqrt() * damping;
             let normal_force = (k * compression - damp * v.dot(up)).max(0.0);
             forces.apply_force_at_point(up * normal_force, contact);
             let grip = normal_force * 1.1;

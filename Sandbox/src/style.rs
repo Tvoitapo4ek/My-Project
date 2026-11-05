@@ -211,6 +211,10 @@ pub enum Layer {
     /// joins on that side (local +Z front / −Z back).
     CapFront,
     CapBack,
+    /// Suspension spring: stretched with the wheel's travel.
+    Spring,
+    /// Suspension arm: moves down with the wheel.
+    Arm,
 }
 
 /// One box of a model.

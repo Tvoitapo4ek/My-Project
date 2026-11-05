@@ -77,7 +77,8 @@ fn steer(
     let dt = time.delta_secs();
     for (b, p, sig, mut st, children) in &mut susp {
         let max = p.get(b.id, "steer").to_radians();
-        let want = -sig.0 * max;
+        let invert = if p.get(b.id, "invert") >= 0.5 { -1.0 } else { 1.0 };
+        let want = -sig.0 * max * invert;
         st.0 += (want - st.0).clamp(-2.5 * dt, 2.5 * dt);
         // Grid up in the block's local space (the block's Y is the axle).
         let local_up = transform_for(b.cell, b.id, b.facing).rotation.inverse() * Vec3::Y;
@@ -89,6 +90,7 @@ fn steer(
             }
         }
         let Ok(grid) = grids.get(b.grid) else { continue };
+        let mut hang = 0.0;
         if let Some(&w) = grid.entities.get(&(b.cell + b.dir()))
             && let Ok((wb, mut t, drop)) = wheels.get_mut(w)
             && wb.mech() == Some(Mech::Wheel)
@@ -96,7 +98,24 @@ fn steer(
             let base = transform_for(wb.cell, wb.id, wb.facing);
             t.rotation = Quat::from_rotation_y(st.0) * base.rotation;
             // Follow the suspension travel (physics mode).
-            t.translation = base.translation - Vec3::Y * drop.map(|d| d.0).unwrap_or(0.0);
+            hang = drop.map(|d| d.0).unwrap_or(0.0);
+            t.translation = base.translation - Vec3::Y * hang;
+        }
+        // The coil spring and the damper rod stretch with the travel; the arm
+        // drops with the wheel.
+        for c in children.iter() {
+            if let Ok((l, mut t)) = nodes.get_mut(c) {
+                match l.0 {
+                    Layer::Spring => {
+                        let s = (1.0 + hang / 0.36).clamp(0.35, 1.8);
+                        // The top stays at its seat (local y 0.08).
+                        t.scale = Vec3::new(1.0, s, 1.0);
+                        t.translation = Vec3::new(0.0, 0.08 * (1.0 - s), 0.0);
+                    }
+                    Layer::Arm => t.translation = local_up * -hang,
+                    _ => {}
+                }
+            }
         }
     }
 }

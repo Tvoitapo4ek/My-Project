@@ -165,11 +165,18 @@
      params: [
         (key: "steer", label: "Поворот", kind: Number(min: 0.0, max: 45.0, step: 5.0, unit: "°"), default: 30.0),
         (key: "stiffness", label: "Жёсткость", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),
+        (key: "damping", label: "Амортизатор", kind: Number(min: 1.0, max: 10.0, step: 1.0, unit: ""), default: 5.0),
+        // Rear wheels steering the other way: a tighter turn.
+        (key: "invert", label: "Руль", kind: Choice(["Прямой", "Обратный"]), default: 0.0),
      ]),
     // The wheel touches the ground through the suspension's spring (no
     // collider of its own), so it rolls smoothly in physics mode.
     (key: "wheel", name: "Колесо", category: "mechanisms", mech: Some(Wheel), placement: Face,
      collision: None, mass: 30.0),
+    (key: "wheel_small", name: "Колесо малое", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 18.0),
+    (key: "wheel_large", name: "Колесо большое", category: "mechanisms", mech: Some(Wheel), placement: Face,
+     collision: None, mass: 60.0),
 
     // --- control ------------------------------------------------------------
     (key: "seat", name: "Сиденье", category: "control", mech: Some(Seat), placement: Horizontal, mass: 30.0),
@@ -202,11 +209,10 @@
     (key: "fluid_port", name: "Заливной порт", category: "control", mech: Some(FluidPort), placement: Face, mass: 30.0),
     // ---- logic: on / off signals through neighbours and wires (no decay)
     // A wire lies on the face it was put on; same colours join.
-    (key: "wire", name: "Провод", category: "logic", mech: Some(Wire), placement: Attach,
-     collision: None, mass: 1.0,
-     params: [
-        (key: "color", label: "Цвет", kind: Choice(["Красный", "Синий", "Зелёный", "Жёлтый", "Белый", "Оранжевый", "Фиолетовый", "Голубой"]), default: 0.0),
-     ]),
+    // A wire bus: up to 8 colours in one block (RMB with a wire adds the
+    // chosen colour, LMB with the wrench takes it out).
+    (key: "wire", name: "Провод (шина)", category: "logic", mech: Some(Wire),
+     collision: None, mass: 2.0),
     (key: "button", name: "Кнопка", category: "logic", mech: Some(Button), placement: Attach,
      collision: Box(0.4, 0.2, 0.3), mass: 5.0),
     (key: "lever", name: "Рычаг", category: "logic", mech: Some(Lever), placement: Attach,

@@ -172,7 +172,7 @@ pub fn sync_block_entities(
                 }
                 _ => {}
             }
-            spawn_parts(&mut commands, e, &models::block_model(m), &mut meshes, &mut cache, &mats, true);
+            spawn_parts(&mut commands, e, &models::model_of(cell.id), &mut meshes, &mut cache, &mats, true);
             grid.entities.insert(c, e);
         }
     }

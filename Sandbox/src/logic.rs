@@ -5,13 +5,16 @@
 //!   all six sides (gates and pulse generators only the block in front of
 //!   them). A powered block that takes signals (clutch, gearshift, speed
 //!   controller, suspension, headlight, bearing, flasher…) gets signal 1.
-//! * **Wires** lie on any face of a block (several on one block, on
-//!   different faces). Wires of the same colour in neighbouring cells join
-//!   into one line, also around a block's edge; different colours never
-//!   join, so lines can run side by side. A line is on when any of its
-//!   wires touches a working source; then it powers every block its wires
-//!   touch. Colour: Shift + wheel with a wire in hand (for new wires), LMB
-//!   with the wrench on a laid wire (next colour).
+//! * **Wire buses** (like Ender IO conduits): one block carries up to eight
+//!   wires of different colours. RMB with a wire places a bus with the
+//!   chosen colour (Shift + wheel), RMB on a bus adds that colour, LMB with
+//!   the wrench takes it out. The same colour in neighbouring buses is one
+//!   line; colours never mix, so one row of buses carries eight separate
+//!   lines. A colour touches the blocks around it only **where its line
+//!   ends** (a bus with at most one neighbour of that colour): lines run
+//!   past machines without touching them and connect where they end. A line
+//!   is on while a working source stands next to one of its ends; then it
+//!   powers every block next to its ends.
 //! * **Gates** (wrench: И / ИЛИ / НЕ / RS-триггер) read their left, right
 //!   and back sides and output at the front, one frame later (so loops do
 //!   not hang). RS: left sets, right resets.
@@ -24,13 +27,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use bevy::prelude::*;
 
 use crate::{
-    content::{BlockId, Mech},
+    content::Mech,
     core::toast,
     grid::{DIRS, VoxelGrid},
     interact::UseBlock,
     inventory::Inventory,
     mech::{BlockEntity, MechSet, Params, Signal, side_axis},
-    models,
     style::{BoxCache, LayerNode, Layer, Materials, Part, part, spawn_parts},
 };
 
@@ -73,25 +75,22 @@ pub struct LogicState {
 
 // ------------------------------------------------------------ pure parts
 
-/// A wire: colour and the direction of the block it lies on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Wire {
-    pub color: u8,
-    pub support: IVec3,
+/// A wire bus: the colours it carries (bits 0..7).
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Bus(pub u8);
+
+/// Colours of a bus that are on this frame.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BusPower(pub u8);
+
+pub fn colours(mask: u8) -> impl Iterator<Item = usize> {
+    (0..8).filter(move |k| mask & (1 << k) != 0)
 }
 
-/// Two wires join: same colour, and face neighbours or around the edge of
-/// the block they both lie on.
-pub fn wires_join(a: IVec3, wa: Wire, b: IVec3, wb: Wire) -> bool {
-    if wa.color != wb.color {
-        return false;
-    }
-    let d = (b - a).abs();
-    match d.x + d.y + d.z {
-        1 => true,
-        2 => d.max_element() == 1 && a + wa.support == b + wb.support,
-        _ => false,
-    }
+/// Is colour `k` of the bus at `c` an end of its line (at most one
+/// neighbouring bus carries it)?
+pub fn is_end(buses: &HashMap<IVec3, u8>, c: IVec3, k: usize) -> bool {
+    DIRS.iter().filter(|d| buses.get(&(c + **d)).is_some_and(|m| m & (1 << k) != 0)).count() <= 1
 }
 
 /// Cells a working source powers: `front` for one-way outputs.
@@ -102,10 +101,10 @@ pub fn targets(cell: IVec3, front: Option<IVec3>) -> Vec<IVec3> {
     }
 }
 
-/// Spreads power. Returns the powered wire cells and, for every powered
-/// block cell, the sides it is powered from (bits of `DIRS`).
-pub fn spread(wires: &HashMap<IVec3, Wire>, sources: &[(IVec3, Option<IVec3>)]) -> (HashSet<IVec3>, HashMap<IVec3, u8>) {
-    let mut on_wires = HashSet::new();
+/// Spreads power. Returns the powered colours of every bus and, for every
+/// powered block cell, the sides it is powered from (bits of `DIRS`).
+pub fn spread(buses: &HashMap<IVec3, u8>, sources: &[(IVec3, Option<IVec3>)]) -> (HashMap<IVec3, u8>, HashMap<IVec3, u8>) {
+    let mut on: HashMap<IVec3, u8> = HashMap::new();
     let mut blocks: HashMap<IVec3, u8> = HashMap::new();
     let hit = |blocks: &mut HashMap<IVec3, u8>, target: IVec3, from: IVec3| {
         let side = DIRS.iter().position(|d| *d == from - target).unwrap_or(0);
@@ -114,48 +113,43 @@ pub fn spread(wires: &HashMap<IVec3, Wire>, sources: &[(IVec3, Option<IVec3>)]) 
     let mut q = VecDeque::new();
     for &(c, front) in sources {
         for t in targets(c, front) {
-            if wires.contains_key(&t) {
-                if on_wires.insert(t) {
-                    q.push_back(t);
+            match buses.get(&t) {
+                // A source feeds the colours that end next to it.
+                Some(&m) => {
+                    for k in colours(m) {
+                        if is_end(buses, t, k) && on.get(&t).is_none_or(|x| x & (1 << k) == 0) {
+                            *on.entry(t).or_default() |= 1 << k;
+                            q.push_back((t, k));
+                        }
+                    }
                 }
-            } else {
-                hit(&mut blocks, t, c);
+                None => hit(&mut blocks, t, c),
             }
         }
     }
-    let near: Vec<IVec3> = {
-        let mut v: Vec<IVec3> = DIRS.to_vec();
-        for a in DIRS {
-            for b in DIRS {
-                if a.dot(b) == 0 && (a + b) != IVec3::ZERO && !v.contains(&(a + b)) {
-                    v.push(a + b);
-                }
-            }
-        }
-        v
-    };
-    while let Some(c) = q.pop_front() {
-        let w = wires[&c];
-        for d in &near {
-            let o = c + *d;
-            if let Some(wo) = wires.get(&o)
-                && !on_wires.contains(&o)
-                && wires_join(c, w, o, *wo)
-            {
-                on_wires.insert(o);
-                q.push_back(o);
-            }
-        }
-    }
-    for &c in &on_wires {
+    while let Some((c, k)) = q.pop_front() {
         for d in DIRS {
-            let t = c + d;
-            if !wires.contains_key(&t) {
-                hit(&mut blocks, t, c);
+            let o = c + d;
+            if buses.get(&o).is_some_and(|m| m & (1 << k) != 0) && on.get(&o).is_none_or(|x| x & (1 << k) == 0) {
+                *on.entry(o).or_default() |= 1 << k;
+                q.push_back((o, k));
             }
         }
     }
-    (on_wires, blocks)
+    for (&c, &m) in &on {
+        for k in colours(m) {
+            if !is_end(buses, c, k) {
+                continue;
+            }
+            for d in DIRS {
+                let t = c + d;
+                if !buses.contains_key(&t) {
+                    hit(&mut blocks, t, c);
+                }
+            }
+        }
+    }
+    (on, blocks)
 }
 
 /// Gate modes (wrench «Режим»).
@@ -217,11 +211,29 @@ fn add_state(mut commands: Commands, color: Res<WireColor>, mut added: Query<(En
             continue;
         }
         commands.entity(e).insert(LogicState::default());
-        if b.mech() == Some(Mech::Wire)
-            && let Some((i, _)) = b.id.def().param("color")
-            && p.0[i] == 0.0
-        {
-            p.0[i] = color.0 as f32;
+        if b.mech() == Some(Mech::Wire) {
+            // A loaded bus gets its colours from the save right after.
+            commands.entity(e).insert((Bus(1 << color.0), BusPower::default()));
+        }
+        let _ = &mut p;
+    }
+}
+
+/// RMB with a wire on a bus: add the chosen colour.
+fn add_colour(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut buses: Query<&mut Bus>, color: Res<WireColor>, mut toasts: MessageWriter<crate::core::Toast>, mut sounds: MessageWriter<crate::sound::Sfx>) {
+    for u in used.read() {
+        if u.mech != Mech::Wire {
+            continue;
+        }
+        let Some(&e) = grids.get(u.grid).ok().and_then(|g| g.entities.get(&u.cell)) else { continue };
+        let Ok(mut b) = buses.get_mut(e) else { continue };
+        let bit = 1u8 << color.0;
+        if b.0 & bit != 0 {
+            toasts.write(toast(format!("{} уже есть в этой шине", COLORS[color.0].0)));
+        } else {
+            b.0 |= bit;
+            toasts.write(toast(format!("В шину добавлен {} провод ({} из 8)", COLORS[color.0].0.to_lowercase(), b.0.count_ones())));
+            sounds.write(crate::sound::sfx("place"));
         }
     }
 }
@@ -244,7 +256,7 @@ fn use_switches(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut
 }
 
 #[allow(clippy::type_complexity)]
-fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &mut LogicState, Option<&Signal>)>, mut signals: Query<&mut Signal, Without<LogicState>>, mut radio: ResMut<Radio>) {
+fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &mut LogicState, Option<&Signal>)>, mut signals: Query<&mut Signal, Without<LogicState>>, mut radio: ResMut<Radio>, mut bus: Query<(&Bus, &mut BusPower)>) {
     let _t = crate::profile::scope("логика");
     let dt = time.delta_secs();
     // Channels on last frame (receivers), collected anew this frame.
@@ -265,7 +277,9 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
             let front = Some(b.dir());
             let out = match b.mech() {
                 Some(Mech::Wire) => {
-                    wires.insert(c, Wire { color: p.get(b.id, "color") as u8, support: b.dir() });
+                    if let Ok((m, _)) = bus.get(e) {
+                        wires.insert(c, m.0);
+                    }
                     continue;
                 }
                 Some(Mech::Lever) => (s.memory, None),
@@ -294,6 +308,14 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
         }
         // 2. Power.
         let (on_wires, powered) = spread(&wires, &sources);
+        for &(c, e) in &logic {
+            if let Ok((_, mut pw)) = bus.get_mut(e) {
+                let want = BusPower(on_wires.get(&c).copied().unwrap_or(0));
+                if *pw != want {
+                    *pw = want;
+                }
+            }
+        }
         // 3. Inputs → next outputs; signals to the blocks that take them
         // (logic blocks, and any block next to power).
         let own: HashSet<IVec3> = logic.iter().map(|(c, _)| *c).collect();
@@ -304,7 +326,7 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
             if let Ok((b, p, mut s, sig)) = blocks.get_mut(e) {
                 let side = |d: IVec3| DIRS.iter().position(|x| *x == d).is_some_and(|i| from & (1 << i) != 0);
                 match b.mech() {
-                    Some(Mech::Wire) => s.input = on_wires.contains(&c),
+                    Some(Mech::Wire) => s.input = on_wires.get(&c).is_some_and(|m| *m != 0),
                     Some(Mech::LogicGate) => {
                         let (f, x) = (b.dir(), side_axis(b));
                         let (out, mem) = Gate::of(p.get(b.id, "mode")).eval(side(x), side(-x), side(-f), s.memory);
@@ -368,68 +390,85 @@ fn pick_color(keys: Res<ButtonInput<KeyCode>>, scroll: Res<bevy::input::mouse::A
 
 // ------------------------------------------------------------ looks
 
-/// Model of a wire for its connections (block-local arm directions).
-pub fn wire_parts(arms: &[Vec3], color: usize, on: bool) -> Vec<Part> {
-    let mat = if on { WIRE_MATS_ON[color % 8] } else { WIRE_MATS[color % 8] };
-    // Local +Y points into the block the wire lies on.
-    let mut v = vec![part([0.18, 0.04, 0.18], mat, [0.0, 0.47, 0.0])];
-    let arms: Vec<Vec3> = if arms.is_empty() { vec![Vec3::X, Vec3::NEG_X] } else { arms.to_vec() };
-    for a in arms {
-        let r = Quat::from_rotation_arc(Vec3::Z, a);
-        v.push(part([0.1, 0.04, 0.5], mat, (a * 0.25 + Vec3::Y * 0.47).to_array()).rot(r));
+/// Where colour `k` runs in the cross-section of an arm along `axis`
+/// (fixed per axis, so strands line up from bus to bus).
+fn strand(axis: IVec3, k: usize) -> Vec3 {
+    let (u, v) = match axis.abs() {
+        IVec3 { x: 1, .. } => (Vec3::Y, Vec3::Z),
+        IVec3 { y: 1, .. } => (Vec3::X, Vec3::Z),
+        _ => (Vec3::X, Vec3::Y),
+    };
+    u * ((k % 4) as f32 - 1.5) * 0.065 + v * ((k / 4) as f32 - 0.5) * 0.065
+}
+
+/// Model of a bus: a dark hub, and per arm the strands of the colours that
+/// go that way (lit while on).
+pub fn bus_parts(mask: u8, power: u8, arms: &[(IVec3, u8)]) -> Vec<Part> {
+    let mut v = vec![part([0.3, 0.3, 0.3], "steel", [0.0, 0.0, 0.0])];
+    for k in colours(mask) {
+        let mat = if power & (1 << k) != 0 { WIRE_MATS_ON[k] } else { WIRE_MATS[k] };
+        // A stub on the hub shows every colour the bus carries.
+        v.push(part([0.06, 0.06, 0.06], mat, (Vec3::Y * 0.16 + strand(IVec3::Y, k)).to_array()));
+    }
+    for &(d, m) in arms {
+        let a = d.as_vec3();
+        let size = Vec3::splat(0.05) + a.abs() * 0.45;
+        for k in colours(m) {
+            let mat = if power & (1 << k) != 0 { WIRE_MATS_ON[k] } else { WIRE_MATS[k] };
+            v.push(part(size.to_array(), mat, (a * 0.27 + strand(d, k)).to_array()));
+        }
+        // A brass collar where the arm leaves the hub.
+        v.push(part((Vec3::splat(0.24) - a.abs() * 0.18).to_array(), "brass", (a * 0.17).to_array()));
     }
     v
 }
 
-/// What a wire's model was built for.
+/// What a bus's model was built for.
 #[derive(Component, Debug, Clone, PartialEq)]
-struct WireLook(Vec<IVec3>, usize, bool);
+struct BusLook(u8, u8, Vec<(IVec3, u8)>);
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn wire_looks(
     mut commands: Commands,
     grids: Query<&VoxelGrid>,
-    wires: Query<(Entity, &BlockEntity, &Params, &LogicState, Option<&WireLook>, Option<&Children>)>,
+    wires: Query<(Entity, &BlockEntity, &Bus, &BusPower, Option<&BusLook>, Option<&Children>)>,
+    all: Query<&BlockEntity>,
     nodes: Query<(), With<LayerNode>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cache: ResMut<BoxCache>,
     mats: Option<Res<Materials>>,
 ) {
     let Some(mats) = mats else { return };
-    let wire_id = BlockId::k("wire");
-    for (e, b, p, s, look, children) in &wires {
-        if b.id != wire_id {
-            continue;
-        }
+    for (e, b, bus, power, look, children) in &wires {
         let Ok(grid) = grids.get(b.grid) else { continue };
-        let color = p.get(b.id, "color") as usize;
-        let me = Wire { color: color as u8, support: b.dir() };
-        // Arms towards joined wires and the blocks it powers on its plane.
-        let rot = models::block_rot(b.id.def().placement, b.facing).inverse();
-        let mut arms: Vec<IVec3> = Vec::new();
-        for (c, cell) in neighbours(grid, b.cell) {
-            let d = c - b.cell;
-            let dir = if cell.id == wire_id {
-                let Some(o) = grid.entities.get(&c).and_then(|o| wires.get(*o).ok()) else { continue };
-                let w = Wire { color: o.2.get(o.1.id, "color") as u8, support: o.1.dir() };
-                if !wires_join(b.cell, me, c, w) {
-                    continue;
-                }
-                // Up a wall: run towards the wall the other wire lies on.
-                if d.abs().element_sum() == 1 && d.dot(me.support) != 0 { w.support } else { d - me.support * d.dot(me.support) }
-            } else if d.abs().element_sum() == 1 && d.dot(me.support) == 0 && is_logic(cell.id.def().mech) || (d.abs().element_sum() == 1 && d.dot(me.support) == 0 && cell.id.def().mech.is_some_and(takes_signal)) {
-                d
-            } else {
-                continue;
-            };
-            let l = (rot * dir.as_vec3()).round().as_ivec3();
-            let l = IVec3::new(l.x, 0, l.z);
-            if l != IVec3::ZERO && !arms.contains(&l) {
-                arms.push(l);
+        let neighbour = |c: IVec3| grid.entities.get(&c).and_then(|o| wires.get(*o).ok()).map(|w| w.2.0);
+        let mut map: HashMap<IVec3, u8> = HashMap::new();
+        map.insert(b.cell, bus.0);
+        for d in DIRS {
+            if let Some(m) = neighbour(b.cell + d) {
+                map.insert(b.cell + d, m);
             }
         }
-        arms.sort_by_key(|a| (a.x, a.z));
-        let want = WireLook(arms.clone(), color, s.input);
+        // Arms: shared colours towards buses; colours ending here towards
+        // the logic blocks and machines next to it.
+        let mut arms: Vec<(IVec3, u8)> = Vec::new();
+        for d in DIRS {
+            let o = b.cell + d;
+            let m = match map.get(&o) {
+                Some(m) => m & bus.0,
+                None => {
+                    let takes = grid.entities.get(&o).and_then(|x| all.get(*x).ok()).and_then(|x| x.mech()).is_some_and(|m| is_logic(Some(m)) || takes_signal(m));
+                    if !takes {
+                        continue;
+                    }
+                    colours(bus.0).filter(|k| is_end(&map, b.cell, *k)).fold(0u8, |a, k| a | (1 << k))
+                }
+            };
+            if m != 0 {
+                arms.push((d, m));
+            }
+        }
+        let want = BusLook(bus.0, power.0, arms.clone());
         if look == Some(&want) {
             continue;
         }
@@ -438,31 +477,19 @@ fn wire_looks(
                 commands.entity(*c).despawn();
             }
         }
-        let arm_v: Vec<Vec3> = arms.iter().map(|a| a.as_vec3().normalize()).collect();
-        spawn_parts(&mut commands, e, &wire_parts(&arm_v, color, s.input), &mut meshes, &mut cache, &mats, false);
+        spawn_parts(&mut commands, e, &bus_parts(bus.0, power.0, &arms), &mut meshes, &mut cache, &mats, false);
         commands.entity(e).insert(want);
     }
 }
 
-/// Face and edge neighbours of a cell that hold a block.
-fn neighbours(grid: &VoxelGrid, c: IVec3) -> Vec<(IVec3, crate::grid::Cell)> {
-    let mut out = Vec::new();
-    for x in -1..=1 {
-        for y in -1..=1 {
-            for z in -1..=1 {
-                let d = IVec3::new(x, y, z);
-                let n = d.abs().element_sum();
-                if n == 0 || n == 3 {
-                    continue;
-                }
-                let cell = grid.get(c + d);
-                if !cell.is_air() {
-                    out.push((c + d, cell));
-                }
-            }
-        }
+fn hook_save(w: &World, e: Entity, _: &crate::save::SaveCtx) -> Option<String> {
+    w.get::<Bus>(e).map(|b| b.0.to_string())
+}
+
+fn hook_load(w: &mut World, e: Entity, d: &str, _: &crate::save::LoadCtx) {
+    if let (Ok(m), Some(mut b)) = (d.parse::<u8>(), w.get_mut::<Bus>(e)) {
+        b.0 = m;
     }
-    out
 }
 
 /// Blocks that react to a signal.
@@ -559,8 +586,10 @@ impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WireColor>()
             .init_resource::<Radio>()
-            .add_systems(Update, (add_state, use_switches, run).chain().in_set(LogicSystems).after(crate::signal::SignalSet).before(MechSet))
+            .init_resource::<crate::save::SaveHooks>()
+            .add_systems(Update, (add_state, add_colour.after(crate::interact::InteractSet), use_switches, run).chain().in_set(LogicSystems).after(crate::signal::SignalSet).before(MechSet))
             .add_systems(Update, (pick_color, add_lamps, wire_looks, animate));
+        app.world_mut().resource_mut::<crate::save::SaveHooks>().add("bus", hook_save, hook_load);
     }
 }
 
@@ -568,43 +597,34 @@ impl Plugin for LogicPlugin {
 mod tests {
     use super::*;
 
-    fn wire(color: u8, support: IVec3) -> Wire {
-        Wire { color, support }
-    }
-
     #[test]
-    fn wires_join_by_colour_and_around_edges() {
-        let floor = IVec3::NEG_Y;
-        assert!(wires_join(IVec3::ZERO, wire(0, floor), IVec3::X, wire(0, floor)));
-        assert!(!wires_join(IVec3::ZERO, wire(0, floor), IVec3::X, wire(1, floor)), "colours never join");
-        // Over the edge of one block: on its top and on its side.
-        let top = IVec3::new(0, 1, 0);
-        let side = IVec3::new(1, 0, 0);
-        assert!(wires_join(top, wire(2, IVec3::NEG_Y), side, wire(2, IVec3::NEG_X)));
-        // Diagonal on the floor (no shared block): no.
-        assert!(!wires_join(IVec3::ZERO, wire(2, floor), IVec3::new(1, 0, 1), wire(2, floor)));
-    }
-
-    #[test]
-    fn power_runs_along_one_colour() {
-        // Lever at x=0; red line x=1..4 on the floor; a blue wire at x=5.
-        let mut w = HashMap::new();
-        for x in 1..=4 {
-            w.insert(IVec3::new(x, 0, 0), wire(0, IVec3::NEG_Y));
+    fn buses_carry_colours_apart() {
+        // x=1 red, x=2..4 red + blue, x=5..6 blue. Red ends at 1 and 4,
+        // blue at 2 and 6. A lever next to x=1.
+        let (red, blue) = (1u8, 2u8);
+        let mut b = HashMap::new();
+        b.insert(IVec3::new(1, 0, 0), red);
+        for x in 2..=4 {
+            b.insert(IVec3::new(x, 0, 0), red | blue);
         }
-        w.insert(IVec3::new(5, 0, 0), wire(1, IVec3::NEG_Y));
-        let (on, blocks) = spread(&w, &[(IVec3::ZERO, None)]);
-        assert_eq!(on.len(), 4);
-        assert!(!on.contains(&IVec3::new(5, 0, 0)), "blue stays off");
-        // The red line powers the blocks it touches (the floor under it, the
-        // cell above its end, …) but not through the blue wire.
-        assert!(blocks.contains_key(&IVec3::new(4, -1, 0)));
-        assert!(blocks.contains_key(&IVec3::new(4, 1, 0)));
-        // One-way output: a gate at x=10 facing +X powers only x=11.
-        let (_, b) = spread(&HashMap::new(), &[(IVec3::new(10, 0, 0), Some(IVec3::X))]);
-        assert_eq!(b.keys().copied().collect::<Vec<_>>(), vec![IVec3::new(11, 0, 0)]);
-        // …and the side it came from: −X.
-        assert_eq!(b[&IVec3::new(11, 0, 0)], 1 << 1);
+        b.insert(IVec3::new(5, 0, 0), blue);
+        b.insert(IVec3::new(6, 0, 0), blue);
+        assert!(is_end(&b, IVec3::new(1, 0, 0), 0) && is_end(&b, IVec3::new(4, 0, 0), 0));
+        assert!(!is_end(&b, IVec3::new(4, 0, 0), 1), "blue goes on through x=4");
+        let (on, blocks) = spread(&b, &[(IVec3::ZERO, None)]);
+        assert!(on.values().all(|m| *m == red) && on.len() == 4, "only red is fed: {on:?}");
+        // Red powers what is next to its ends, not what it passes by.
+        assert!(blocks.contains_key(&IVec3::new(4, 1, 0)) && blocks.contains_key(&IVec3::new(1, 1, 0)));
+        assert!(!blocks.contains_key(&IVec3::new(3, 1, 0)), "the middle of the line touches nothing");
+        // Blue fed at its far end: on from 6 back to 2, powers next to x=2.
+        let (on2, blocks2) = spread(&b, &[(IVec3::new(7, 0, 0), None)]);
+        assert!(on2.values().all(|m| *m == blue) && on2.len() == 5, "{on2:?}");
+        assert!(blocks2.contains_key(&IVec3::new(2, 1, 0)));
+        assert!(!blocks2.contains_key(&IVec3::new(4, 1, 0)));
+        // One-way output: a gate at x=10 facing +X powers only x=11, from −X.
+        let (_, g) = spread(&HashMap::new(), &[(IVec3::new(10, 0, 0), Some(IVec3::X))]);
+        assert_eq!(g.keys().copied().collect::<Vec<_>>(), vec![IVec3::new(11, 0, 0)]);
+        assert_eq!(g[&IVec3::new(11, 0, 0)], 1 << 1);
     }
 
     #[test]
