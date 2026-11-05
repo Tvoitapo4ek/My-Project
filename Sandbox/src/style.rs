@@ -151,14 +151,38 @@ fn bake(n: Vec3, p: Vec3, h: Vec3) -> [f32; 4] {
     [k, k, k, 1.0]
 }
 
-/// Meshes shared by size.
+/// Meshes shared by size, and merged model meshes shared by content.
 #[derive(Resource, Default)]
-pub struct BoxCache(pub HashMap<[i32; 3], Handle<Mesh>>);
+pub struct BoxCache(pub HashMap<[i32; 3], Handle<Mesh>>, pub HashMap<u64, Handle<Mesh>>);
 
 impl BoxCache {
     pub fn get(&mut self, meshes: &mut Assets<Mesh>, size: Vec3) -> Handle<Mesh> {
         let key = (size * 1000.0).round().as_ivec3().to_array();
         self.0.entry(key).or_insert_with(|| meshes.add(pixel_box(size))).clone()
+    }
+
+    /// One mesh for several boxes (same material, same layer): far fewer
+    /// entities and draw calls than one per box.
+    pub fn merged(&mut self, meshes: &mut Assets<Mesh>, parts: &[&Part]) -> Handle<Mesh> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for p in parts {
+            let q = |v: f32| (v * 10000.0).round() as i32;
+            for v in [p.size.x, p.size.y, p.size.z, p.at.x, p.at.y, p.at.z, p.rot.x, p.rot.y, p.rot.z, p.rot.w] {
+                q(v).hash(&mut h);
+            }
+        }
+        let key = h.finish();
+        self.1
+            .entry(key)
+            .or_insert_with(|| {
+                let mut m = pixel_box(parts[0].size).transformed_by(Transform::from_translation(parts[0].at).with_rotation(parts[0].rot));
+                for p in &parts[1..] {
+                    let _ = m.merge(&pixel_box(p.size).transformed_by(Transform::from_translation(p.at).with_rotation(p.rot)));
+                }
+                meshes.add(m)
+            })
+            .clone()
     }
 }
 
@@ -183,6 +207,10 @@ pub enum Layer {
     Mount,
     /// Piston pole: stretched along local Y with the extension.
     Pole,
+    /// End caps of a modular block (engines): hidden where the next module
+    /// joins on that side (local +Z front / −Z back).
+    CapFront,
+    CapBack,
 }
 
 /// One box of a model.
@@ -215,12 +243,21 @@ impl Part {
 pub struct LayerNode(pub Layer);
 
 /// Spawns a model under `parent`: one node per used layer, parts inside.
+/// Parts of one layer and material become one merged mesh.
 pub fn spawn_parts(commands: &mut Commands, parent: Entity, parts: &[Part], meshes: &mut Assets<Mesh>, cache: &mut BoxCache, mats: &Materials, shadows: bool) {
     let mut nodes: HashMap<Layer, Entity> = HashMap::new();
+    let mut groups: Vec<((Layer, &str), Vec<&Part>)> = Vec::new();
     for p in parts {
-        let node = *nodes.entry(p.layer).or_insert_with(|| commands.spawn((LayerNode(p.layer), Transform::default(), Visibility::default(), ChildOf(parent))).id());
-        let mut e = commands.spawn((Mesh3d(cache.get(meshes, p.size)), MeshMaterial3d(mats.get(p.mat)), Transform::from_translation(p.at).with_rotation(p.rot), ChildOf(node)));
-        if !shadows || p.mat.starts_with("glow") {
+        match groups.iter_mut().find(|(k, _)| *k == (p.layer, p.mat)) {
+            Some((_, v)) => v.push(p),
+            None => groups.push(((p.layer, p.mat), vec![p])),
+        }
+    }
+    for ((layer, mat), group) in groups {
+        let node = *nodes.entry(layer).or_insert_with(|| commands.spawn((LayerNode(layer), Transform::default(), Visibility::default(), ChildOf(parent))).id());
+        let mesh = cache.merged(meshes, &group);
+        let mut e = commands.spawn((Mesh3d(mesh), MeshMaterial3d(mats.get(mat)), Transform::default(), ChildOf(node)));
+        if !shadows || mat.starts_with("glow") {
             e.insert(NotShadowCaster);
         }
     }

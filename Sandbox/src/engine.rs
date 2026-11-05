@@ -4,7 +4,13 @@
 //!   refills from the pipe network it is connected to (any side but the
 //!   output shaft at its front).
 //! * Needs air: the exhaust on top must be free (no block above) and out
-//!   of the water. Otherwise it stalls.
+//!   of the water — or a **snorkel**: a pipe line joined to the engine
+//!   whose open end (a pipe with one joint) is in the air above the water.
+//!   Otherwise it stalls.
+//! * **Modular**: engines in a row (front to back, same facing) are one
+//!   engine: only the front one turns the output, with `POWER` × the
+//!   running modules; each module burns its own fuel and needs its own air.
+//!   The end caps between modules disappear, so the row reads as one block.
 //! * While running it is a source in the kinetic network (speed and
 //!   direction with the wrench, like the creative motor), puffs exhaust
 //!   smoke and rumbles (`sound`). Its power is `POWER` SU: overloaded
@@ -83,13 +89,51 @@ fn exhaust(gt: &GlobalTransform, b: &BlockEntity) -> Vec3 {
     gt.transform_point(b.cell.as_vec3() + Vec3::new(0.5, 1.05, 0.5))
 }
 
-fn run(time: Res<Time>, water: Res<Water>, grids: Query<(&VoxelGrid, &GlobalTransform)>, mut engines: Query<(&BlockEntity, &Params, &mut FluidStore, &mut Engine)>) {
+/// Air through pipes: a pipe line joined to the engine (not at its output)
+/// with an open end — a pipe with a single joint — whose free side is air
+/// above the water.
+pub fn snorkel(grid: &VoxelGrid, gt: &GlobalTransform, water: &Water, role: &dyn Fn(IVec3) -> Option<crate::fluids::Role>, engine: IVec3, front: IVec3) -> bool {
+    use crate::fluids::{Role, opens};
+    let pipe = |r: Option<Role>| matches!(r, Some(Role::Pipe | Role::Valve { .. }));
+    let mut seen = std::collections::HashSet::from([engine]);
+    let mut q: std::collections::VecDeque<IVec3> = crate::grid::DIRS.iter().filter(|d| **d != front).map(|d| engine + *d).filter(|c| role(*c).is_some_and(|r| pipe(Some(r)) && opens(r, engine - *c))).collect();
+    while let Some(c) = q.pop_front() {
+        if !seen.insert(c) || seen.len() > 256 {
+            continue;
+        }
+        let Some(rc) = role(c) else { continue };
+        let joined: Vec<IVec3> = crate::grid::DIRS.iter().copied().filter(|d| opens(rc, *d) && (c + *d == engine || role(c + *d).is_some_and(|ro| opens(ro, -*d)))).collect();
+        if joined.len() == 1 {
+            let free = c - joined[0];
+            if grid.get(free).is_air() && role(free).is_none() && water.depth(gt.transform_point(free.as_vec3() + Vec3::splat(0.5))) <= 0.0 {
+                return true;
+            }
+        }
+        for d in joined {
+            if pipe(role(c + d)) {
+                q.push_back(c + d);
+            }
+        }
+    }
+    false
+}
+
+fn run(time: Res<Time>, water: Res<Water>, grids: Query<(&VoxelGrid, &GlobalTransform)>, all: Query<&BlockEntity>, mut engines: Query<(&BlockEntity, &Params, &mut FluidStore, &mut Engine)>) {
     let dt = time.delta_secs();
     for (b, p, mut fuel, mut eng) in &mut engines {
         let Ok((grid, gt)) = grids.get(b.grid) else { continue };
         let diesel = if fuel.fluid == Some(Fluid::Diesel) { fuel.amount } else { 0.0 };
         let free = grid.get(b.cell + IVec3::Y).is_air();
-        let mut stall = state(p.get(b.id, "speed"), diesel, free, water.depth(exhaust(gt, b)));
+        let mut depth = water.depth(exhaust(gt, b));
+        let mut open = free;
+        if !free || depth > 0.0 {
+            let role = |c: IVec3| grid.entities.get(&c).and_then(|e| all.get(*e).ok()).and_then(crate::fluids::role_of);
+            if snorkel(grid, gt, &water, &role, b.cell, b.dir()) {
+                open = true;
+                depth = -1.0;
+            }
+        }
+        let mut stall = state(p.get(b.id, "speed"), diesel, open, depth);
         eng.ready = stall.is_none();
         if !eng.ready {
             // Switched off / out of fuel or air: the choke is forgotten.
@@ -179,11 +223,49 @@ fn smoke(
     }
 }
 
+/// Is there an engine module at `c` with the same facing?
+pub fn module_at(grid: &VoxelGrid, c: IVec3, facing: u8) -> bool {
+    let cell = grid.get(c);
+    cell.id.def().mech == Some(Mech::DieselEngine) && cell.facing == facing
+}
+
+/// The front module of the row a module is in (the one with the output).
+pub fn row_front(grid: &VoxelGrid, c: IVec3, facing: u8) -> IVec3 {
+    let d = crate::grid::facing_dir(facing);
+    let mut f = c;
+    for _ in 0..64 {
+        if !module_at(grid, f + d, facing) {
+            break;
+        }
+        f += d;
+    }
+    f
+}
+
+/// End caps show only at the ends of a row.
+fn caps(grids: Query<&VoxelGrid>, engines: Query<(&BlockEntity, &Children), With<Engine>>, mut nodes: Query<(&crate::style::LayerNode, &mut Visibility)>) {
+    for (b, children) in &engines {
+        let Ok(grid) = grids.get(b.grid) else { continue };
+        let d = b.dir();
+        let (front, back) = (module_at(grid, b.cell + d, b.facing), module_at(grid, b.cell - d, b.facing));
+        for c in children.iter() {
+            if let Ok((l, mut v)) = nodes.get_mut(c) {
+                let hide = match l.0 {
+                    crate::style::Layer::CapFront | crate::style::Layer::RotorZ => front,
+                    crate::style::Layer::CapBack => back,
+                    _ => continue,
+                };
+                v.set_if_neq(if hide { Visibility::Hidden } else { Visibility::Inherited });
+            }
+        }
+    }
+}
+
 pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (add_engines, run).chain().before(MechSet)).add_systems(Update, smoke);
+        app.add_systems(Update, (add_engines, run).chain().before(MechSet)).add_systems(Update, (smoke, caps));
     }
 }
 
@@ -196,6 +278,30 @@ mod tests {
         assert_eq!(state(64.0, 500.0, true, -1.0), None);
         assert_eq!(state(64.0, 0.0, true, -1.0), Some(Stall::NoFuel));
         assert_eq!(state(64.0, 500.0, false, -1.0), Some(Stall::NoAir), "exhaust blocked");
+        // Snorkel: engine at 0 (front +Z), pipes up from its side to y = 3, open end in the air.
+        let mut g = VoxelGrid::default();
+        let id = |k: &str| crate::content::BlockId::k(k);
+        g.set(IVec3::ZERO, crate::grid::Cell::new(id("diesel_engine"), 4));
+        for y in 0..=3 {
+            g.set(IVec3::new(1, y, 0), crate::grid::Cell::new(id("fluid_pipe"), 2));
+        }
+        fn role_in(g: &VoxelGrid, c: IVec3) -> Option<crate::fluids::Role> {
+            match g.get(c).id.def().mech? {
+                Mech::Pipe => Some(crate::fluids::Role::Pipe),
+                Mech::DieselEngine => Some(crate::fluids::Role::Engine { front: IVec3::Z }),
+                _ => None,
+            }
+        }
+        let w = Water { pools: vec![(Vec3::new(-10.0, -10.0, -10.0), Vec3::new(10.0, 2.5, 10.0))] };
+        assert!(snorkel(&g, &GlobalTransform::default(), &w, &|c| role_in(&g, c), IVec3::ZERO, IVec3::Z), "the end at y 4 is above the water at 2.5");
+        let deep = Water { pools: vec![(Vec3::new(-10.0, -10.0, -10.0), Vec3::new(10.0, 6.0, 10.0))] };
+        assert!(!snorkel(&g, &GlobalTransform::default(), &deep, &|c| role_in(&g, c), IVec3::ZERO, IVec3::Z), "the end is under water");
+        g.set(IVec3::new(1, 4, 0), crate::grid::Cell::new(id("stone"), 2));
+        assert!(!snorkel(&g, &GlobalTransform::default(), &w, &|c| role_in(&g, c), IVec3::ZERO, IVec3::Z), "the end is plugged");
+        // A row: the front of three modules facing +Z.
+        g.set(IVec3::new(0, 0, 1), crate::grid::Cell::new(id("diesel_engine"), 4));
+        g.set(IVec3::new(0, 0, 2), crate::grid::Cell::new(id("diesel_engine"), 4));
+        assert_eq!(row_front(&g, IVec3::ZERO, 4), IVec3::new(0, 0, 2));
         assert_eq!(state(64.0, 500.0, true, 0.5), Some(Stall::NoAir), "exhaust under water");
         assert_eq!(state(0.0, 500.0, true, -1.0), Some(Stall::Off));
     }

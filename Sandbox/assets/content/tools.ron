@@ -11,6 +11,8 @@
     (key: "chain", name: "Цепь", category: "mechanisms", tool: Chain),
     // LMB shaft → shaft: a belt (straight, vertical or 45°).
     (key: "mechanical_belt", name: "Механическая лента", category: "mechanisms", tool: Belt),
+    // LMB winch / anchor → winch / anchor: a rope; RMB on an end cuts it.
+    (key: "rope", name: "Верёвка", category: "mechanisms", tool: Rope),
     // Worn in the head slot of the inventory.
     (key: "engineer_goggles", name: "Инженерные очки", category: "tools", tool: Goggles),
 ]

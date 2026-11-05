@@ -74,6 +74,8 @@ fn apply_font(font: Option<Res<UiFont>>, mut q: Query<&mut TextFont, Added<TextF
 pub enum SlotSrc {
     Inv(usize),
     Catalog(ItemId),
+    /// Slot of the open storage (`storage::OpenStore`).
+    Store(usize),
 }
 
 #[derive(Component)]
@@ -119,12 +121,13 @@ fn slot_widget(p: &mut ChildSpawnerCommands, src: SlotSrc, size: f32) {
         BorderColor::all(BORDER),
     ))
     .observe(on_slot_click)
-    .observe(|ev: On<PointerOver>, mut q: Query<(&SlotSrc, &mut BackgroundColor)>, mut cat: ResMut<Catalog>, inv: Query<&Inventory, With<Player>>| {
+    .observe(|ev: On<PointerOver>, mut q: Query<(&SlotSrc, &mut BackgroundColor)>, mut cat: ResMut<Catalog>, inv: Query<&Inventory, With<Player>>, open: Res<crate::storage::OpenStore>, stores: Query<&crate::storage::ItemStore>| {
         if let Ok((src, mut bg)) = q.get_mut(ev.entity) {
             bg.0 = SLOT_HOVER;
             cat.hovered = match *src {
                 SlotSrc::Catalog(i) => Some(i),
                 SlotSrc::Inv(i) => inv.single().ok().and_then(|v| v.slots[i]).map(|s| s.item),
+                SlotSrc::Store(i) => open.locate(i).and_then(|(e, k)| stores.get(e).ok().and_then(|s| s.slots.get(k).copied().flatten())).map(|s| s.item),
             };
         }
     })
@@ -140,12 +143,53 @@ fn slot_widget(p: &mut ChildSpawnerCommands, src: SlotSrc, size: f32) {
     });
 }
 
-fn on_slot_click(ev: On<PointerClick>, srcs: Query<&SlotSrc>, keys: Res<ButtonInput<KeyCode>>, mut carried: ResMut<Carried>, mut inv: Query<&mut Inventory, With<Player>>) {
+fn on_slot_click(ev: On<PointerClick>, srcs: Query<&SlotSrc>, keys: Res<ButtonInput<KeyCode>>, mut carried: ResMut<Carried>, mut inv: Query<&mut Inventory, With<Player>>, open: Res<crate::storage::OpenStore>, mut stores: Query<&mut crate::storage::ItemStore>) {
     let Ok(src) = srcs.get(ev.entity) else { return };
     let Ok(mut inv) = inv.single_mut() else { return };
     let right = ev.button == PointerButton::Secondary;
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     match *src {
+        SlotSrc::Store(i) => {
+            let Some((e, k)) = open.locate(i) else { return };
+            let Ok(mut st) = stores.get_mut(e) else { return };
+            if shift && carried.0.is_none() {
+                // Into the inventory (hotbar first).
+                if let Some(s) = st.slots[k].take() {
+                    let mut left = Some(s);
+                    for j in 0..crate::inventory::SLOTS {
+                        let Some(l) = left else { break };
+                        match inv.slots[j] {
+                            Some(h) if h.item == l.item && h.count < h.item.def().max_stack => {
+                                let n = (h.item.def().max_stack - h.count).min(l.count);
+                                inv.slots[j] = Some(Stack { item: h.item, count: h.count + n });
+                                left = (l.count > n).then_some(Stack { item: l.item, count: l.count - n });
+                            }
+                            _ => {}
+                        }
+                    }
+                    if let Some(l) = left {
+                        match (0..crate::inventory::SLOTS).find(|j| inv.slots[*j].is_none()) {
+                            Some(j) => inv.slots[j] = Some(l),
+                            None => st.slots[k] = Some(l),
+                        }
+                    }
+                }
+            } else {
+                crate::inventory::click_slot(&mut st.slots[k], &mut carried.0, right);
+            }
+        }
+        SlotSrc::Inv(i) if shift && carried.0.is_none() && !open.parts.is_empty() && i < crate::inventory::SLOTS => {
+            // Into the open storage.
+            if let Some(s) = inv.slots[i].take() {
+                let mut left = Some(s);
+                for (e, _) in &open.parts {
+                    if let (Some(l), Ok(mut st)) = (left, stores.get_mut(*e)) {
+                        left = st.insert(l);
+                    }
+                }
+                inv.slots[i] = left;
+            }
+        }
         SlotSrc::Inv(i) => {
             if shift && carried.0.is_none() {
                 // Shift+click: wear it / take it off; hotbar ⇄ inventory.
@@ -194,6 +238,8 @@ fn icon(icons: &ItemIcons, item: ItemId) -> ImageNode {
 /// Fill slot widgets from the data.
 fn refresh_slots(
     inv: Query<&Inventory, With<Player>>,
+    open: Res<crate::storage::OpenStore>,
+    stores: Query<&crate::storage::ItemStore>,
     icons: Option<Res<ItemIcons>>,
     slots: Query<(&SlotSrc, &Children, Option<&HotbarSlot>, &mut BorderColor)>,
     mut images: Query<&mut ImageNode, With<SlotIcon>>,
@@ -204,6 +250,7 @@ fn refresh_slots(
         let stack = match *src {
             SlotSrc::Inv(i) => inv.slots.get(i).copied().flatten(),
             SlotSrc::Catalog(item) => Some(Stack { item, count: 1 }),
+            SlotSrc::Store(i) => open.locate(i).and_then(|(e, k)| stores.get(e).ok().and_then(|s| s.slots.get(k).copied().flatten())),
         };
         if let Some(h) = hot {
             let want = BorderColor::all(if h.0 == inv.selected { ACCENT } else { BORDER });
@@ -339,9 +386,14 @@ fn button(p: &mut ChildSpawnerCommands, label: &str, marker: impl Bundle) -> Ent
         .id()
 }
 
-fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>) {
+fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>, open: Res<crate::storage::OpenStore>) {
     cat.dirty = true;
     cat.typing = false;
+    // Opened from a storage: its slots above the inventory, not the catalogue.
+    if !open.parts.is_empty() {
+        cat.open = false;
+    }
+    let store = (!open.parts.is_empty()).then(|| (open.title.clone(), open.len()));
     commands
         .spawn((Screen, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35))))
         .observe(|_: On<PointerClick>, mut carried: ResMut<Carried>, mut cat: ResMut<Catalog>| {
@@ -361,6 +413,27 @@ fn open_screen(mut commands: Commands, mut cat: ResMut<Catalog>) {
                         cat.dirty = true;
                     });
                 });
+                if let Some((title, n)) = &store {
+                    panel.spawn((Text::new(title.clone()), font(15.0), TextColor(DIM)));
+                    panel.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(2), max_height: px(6.0 * 50.0), overflow: Overflow::scroll_y(), margin: UiRect::left(px(60)), ..default() }, ScrollPosition::default()))
+                        .observe(|ev: On<PointerScroll>, mut q: Query<&mut ScrollPosition>| {
+                            if let Ok(mut pos) = q.get_mut(ev.entity) {
+                                pos.y -= ev.y * 50.0;
+                            }
+                        })
+                        .with_children(|g| {
+                            for r in 0..n.div_ceil(9) {
+                                g.spawn(Node { column_gap: px(2), ..default() }).with_children(|row| {
+                                    for c in 0..9 {
+                                        let i = r * 9 + c;
+                                        if i < *n {
+                                            slot_widget(row, SlotSrc::Store(i), 48.0);
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                }
                 // Inventory view: equipment (head, body, legs, feet) | 6 × 9.
                 panel.spawn((InvView, Node { column_gap: px(12), ..default() })).with_children(|v| {
                     v.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), align_items: AlignItems::Center, ..default() }).with_children(|eq| {

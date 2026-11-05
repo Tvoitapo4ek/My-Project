@@ -254,6 +254,7 @@ enum MenuButton {
     Options,
     ToMenu,
     Paint,
+    Save,
     Quit,
     Done,
     Tab(usize),
@@ -326,6 +327,7 @@ fn open_pause(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
             framed(root, 320.0, |p| {
                 p.spawn((Text::new("Пауза"), font(26.0), TextColor(ACCENT), Node { margin: UiRect::bottom(px(8)), ..default() }));
                 button(p, "Продолжить", MenuButton::Resume, 250.0);
+                button(p, "Сохранить", MenuButton::Save, 250.0);
                 button(p, "Настройки", MenuButton::Options, 250.0);
                 button(p, "Текстуры", MenuButton::Paint, 250.0);
                 button(p, "В главное меню", MenuButton::ToMenu, 250.0);
@@ -401,11 +403,15 @@ fn unpause(mut time: ResMut<Time<Virtual>>) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn on_button(ev: On<PointerClick>, buttons: Query<&MenuButton>, ui: Res<State<Ui>>, mut next: ResMut<NextState<Ui>>, mut state: ResMut<MenuState>, mut pages: Query<(&TabPage, &mut Node)>, mut exit: MessageWriter<AppExit>, mut sounds: MessageWriter<crate::sound::Sfx>, settings: Res<GameSettings>) {
+fn on_button(ev: On<PointerClick>, buttons: Query<&MenuButton>, ui: Res<State<Ui>>, mut next: ResMut<NextState<Ui>>, mut state: ResMut<MenuState>, mut pages: Query<(&TabPage, &mut Node)>, mut exit: MessageWriter<AppExit>, mut sounds: MessageWriter<crate::sound::Sfx>, settings: Res<GameSettings>, mut actions: MessageWriter<crate::worlds::WorldAction>) {
     let Ok(b) = buttons.get(ev.entity) else { return };
     sounds.write(crate::sound::sfx("ui_click"));
     match *b {
-        MenuButton::Play | MenuButton::Resume => next.set(Ui::Game),
+        MenuButton::Play => next.set(Ui::Worlds),
+        MenuButton::Resume => next.set(Ui::Game),
+        MenuButton::Save => {
+            actions.write(crate::worlds::WorldAction::Save);
+        }
         MenuButton::Options => {
             state.back = Some(*ui.get());
             next.set(Ui::Options);
@@ -488,6 +494,7 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, ui: Res<State<Ui>>, mut next: ResMut<
         Ui::Pause => next.set(Ui::Game),
         Ui::Ponder => next.set(Ui::Inventory),
         Ui::Paint => next.set(Ui::Pause),
+        Ui::Worlds => next.set(Ui::Menu),
         Ui::Options => {
             if state.rebinding.take().is_none() {
                 next.set(state.back.take().unwrap_or(Ui::Menu));

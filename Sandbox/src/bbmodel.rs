@@ -143,6 +143,8 @@ pub fn layer_of(group: &str) -> Layer {
         "steer" => Layer::Steer,
         "mount" => Layer::Mount,
         "pole" => Layer::Pole,
+        "cap_front" => Layer::CapFront,
+        "cap_back" => Layer::CapBack,
         g => match g.strip_prefix("port").and_then(|i| i.parse::<u8>().ok()) {
             Some(i) if i < 6 => Layer::Port(i),
             _ => Layer::Body,
@@ -164,6 +166,11 @@ pub const PLAIN: [(&str, [u8; 3]); 11] = [
     ("smoke", [82, 82, 87]),
     ("smoke_black", [18, 18, 20]),
 ];
+
+/// A material the game has for this texture name (steel if none).
+pub fn material_name(tex: &str) -> &'static str {
+    material(tex)
+}
 
 /// A material name the game has (leaked once per name: models load once).
 fn material(tex: &str) -> &'static str {
@@ -301,6 +308,8 @@ fn layer_name(l: Layer) -> String {
         Layer::Mount => "mount".into(),
         Layer::Pole => "pole".into(),
         Layer::Port(i) => format!("port{i}"),
+        Layer::CapFront => "cap_front".into(),
+        Layer::CapBack => "cap_back".into(),
     }
 }
 

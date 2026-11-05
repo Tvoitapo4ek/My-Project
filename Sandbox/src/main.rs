@@ -30,13 +30,18 @@ mod models;
 mod paint;
 mod paths;
 mod ponder;
+mod save;
+mod profile;
 mod mounts;
 mod player;
 mod settings;
 mod signal;
 mod sound;
+mod storage;
+mod ropes;
 mod sky;
 mod tracks;
+mod tubes;
 mod style;
 mod telemetry;
 mod tools;
@@ -45,6 +50,7 @@ mod update;
 mod vehicle;
 mod water;
 mod world;
+mod worlds;
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
@@ -92,7 +98,7 @@ fn main() {
         logic::LogicPlugin,
         menu::MenuPlugin,
     ))
-    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
+    .add_plugins((doors::DoorsPlugin, goggles::GogglesPlugin, ponder::PonderPlugin, paint::PaintPlugin, update::UpdatePlugin, profile::ProfilePlugin, save::SavePlugin, worlds::WorldsPlugin, storage::StoragePlugin, tubes::TubesPlugin, ropes::RopesPlugin, chains::ChainsPlugin, belts::BeltsPlugin, tracks::TracksPlugin))
     .add_plugins(autotest::AutotestPlugin::from_args(&args));
     app.run();
 }

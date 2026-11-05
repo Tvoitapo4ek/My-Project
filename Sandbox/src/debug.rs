@@ -30,7 +30,7 @@ pub fn run_command(world: &mut World, line: &str) -> String {
     let num = |i: usize| parts.get(i).and_then(|s| s.replace(',', ".").parse::<f32>().ok());
     match parts.as_slice() {
         [] => String::new(),
-        ["help"] => "time set <ч|morning|day|evening|night>, time stop|start, time speed <×>, tp x y z, fly, give <ключ> [n], clear, save <имя>, load <имя>, blueprints, model export <ключ|player>".into(),
+        ["help"] => "time set <ч|morning|day|evening|night>, time stop|start, time speed <×>, tp x y z, fly, give <ключ> [n], clear, save <имя>, load <имя>, blueprints, model export <ключ|player>, world new|load <имя>, world save, worlds".into(),
         ["time", "set", v] => {
             let h = match *v {
                 "morning" | "утро" => Some(6.5),
@@ -97,6 +97,7 @@ pub fn run_command(world: &mut World, line: &str) -> String {
         ["load", name] => crate::tools::blueprint::load_named(world, name),
         ["blueprints"] => crate::tools::blueprint::list(),
         ["model", "export", key] => crate::bbmodel::export_cmd(key),
+        ["world", ..] | ["worlds"] => crate::worlds::command(world, &parts),
         ["clear"] => {
             let mut q = world.query_filtered::<&mut Inventory, With<Player>>();
             for mut inv in q.iter_mut(world) {
@@ -259,7 +260,7 @@ fn despawn_menu(mut commands: Commands, q: Query<Entity, With<DebugRoot>>) {
     }
 }
 
-fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, players: Query<(&Position, &Body), With<Player>>, mut q: Query<&mut Text, With<DebugInfo>>) {
+fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, prof: Res<crate::profile::Profile>, players: Query<(&Position, &Body), With<Player>>, mut q: Query<&mut Text, With<DebugInfo>>) {
     let Ok(mut t) = q.single_mut() else { return };
     let fps = diag.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|d| d.smoothed()).unwrap_or(0.0);
     let (pos, fly) = players.single().map(|(p, b)| (p.0, b.flying)).unwrap_or_default();
@@ -272,7 +273,7 @@ fn menu_info(diag: Res<DiagnosticsStore>, clock: Res<Clock>, players: Query<(&Po
         clock.label(),
         if clock.paused { "остановлено" } else { "идёт" },
         clock.speed / BASE_SPEED
-    );
+    ) + "\n\n" + &crate::profile::report(&prof);
 }
 
 pub struct DebugPlugin;

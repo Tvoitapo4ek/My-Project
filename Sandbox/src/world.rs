@@ -201,7 +201,8 @@ fn smooth_ramps(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mats: 
     commands.spawn((Name::new("Pool ramp"), Mesh3d(meshes.add(mesh)), MeshMaterial3d(mats.get("concrete")), Transform::default(), RigidBody::Static, col));
 }
 
-fn spawn_world(mut commands: Commands) {
+/// The proving ground's blocks (a new world).
+pub fn generate() -> VoxelGrid {
     let mut grid = VoxelGrid::default();
     for x in -PLATFORM_HALF..PLATFORM_HALF {
         for z in -PLATFORM_HALF..PLATFORM_HALF {
@@ -210,6 +211,11 @@ fn spawn_world(mut commands: Commands) {
     }
     block_lanes(&mut grid);
     pool_basin(&mut grid);
+    grid
+}
+
+fn spawn_world(mut commands: Commands) {
+    let grid = generate();
     let e = commands.spawn((Name::new("World grid"), WorldGrid, grid, Transform::default(), Visibility::default(), RigidBody::Static)).id();
     commands.insert_resource(WorldEntity(e));
 }

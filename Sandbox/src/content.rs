@@ -105,6 +105,24 @@ pub enum Mech {
     LogicGate,
     /// Signal lamp under a glass dome, blinks.
     Flasher,
+    /// Storages (`storage`): 27 slots.
+    Chest,
+    Barrel,
+    /// Joins with neighbouring containers into one big storage.
+    Container,
+    /// Item tube: joins storages and drives into a tube network.
+    ItemTube,
+    /// Moves items from the tubes behind to the tubes in front, powered by
+    /// rotation (like a pump).
+    ItemDrive,
+    /// Turns while the player holds RMB on it (`ropes`).
+    HandCrank,
+    /// Reels its rope in / out by the drum's rotation.
+    Winch,
+    /// An eyelet to tie a rope to.
+    RopeAnchor,
+    /// A pipe with a handwheel: RMB or a signal shuts it.
+    Valve,
 }
 
 /// How a block's orientation is chosen when placed.
@@ -244,6 +262,8 @@ pub enum Tool {
     Chain,
     /// Lays a belt between two shafts (`belts`).
     Belt,
+    /// Ties a rope between winches and anchors (`ropes`).
+    Rope,
 }
 
 #[derive(Debug, Clone, Deserialize)]

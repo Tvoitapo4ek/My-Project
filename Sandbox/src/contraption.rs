@@ -114,11 +114,21 @@ fn toggle(world: &mut World, mut cursor: Local<bevy::ecs::message::MessageCursor
             // ---- disassemble
             let world_e = world.resource::<crate::world::WorldEntity>().0;
             let at = gt.translation();
-            if crate::assembly::merge_into(world, u.grid, world_e) {
-                world.write_message(toast("Физика выключена: блоки вернулись в сетку"));
-                world.write_message(crate::sound::sfx_at("physics_off", at));
-            } else {
-                world.write_message(toast("Нет места, чтобы вернуть блоки в сетку"));
+            use crate::assembly::MergeError;
+            match crate::assembly::merge_into(world, u.grid, world_e) {
+                Ok(()) => {
+                    world.write_message(toast("Физика выключена: блоки вернулись в сетку"));
+                    world.write_message(crate::sound::sfx_at("physics_off", at));
+                }
+                Err(MergeError::NoRoom) => {
+                    world.write_message(toast("Нет места, чтобы вернуть блоки в сетку"));
+                }
+                Err(MergeError::Blocked { player: true }) => {
+                    world.write_message(toast("Отойдите: вы стоите там, где появятся блоки"));
+                }
+                Err(MergeError::Blocked { player: false }) => {
+                    world.write_message(toast("Мешает другое тело: уберите его"));
+                }
             }
         }
     }
@@ -142,7 +152,7 @@ const PROBE: f32 = 0.25;
 
 /// Raycast suspension, drive and side grip of every wheel.
 #[allow(clippy::type_complexity)]
-fn drive(
+pub fn drive(
     time: Res<Time>,
     spatial: SpatialQuery,
     gravity: Res<Gravity>,
@@ -151,6 +161,7 @@ fn drive(
     mut commands: Commands,
     susp: Query<(&BlockEntity, &Steer, &Spin, &crate::mech::Params)>,
 ) {
+    let _t = crate::profile::scope("колёса");
     let dt = time.delta_secs().max(1e-4);
     let g = gravity.0.length();
     for (_, grid, views, gt, mass, mut forces) in &mut bodies {

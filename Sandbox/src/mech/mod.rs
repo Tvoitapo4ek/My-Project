@@ -103,8 +103,9 @@ pub fn base_stress(m: Mech) -> f32 {
         Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Clutch | Mech::Gearshift | Mech::TrackDrive | Mech::TrackRoller => 0.5,
         Mech::BeltPulley => 1.0,
         Mech::Cog | Mech::MechanicalDisplay | Mech::SpeedController | Mech::Flywheel => 1.0,
-        Mech::LargeCog | Mech::Gearbox | Mech::VerticalGearbox | Mech::Bearing | Mech::Piston => 2.0,
+        Mech::LargeCog | Mech::Gearbox | Mech::VerticalGearbox | Mech::Bearing | Mech::Piston | Mech::Winch => 2.0,
         Mech::Pump => 12.0,
+        Mech::ItemDrive => 6.0,
         _ => 0.0,
     }
 }
@@ -116,7 +117,7 @@ pub fn transform_for(cell: IVec3, id: BlockId, facing: u8) -> Transform {
 
 /// Keeps block entities in step with the grid cells.
 #[allow(clippy::too_many_arguments)]
-fn sync_block_entities(
+pub fn sync_block_entities(
     mut commands: Commands,
     mut grids: Query<(Entity, &mut VoxelGrid)>,
     mut blocks: Query<(&mut BlockEntity, &mut Transform)>,
@@ -124,6 +125,7 @@ fn sync_block_entities(
     mut cache: ResMut<BoxCache>,
     mats: Option<Res<Materials>>,
 ) {
+    let _t = crate::profile::scope("блоки-сущности");
     let Some(mats) = mats else { return };
     for (ge, mut grid) in &mut grids {
         if grid.changed.is_empty() {
@@ -199,7 +201,7 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
         }
         Mech::Shaft | Mech::CasedShaft | Mech::Suspension | Mech::Wheel | Mech::Flywheel | Mech::BeltPulley | Mech::TrackDrive | Mech::TrackRoller => Node::new(Role::Shaft, axis),
         // Pumps mesh like cogwheels around their pipe axis.
-        Mech::Pump => Node::new(Role::Cog, axis),
+        Mech::Pump | Mech::ItemDrive => Node::new(Role::Cog, axis),
         Mech::DieselEngine => {
             let speed = if running { p.get(b.id, "speed") } else { 0.0 };
             let ccw = p.get(b.id, "direction") >= 0.5;
@@ -213,6 +215,12 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
         // Driven from the back; the face carries the moving part.
         Mech::Bearing | Mech::Piston => Node::new(Role::Shaft, axis).one_port(-d),
         Mech::Cog => Node::new(Role::Cog, axis),
+        Mech::HandCrank => {
+            let n = Node::new(Role::Shaft, axis).one_port(-d);
+            if on { n.source(-s * crate::ropes::CRANK_RPM).capacity(crate::ropes::CRANK_POWER) } else { n }
+        }
+        // The drum turns about the block's side axis.
+        Mech::Winch => Node::new(Role::Shaft, Axis::of(side_axis(b))),
         Mech::LargeCog => Node::new(Role::LargeCog, axis),
         Mech::Gearbox | Mech::VerticalGearbox => Node::new(Role::Gearbox, axis),
         Mech::Clutch => Node { toggled: on, ..Node::new(Role::Clutch, axis) },
@@ -237,9 +245,39 @@ fn node_for(b: &BlockEntity, p: &Params, signal: f32, out_pass: Option<bool>, ru
 
 type NetBlock<'a> = (&'a BlockEntity, &'a Params, &'a Signal, &'a mut Spin, &'a mut NetState, Option<&'a mut crate::engine::Engine>, Option<&'a mut Flywheel>, Option<&'a WheelLoad>);
 
-fn solve_networks(time: Res<Time>, grids: Query<(&VoxelGrid, Option<&crate::chains::Chains>)>, mut blocks: Query<NetBlock>) {
+/// Order-independent fingerprint of a network's inputs: when it matches
+/// last frame's, the solution is reused instead of solved again.
+fn fingerprint(nodes: &HashMap<IVec3, Node>, extra: &[(IVec3, IVec3, f32)]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let one = |f: &dyn Fn(&mut std::collections::hash_map::DefaultHasher)| {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        f(&mut h);
+        h.finish()
+    };
+    let mut acc = nodes.len() as u64;
+    for (c, n) in nodes {
+        acc = acc.wrapping_add(one(&|h| {
+            c.hash(h);
+            n.role.hash(h);
+            n.axis.hash(h);
+            n.only.hash(h);
+            n.source.map(f32::to_bits).hash(h);
+            n.toggled.hash(h);
+            n.stress.to_bits().hash(h);
+            n.capacity.to_bits().hash(h);
+        }));
+    }
+    for (a, b, r) in extra {
+        acc = acc.wrapping_add(one(&|h| (a, b, r.to_bits()).hash(h)).rotate_left(1));
+    }
+    acc
+}
+
+fn solve_networks(time: Res<Time>, grids: Query<(Entity, &VoxelGrid, Option<&crate::chains::Chains>)>, mut blocks: Query<NetBlock>, mut cache: Local<HashMap<Entity, (u64, network::Solution)>>) {
+    let _t = crate::profile::scope("механика");
     let dt = time.delta_secs();
-    for (grid, chains) in &grids {
+    cache.retain(|e, _| grids.contains(*e));
+    for (ge, grid, chains) in &grids {
         if grid.entities.is_empty() {
             continue;
         }
@@ -261,14 +299,61 @@ fn solve_networks(time: Res<Time>, grids: Query<(&VoxelGrid, Option<&crate::chai
                 }
             }
         }
+        // Engine rows: the modules behind pass the rotation through, the
+        // front one is the source with the power of every running module.
+        for &(c, e) in &engines {
+            let Ok((b, p, _, _, _, _, _, _)) = blocks.get(e) else { continue };
+            let d = b.dir();
+            let axis = Axis::of(d);
+            let front = crate::engine::row_front(grid, c, b.facing);
+            let behind = crate::engine::module_at(grid, c - d, b.facing);
+            if front != c {
+                nodes.insert(c, Node::new(Role::Shaft, axis).stress(base_stress(Mech::DieselEngine)));
+                continue;
+            }
+            if !behind {
+                continue;
+            }
+            let mut k = 0;
+            let mut m = c;
+            while crate::engine::module_at(grid, m, b.facing) && k < 64 {
+                if grid.entities.get(&m).and_then(|x| blocks.get(*x).ok()).is_some_and(|x| x.5.as_ref().is_some_and(|g| g.ready)) {
+                    k += 1;
+                }
+                m -= d;
+            }
+            let s = (d.x + d.y + d.z) as f32;
+            let speed = p.get(b.id, "speed");
+            let ccw = p.get(b.id, "direction") >= 0.5;
+            let mut n = Node::new(Role::Shaft, axis);
+            if k > 0 {
+                n = n.source(if ccw { s * speed } else { -s * speed }).capacity(crate::engine::POWER * k as f32);
+            }
+            nodes.insert(c, n.stress(base_stress(Mech::DieselEngine)));
+        }
         // Chains (and other links between distant blocks).
         let mut extra = Vec::new();
         if let Some(ch) = chains {
             extra.extend(crate::chains::links(ch, |c| grid.entities.get(&c).and_then(|e| blocks.get(*e).ok()).and_then(|b| b.0.mech())));
         }
         extra.extend(crate::belts::links(grid, &nodes, |c| grid.entities.get(&c).and_then(|e| blocks.get(*e).ok()).and_then(|b| b.0.mech())));
-        let mut sol = network::solve_with(&nodes, &extra);
-        if !controllers.is_empty() {
+        // Speed controllers' signals and settings act in the second pass:
+        // they are part of the fingerprint too.
+        let mut key = fingerprint(&nodes, &extra);
+        for &(c, e, _) in &controllers {
+            if let Ok((_, p, sig, ..)) = blocks.get(e) {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                (c, sig.0.to_bits(), p.0.iter().map(|v| v.to_bits()).collect::<Vec<_>>()).hash(&mut h);
+                key = key.wrapping_add(h.finish().rotate_left(7));
+            }
+        }
+        let cached = cache.get(&ge).filter(|(k, _)| *k == key).map(|(_, s)| s.clone());
+        let mut sol = match cached {
+            Some(s) => s,
+            None => network::solve_with(&nodes, &extra),
+        };
+        if cached_is_none(&cache, ge, key) && !controllers.is_empty() {
             for &(c, e, _) in &controllers {
                 let running = sol.speed.get(&c).is_some_and(|v| v.abs() > 1e-3);
                 if let Ok((b, p, sig, _, _, _, _, _)) = blocks.get(e)
@@ -278,6 +363,9 @@ fn solve_networks(time: Res<Time>, grids: Query<(&VoxelGrid, Option<&crate::chai
                 }
             }
             sol = network::solve_with(&nodes, &extra);
+        }
+        if cached_is_none(&cache, ge, key) {
+            cache.insert(ge, (key, sol.clone()));
         }
         // Networks joined through speed controllers share power and stress.
         let mut root: Vec<usize> = (0..sol.nets.len()).collect();
@@ -368,6 +456,10 @@ fn solve_networks(time: Res<Time>, grids: Query<(&VoxelGrid, Option<&crate::chai
             st.overstressed = k == 0.0 && stress > cap;
         }
     }
+}
+
+fn cached_is_none(cache: &HashMap<Entity, (u64, network::Solution)>, grid: Entity, key: u64) -> bool {
+    cache.get(&grid).is_none_or(|(k, _)| *k != key)
 }
 
 /// Rotor layers turn about the block's local Y by the network speed.

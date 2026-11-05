@@ -482,6 +482,100 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             part([0.06, 0.48, 0.06], "brass", [-0.24, -0.11, -0.24]),
         ],
         Mech::Pipe => crate::fluids::pipe_parts(&[], false),
+        Mech::ItemTube => crate::tubes::tube_parts(&[]),
+        Mech::HandCrank => vec![
+            // On the face of the block behind it (−Y): a hub, an arm, a grip.
+            part([0.3, 0.12, 0.3], "steel", [0.0, -0.42, 0.0]).layer(Layer::Rotor),
+            part([0.16, 0.2, 0.16], "brass", [0.0, -0.3, 0.0]).layer(Layer::Rotor),
+            part([0.12, 0.08, 0.5], "steel", [0.0, -0.2, 0.18]).layer(Layer::Rotor),
+            part([0.12, 0.26, 0.12], "red_grip", [0.0, -0.04, 0.4]).layer(Layer::Rotor),
+        ],
+        Mech::Winch => {
+            // A frame with a drum across (local X), rope wound on it, the
+            // rope leaving through a brass guide on the face (+Y).
+            let mut v = vec![
+                part([0.9, 0.12, 0.9], "steel_casing", [0.0, -0.44, 0.0]),
+                part([0.1, 0.8, 0.5], "steel", [0.42, -0.02, 0.0]),
+                part([0.1, 0.8, 0.5], "steel", [-0.42, -0.02, 0.0]),
+                part([0.2, 0.12, 0.2], "brass", [0.0, 0.44, 0.0]),
+                part([0.1, 0.2, 0.1], "leather", [0.0, 0.32, 0.0]),
+            ];
+            for r in [0.0f32, FRAC_PI_4] {
+                v.push(part([0.66, 0.5, 0.5], "leather", [0.0, 0.02, 0.0]).rot(Quat::from_rotation_x(r)).layer(Layer::RotorX));
+                v.push(part([0.06, 0.64, 0.64], "brass", [0.34, 0.02, 0.0]).rot(Quat::from_rotation_x(r)).layer(Layer::RotorX));
+                v.push(part([0.06, 0.64, 0.64], "brass", [-0.34, 0.02, 0.0]).rot(Quat::from_rotation_x(r)).layer(Layer::RotorX));
+            }
+            v.push(part([0.9, 0.16, 0.16], "shaft", [0.0, 0.02, 0.0]).layer(Layer::RotorX));
+            v
+        }
+        Mech::RopeAnchor => vec![
+            // A plate on the face of the block it is attached to (+Y), a
+            // brass eye sticking out.
+            part([0.4, 0.06, 0.4], "steel", [0.0, 0.47, 0.0]),
+            part([0.08, 0.2, 0.08], "brass", [-0.1, 0.36, 0.0]),
+            part([0.08, 0.2, 0.08], "brass", [0.1, 0.36, 0.0]),
+            part([0.28, 0.08, 0.08], "brass", [0.0, 0.24, 0.0]),
+        ],
+        Mech::ItemDrive => {
+            // A steel case on a glass tube, a brass ring around it (meshes
+            // like a cog) and a green arrow of the way items go.
+            let mut v = cog(0.4, 8, 0.66);
+            v.retain(|p| p.mat != "shaft");
+            v.push(part([0.56, 1.0, 0.56], "glass", [0.0, 0.0, 0.0]));
+            v.push(part([0.66, 0.4, 0.66], "steel_casing", [0.0, 0.22, 0.0]));
+            v.push(part([0.64, 0.07, 0.64], "brass", [0.0, 0.465, 0.0]));
+            v.push(part([0.64, 0.07, 0.64], "brass", [0.0, -0.465, 0.0]));
+            v.push(part([0.06, 0.18, 0.04], "glow_green", [0.0, 0.26, 0.34]));
+            v.push(part([0.14, 0.06, 0.04], "glow_green", [0.0, 0.34, 0.34]));
+            v
+        }
+        Mech::Chest => {
+            // Dark wood with steel bands and a brass lock at the front (+Z).
+            let mut v = vec![
+                part([0.86, 0.6, 0.86], "planks", [0.0, -0.13, 0.0]),
+                part([0.88, 0.26, 0.88], "planks", [0.0, 0.3, 0.0]),
+                part([0.9, 0.04, 0.9], "steel", [0.0, 0.17, 0.0]),
+                part([0.14, 0.2, 0.06], "brass", [0.0, 0.14, 0.45]),
+                part([0.06, 0.06, 0.04], "screen", [0.0, 0.12, 0.48]),
+            ];
+            for (x, z) in [(0.44f32, 0.44f32), (-0.44, 0.44), (0.44, -0.44), (-0.44, -0.44)] {
+                v.push(part([0.06, 0.88, 0.06], "steel", [x, 0.0, z]));
+            }
+            for x in [-0.28f32, 0.28] {
+                v.push(part([0.07, 0.28, 0.9], "steel", [x, 0.3, 0.0]));
+            }
+            v
+        }
+        Mech::Barrel => {
+            // Staves as an octagon, steel hoops, a brass bung on top (+Y).
+            let mut v = vec![
+                part([0.8, 0.98, 0.8], "planks", [0.0, 0.0, 0.0]),
+                part([0.8, 0.98, 0.8], "planks", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)),
+                part([0.7, 0.04, 0.7], "planks", [0.0, 0.49, 0.0]),
+                part([0.16, 0.05, 0.16], "brass", [0.18, 0.51, 0.0]),
+            ];
+            for y in [-0.33f32, 0.0, 0.33] {
+                v.push(part([0.84, 0.06, 0.84], "steel", [0.0, y, 0.0]));
+                v.push(part([0.84, 0.06, 0.84], "steel", [0.0, y, 0.0]).rot(Quat::from_rotation_y(FRAC_PI_4)));
+            }
+            v
+        }
+        Mech::Container => {
+            // A wooden crate in a riveted steel frame; joined ones look like one.
+            let mut v = vec![part([0.92, 0.92, 0.92], "planks", [0.0, 0.0, 0.0])];
+            let e = 0.47;
+            for (a, b) in [(e, e), (e, -e), (-e, e), (-e, -e)] {
+                v.push(part([0.07, 1.0, 0.07], "steel", [a, 0.0, b]));
+                v.push(part([1.0, 0.07, 0.07], "steel", [0.0, a, b]));
+                v.push(part([0.07, 0.07, 1.0], "steel", [a, b, 0.0]));
+            }
+            for d in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z] {
+                let r = Quat::from_rotation_arc(Vec3::Z, d);
+                v.push(part([0.07, 0.9, 0.03], "steel", (d * 0.465).to_array()).rot(r * Quat::from_rotation_z(FRAC_PI_4)));
+                v.push(part([0.3, 0.12, 0.03], "brass", (d * 0.47 + Vec3::Y * 0.3).to_array()).rot(r));
+            }
+            v
+        }
         Mech::CasedPipe => crate::fluids::pipe_parts(&[IVec3::Y, IVec3::NEG_Y], true),
         Mech::CasedShaft => {
             let mut v = casing("steel_casing");
@@ -510,29 +604,59 @@ pub fn builtin_model(mech: Mech) -> Vec<Part> {
             part([0.08, 0.08, 0.08], "brass", [0.25, 0.45, -0.22]),
         ],
         Mech::DieselEngine => {
-            // Front (local +Z) = output with a flywheel. Dark steel block,
-            // three cylinders with valve covers, copper coolant pipes, the
-            // exhaust stack on top.
+            // One module of an inline diesel (front = local +Z): oil pan,
+            // block and head run the full length so modules in a row read
+            // as one long engine. Two cylinders per module: injectors on the
+            // valve cover, exhaust manifold on the left (+X) into a stack,
+            // intake on the right. The front cap carries the flywheel, the
+            // back cap an end plate; `engine` hides them inside a row.
             let mut v = vec![
-                part([0.96, 0.16, 0.96], "steel", [0.0, -0.42, 0.0]),
-                part([0.84, 0.46, 0.76], "steel_casing", [0.0, -0.11, -0.04]),
-                part([0.86, 0.06, 0.78], "brass", [0.0, 0.13, -0.04]),
-                part([0.3, 0.16, 0.06], "glow_amber", [-0.2, -0.12, 0.35]),
+                part([0.8, 0.22, 1.0], "steel", [0.0, -0.39, 0.0]),
+                part([0.9, 0.06, 1.0], "steel", [0.0, -0.47, 0.0]),
+                part([0.72, 0.4, 1.0], "steel_casing", [0.0, -0.08, 0.0]),
+                part([0.78, 0.12, 1.0], "steel", [0.0, 0.18, 0.0]),
+                part([0.56, 0.1, 0.92], "red_grip", [0.0, 0.29, 0.0]),
+                part([0.58, 0.03, 0.94], "steel", [0.0, 0.25, 0.0]),
             ];
-            for (i, x) in [-0.27f32, 0.0, 0.27].iter().enumerate() {
-                v.push(part([0.2, 0.22, 0.42], "steel", [*x, 0.27, -0.12]));
-                v.push(part([0.22, 0.05, 0.44], if i == 1 { "brass" } else { "copper" }, [*x, 0.4, -0.12]));
+            for z in [-0.25f32, 0.25] {
+                // Injector + fuel line, exhaust runner, intake runner.
+                v.push(part([0.08, 0.12, 0.08], "brass", [0.0, 0.39, z]));
+                v.push(part([0.04, 0.04, 0.2], "copper", [0.08, 0.36, z]));
+                v.push(part([0.16, 0.12, 0.14], "copper", [0.42, 0.1, z]));
+                v.push(part([0.1, 0.16, 0.1], "steel", [-0.41, 0.06, z]));
+                // Cooling fins on the block.
+                v.push(part([0.76, 0.03, 0.2], "steel", [0.0, -0.06, z]));
+                v.push(part([0.76, 0.03, 0.2], "steel", [0.0, -0.16, z]));
             }
-            for z in [-0.3f32, 0.05] {
-                v.push(part([0.06, 0.36, 0.06], "copper", [-0.46, -0.05, z]));
-            }
-            v.push(part([0.06, 0.06, 0.41], "copper", [-0.46, 0.13, -0.125]));
-            v.push(part([0.14, 0.4, 0.14], "steel", [0.3, 0.3, 0.26]));
-            v.push(part([0.18, 0.06, 0.18], "brass", [0.3, 0.48, 0.26]));
+            v.push(part([0.12, 0.14, 1.0], "copper", [0.49, 0.1, 0.0]));
+            v.push(part([0.12, 0.08, 1.0], "steel", [-0.46, 0.15, 0.0]));
+            // Exhaust stack up to the top face.
+            v.push(part([0.14, 0.4, 0.14], "steel", [0.3, 0.32, 0.0]));
+            v.push(part([0.18, 0.06, 0.18], "brass", [0.3, 0.5, 0.0]));
+            v.push(part([0.2, 0.05, 0.1], "copper", [0.4, 0.14, 0.0]));
+            // Front: timing cover + flywheel (output).
+            v.push(part([0.7, 0.6, 0.08], "steel_casing", [0.0, -0.1, 0.46]).layer(Layer::CapFront));
+            v.push(part([0.26, 0.16, 0.04], "glow_amber", [-0.18, 0.12, 0.5]).layer(Layer::CapFront));
             v.push(part([0.22, 0.22, 0.2], "shaft", [0.0, -0.12, 0.44]).layer(Layer::RotorZ));
-            v.push(part([0.5, 0.5, 0.06], "brass", [0.0, -0.12, 0.42]).layer(Layer::RotorZ));
-            v.push(part([0.5, 0.5, 0.06], "brass", [0.0, -0.12, 0.42]).rot(Quat::from_rotation_z(FRAC_PI_4)).layer(Layer::RotorZ));
-            v.push(part([0.2, 0.2, 0.08], "steel", [0.0, -0.12, 0.46]).layer(Layer::RotorZ));
+            v.push(part([0.52, 0.52, 0.06], "brass", [0.0, -0.12, 0.49]).layer(Layer::RotorZ));
+            v.push(part([0.52, 0.52, 0.06], "brass", [0.0, -0.12, 0.49]).rot(Quat::from_rotation_z(FRAC_PI_4)).layer(Layer::RotorZ));
+            v.push(part([0.2, 0.2, 0.08], "steel", [0.0, -0.12, 0.52]).layer(Layer::RotorZ));
+            // Back: end plate with bolts.
+            v.push(part([0.74, 0.66, 0.06], "steel", [0.0, -0.1, -0.47]).layer(Layer::CapBack));
+            for (x, y) in [(-0.3f32, 0.16f32), (0.3, 0.16), (-0.3, -0.36), (0.3, -0.36)] {
+                v.push(part([0.06, 0.06, 0.04], "brass", [x, y, -0.5]).layer(Layer::CapBack));
+            }
+            v
+        }
+        Mech::Valve => {
+            // A pipe along the axis through a steel body; the red handwheel
+            // on top is turned in line (open) or across (closed).
+            let mut v = crate::fluids::pipe_parts(&[IVec3::Y, IVec3::NEG_Y], false);
+            v.push(part([0.5, 0.42, 0.5], "steel_casing", [0.0, 0.0, 0.0]));
+            v.push(part([0.12, 0.2, 0.12], "steel", [0.0, 0.0, 0.3]));
+            v.push(part([0.44, 0.05, 0.05], "red_grip", [0.0, 0.0, 0.42]).rot(Quat::from_rotation_z(FRAC_PI_4)));
+            v.push(part([0.44, 0.05, 0.05], "red_grip", [0.0, 0.0, 0.42]).rot(Quat::from_rotation_z(-FRAC_PI_4)));
+            v.push(part([0.1, 0.1, 0.06], "brass", [0.0, 0.0, 0.44]));
             v
         }
         Mech::PhysicsToggle => vec![
@@ -582,6 +706,14 @@ pub fn tool_model(tool: Tool) -> Vec<Part> {
             part([0.02, 0.14, 0.02], "brass", [0.1, 0.17, 0.0]),
             part([0.02, 0.14, 0.02], "brass", [-0.1, 0.17, 0.0]),
             part([0.22, 0.02, 0.02], "brass", [0.0, 0.24, 0.0]),
+        ],
+        Tool::Rope => vec![
+            // A coil of rope with a brass hook.
+            part([0.22, 0.22, 0.1], "leather", [0.0, 0.0, 0.0]),
+            part([0.22, 0.22, 0.1], "leather", [0.0, 0.0, 0.0]).rot(Quat::from_rotation_z(FRAC_PI_4)),
+            part([0.1, 0.1, 0.12], "planks", [0.0, 0.0, 0.0]),
+            part([0.04, 0.12, 0.04], "brass", [0.0, -0.16, 0.0]),
+            part([0.08, 0.04, 0.04], "brass", [0.03, -0.22, 0.0]),
         ],
         Tool::Belt => vec![
             // A rolled-up belt.

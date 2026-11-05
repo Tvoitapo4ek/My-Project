@@ -87,26 +87,71 @@ pub fn mapping(world: &World, src: Entity, dst: Entity) -> Option<(impl Fn(IVec3
     Some((map, rot))
 }
 
-/// Puts every block of `src` into `dst` at the nearest grid position and
-/// orientation, then removes `src`. Parts mounted on `src` (bearings,
-/// pistons) are merged into it first. Returns false — and changes nothing
-/// in `src` — if a target cell is taken.
-pub fn merge_into(world: &mut World, src: Entity, dst: Entity) -> bool {
-    if !crate::mounts::collapse_all(world, src) {
-        return false;
+/// Why blocks could not go back into a grid.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeError {
+    /// A target cell is taken by a block (even one block higher).
+    NoRoom,
+    /// The player or another body is where the blocks would appear (they
+    /// would be shot out of it).
+    Blocked { player: bool },
+}
+
+/// Dynamic bodies (the player, other machines) overlapping these cells of
+/// `dst`, except `src` and parts mounted on it.
+pub fn bodies_in(world: &mut World, src: Entity, dst: Entity, cells: &[IVec3]) -> Vec<Entity> {
+    use avian3d::prelude::*;
+    let Some(td) = world.get::<GlobalTransform>(dst).map(|g| g.compute_transform()) else { return Vec::new() };
+    let mut state = bevy::ecs::system::SystemState::<(SpatialQuery, Query<&ColliderOf>, Query<&RigidBody>, Query<&crate::mounts::MountedOn>, Query<&BlockEntity>)>::new(world);
+    let Ok((spatial, colliders, bodies, mounted, blocks)) = state.get(world) else { return Vec::new() };
+    let shape = Collider::cuboid(0.9, 0.9, 0.9);
+    let filter = SpatialQueryFilter::default();
+    let mut out = Vec::new();
+    for c in cells {
+        let p = td.transform_point(c.as_vec3() + Vec3::splat(0.5));
+        for hit in spatial.shape_intersections(&shape, p, td.rotation, &filter) {
+            let body = colliders.get(hit).map(|c| c.body).unwrap_or(hit);
+            if body == src || body == dst || out.contains(&body) {
+                continue;
+            }
+            // Parts riding on the returning grid come back with it.
+            if mounted.get(body).is_ok_and(|m| blocks.get(m.mount).is_ok_and(|b| b.grid == src)) {
+                continue;
+            }
+            if bodies.get(body).is_ok_and(|r| r.is_dynamic()) {
+                out.push(body);
+            }
+        }
     }
-    let Some((map, rot)) = mapping(world, src, dst) else { return false };
+    out
+}
+
+/// Puts every block of `src` into `dst` at the nearest grid position and
+/// orientation (or one or two blocks higher if it sank in), then removes
+/// `src`. Parts mounted on `src` (bearings, pistons) are merged into it
+/// first. On an error nothing in `src` changes.
+pub fn merge_into(world: &mut World, src: Entity, dst: Entity) -> Result<(), MergeError> {
+    if !crate::mounts::collapse_all(world, src) {
+        return Err(MergeError::NoRoom);
+    }
+    let Some((map0, rot)) = mapping(world, src, dst) else { return Err(MergeError::NoRoom) };
     let turn = |f: u8| facing_of((rot * facing_dir(f).as_vec3()).round().as_ivec3());
     let (cells, glue_boxes, entities) = {
         let g = world.get::<VoxelGrid>(src).expect("source grid");
         let glue = world.get::<Glue>(src).map(|g| g.0.clone()).unwrap_or_default();
         (g.cells(), glue, g.entities.iter().map(|(c, e)| (*c, *e)).collect::<Vec<_>>())
     };
-    {
+    let lift = {
         let dg = world.get::<VoxelGrid>(dst).expect("target grid");
-        if cells.iter().any(|(c, _)| !dg.get(map(*c)).is_air()) {
-            return false;
-        }
+        (0..3).map(|k| IVec3::Y * k).find(|off| cells.iter().all(|(c, _)| dg.get(map0(*c) + *off).is_air()))
+    };
+    let Some(lift) = lift else { return Err(MergeError::NoRoom) };
+    let map = move |c: IVec3| map0(c) + lift;
+    let targets: Vec<IVec3> = cells.iter().map(|(c, _)| map(*c)).collect();
+    let player = world.query_filtered::<Entity, With<crate::player::Player>>().iter(world).next();
+    let blockers = bodies_in(world, src, dst, &targets);
+    if !blockers.is_empty() {
+        return Err(MergeError::Blocked { player: player.is_some_and(|p| blockers.contains(&p)) });
     }
     {
         let mut dg = world.get_mut::<VoxelGrid>(dst).unwrap();
@@ -161,7 +206,7 @@ pub fn merge_into(world: &mut World, src: Entity, dst: Entity) -> bool {
     }
     world.get_mut::<VoxelGrid>(src).unwrap().entities.clear();
     world.entity_mut(src).despawn();
-    true
+    Ok(())
 }
 
 /// Mass of a set of cells (kg).

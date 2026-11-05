@@ -201,7 +201,7 @@ fn edit_blocks(
     // which turns them, or the glue; crouch to place a block on them).
     if clicks.right
         && let Some(m) = grid.get(a.cell).id.def().mech
-        && matches!(m, Mech::Seat | Mech::PhysicsToggle | Mech::Lever | Mech::Button | Mech::SlidingDoor)
+        && matches!(m, Mech::Seat | Mech::PhysicsToggle | Mech::Lever | Mech::Button | Mech::SlidingDoor | Mech::Chest | Mech::Barrel | Mech::Container | Mech::HandCrank | Mech::Valve)
         && !matches!(held.and_then(|s| s.item.tool()), Some(crate::content::Tool::Wrench | crate::content::Tool::Glue | crate::content::Tool::Blueprint))
         && (!body.crouching || held.is_none())
     {

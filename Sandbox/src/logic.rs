@@ -197,8 +197,10 @@ pub fn flasher_lit(powered: bool, on_for: f32) -> bool {
 
 // ------------------------------------------------------------ systems
 
+pub const LOGIC_MECHS: [Mech; 11] = [Mech::Wire, Mech::Button, Mech::Lever, Mech::Timer, Mech::PulseGenerator, Mech::LogicGate, Mech::Flasher, Mech::ThresholdSensor, Mech::RadioTransmitter, Mech::RadioReceiver, Mech::Lamp];
+
 fn is_logic(m: Option<Mech>) -> bool {
-    matches!(m, Some(Mech::Wire | Mech::Button | Mech::Lever | Mech::Timer | Mech::PulseGenerator | Mech::LogicGate | Mech::Flasher | Mech::ThresholdSensor | Mech::RadioTransmitter | Mech::RadioReceiver | Mech::Lamp))
+    m.is_some_and(|m| LOGIC_MECHS.contains(&m))
 }
 
 /// Radio channels: on this frame (`on`, read by receivers) and being
@@ -243,6 +245,7 @@ fn use_switches(mut used: MessageReader<UseBlock>, grids: Query<&VoxelGrid>, mut
 
 #[allow(clippy::type_complexity)]
 fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntity, &Params, &mut LogicState, Option<&Signal>)>, mut signals: Query<&mut Signal, Without<LogicState>>, mut radio: ResMut<Radio>) {
+    let _t = crate::profile::scope("логика");
     let dt = time.delta_secs();
     // Channels on last frame (receivers), collected anew this frame.
     radio.on = std::mem::take(&mut radio.next);
@@ -251,9 +254,13 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
             continue;
         }
         // 1. Outputs of this frame (from last frame's inputs).
+        let logic: Vec<(IVec3, Entity)> = grid.entities_of(&LOGIC_MECHS).collect();
+        if logic.is_empty() {
+            continue;
+        }
         let mut wires = HashMap::new();
         let mut sources = Vec::new();
-        for (&c, &e) in &grid.entities {
+        for &(c, e) in &logic {
             let Ok((b, p, mut s, _)) = blocks.get_mut(e) else { continue };
             let front = Some(b.dir());
             let out = match b.mech() {
@@ -287,8 +294,12 @@ fn run(time: Res<Time>, grids: Query<&VoxelGrid>, mut blocks: Query<(&BlockEntit
         }
         // 2. Power.
         let (on_wires, powered) = spread(&wires, &sources);
-        // 3. Inputs → next outputs; signals to the blocks that take them.
-        for (&c, &e) in &grid.entities {
+        // 3. Inputs → next outputs; signals to the blocks that take them
+        // (logic blocks, and any block next to power).
+        let own: HashSet<IVec3> = logic.iter().map(|(c, _)| *c).collect();
+        let mut visit = logic;
+        visit.extend(powered.keys().filter(|c| !own.contains(*c)).filter_map(|c| grid.entities.get(c).map(|e| (*c, *e))));
+        for (c, e) in visit {
             let from = powered.get(&c).copied().unwrap_or(0);
             if let Ok((b, p, mut s, sig)) = blocks.get_mut(e) {
                 let side = |d: IVec3| DIRS.iter().position(|x| *x == d).is_some_and(|i| from & (1 << i) != 0);
@@ -456,7 +467,7 @@ fn neighbours(grid: &VoxelGrid, c: IVec3) -> Vec<(IVec3, crate::grid::Cell)> {
 
 /// Blocks that react to a signal.
 pub fn takes_signal(m: Mech) -> bool {
-    matches!(m, Mech::Clutch | Mech::Gearshift | Mech::SpeedController | Mech::Suspension | Mech::Headlight | Mech::Bearing | Mech::Flasher | Mech::LogicGate | Mech::PulseGenerator | Mech::SlidingDoor | Mech::Lamp | Mech::RadioTransmitter)
+    matches!(m, Mech::Clutch | Mech::Gearshift | Mech::SpeedController | Mech::Suspension | Mech::Headlight | Mech::Bearing | Mech::Flasher | Mech::LogicGate | Mech::PulseGenerator | Mech::SlidingDoor | Mech::Lamp | Mech::RadioTransmitter | Mech::Valve)
 }
 
 /// A lamp on a logic block (lit with its output).

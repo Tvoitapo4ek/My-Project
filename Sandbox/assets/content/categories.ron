@@ -4,5 +4,6 @@
     (key: "mechanisms", name: "Механизмы"),
     (key: "control", name: "Управление"),
     (key: "logic", name: "Логика"),
+    (key: "logistics", name: "Хранение"),
     (key: "tools", name: "Инструменты"),
 ]

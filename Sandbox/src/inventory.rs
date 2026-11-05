@@ -88,7 +88,14 @@ impl Inventory {
         {
             return;
         }
-        let here = &mut self.slots[slot];
+        click_slot(&mut self.slots[slot], carried, right);
+    }
+}
+
+/// Minecraft clicks on any slot: LMB takes / puts / swaps / merges, RMB
+/// splits a stack or puts one.
+pub fn click_slot(here: &mut Option<Stack>, carried: &mut Option<Stack>, right: bool) {
+    {
         match (here.as_mut(), carried.as_mut()) {
             (None, None) => {}
             (None, Some(c)) => {

@@ -126,7 +126,12 @@ pub enum Role {
     /// Moves fluid from one end to the other (`d` = facing); a boundary
     /// between two networks.
     Pump { d: IVec3 },
+    /// An open valve: a pipe along its axis only.
+    Valve { axis: IVec3 },
 }
+
+/// Every mechanism that takes part in pipe networks.
+pub const FLUID_MECHS: [Mech; 8] = [Mech::Pipe, Mech::CasedPipe, Mech::FluidTank, Mech::FluidPort, Mech::CreativeTank, Mech::DieselEngine, Mech::Pump, Mech::Valve];
 
 pub fn role_of(b: &BlockEntity) -> Option<Role> {
     Some(match b.mech()? {
@@ -136,6 +141,9 @@ pub fn role_of(b: &BlockEntity) -> Option<Role> {
         Mech::FluidPort | Mech::CreativeTank => Role::Port,
         Mech::DieselEngine => Role::Engine { front: crate::grid::facing_dir(b.facing) },
         Mech::Pump => Role::Pump { d: b.dir() },
+        // Shut: no part of any network.
+        Mech::Valve if b.id.def().key.ends_with("_closed") => return None,
+        Mech::Valve => Role::Valve { axis: b.dir() },
         _ => return None,
     })
 }
@@ -146,6 +154,7 @@ pub fn opens(role: Role, dir: IVec3) -> bool {
         Role::Pipe | Role::Tank | Role::Port => true,
         Role::Engine { front } => dir != front,
         Role::Pump { d } => dir == d || dir == -d,
+        Role::Valve { axis } => dir == axis || dir == -axis,
     }
 }
 
@@ -256,12 +265,13 @@ struct Unit {
 }
 
 #[allow(clippy::type_complexity)]
-fn simulate(time: Res<Time>, water: Res<crate::water::Water>, grids: Query<(&VoxelGrid, &GlobalTransform)>, blocks: Query<(&BlockEntity, &Spin, &Params)>, mut stores: Query<&mut FluidStore>) {
+pub fn simulate(time: Res<Time>, water: Res<crate::water::Water>, grids: Query<(&VoxelGrid, &GlobalTransform)>, blocks: Query<(&BlockEntity, &Spin, &Params)>, mut stores: Query<&mut FluidStore>) {
+    let _t = crate::profile::scope("жидкости");
     let dt = time.delta_secs();
     for (grid, gt) in &grids {
         let mut nodes: HashMap<IVec3, Role> = HashMap::new();
         let mut ent: HashMap<IVec3, Entity> = HashMap::new();
-        for (&c, &e) in &grid.entities {
+        for (c, e) in grid.entities_of(&FLUID_MECHS) {
             if let Ok((b, ..)) = blocks.get(e)
                 && let Some(r) = role_of(b)
             {
@@ -565,11 +575,57 @@ fn show_levels(
     }
 }
 
+// ------------------------------------------------------------ valves
+
+/// The signal a valve saw last frame (its edges open / shut it).
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ValveSignal(pub bool);
+
+/// Open ⇄ shut: the block itself changes (like doors), facing kept.
+pub fn flip_valve(grid: &mut VoxelGrid, c: IVec3) {
+    let cell = grid.get(c);
+    let key = &cell.id.def().key;
+    let other = if key.ends_with("_closed") { "fluid_valve" } else { "fluid_valve_closed" };
+    grid.set(c, crate::grid::Cell::new(crate::content::BlockId::k(other), cell.facing));
+}
+
+fn valves(mut commands: Commands, mut used: MessageReader<crate::interact::UseBlock>, mut grids: Query<&mut VoxelGrid>, blocks: Query<(Entity, &BlockEntity, &crate::mech::Signal, Option<&ValveSignal>)>, mut sounds: MessageWriter<crate::sound::Sfx>) {
+    for u in used.read() {
+        if u.mech == Mech::Valve
+            && let Ok(mut g) = grids.get_mut(u.grid)
+        {
+            flip_valve(&mut g, u.cell);
+            sounds.write(crate::sound::sfx("toggle"));
+        }
+    }
+    for (e, b, sig, last) in &blocks {
+        if b.mech() != Some(Mech::Valve) {
+            continue;
+        }
+        let on = sig.0 != 0.0;
+        let Some(last) = last else {
+            commands.entity(e).insert(ValveSignal(on));
+            continue;
+        };
+        if on != last.0 {
+            commands.entity(e).insert(ValveSignal(on));
+            let shut = b.id.def().key.ends_with("_closed");
+            // Signal on → shut; signal gone → open again.
+            if on != shut
+                && let Ok(mut g) = grids.get_mut(b.grid)
+            {
+                flip_valve(&mut g, b.cell);
+            }
+        }
+    }
+}
+
 pub struct FluidsPlugin;
 
 impl Plugin for FluidsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (add_stores, simulate, show_levels).chain().after(MechSet)).add_systems(Update, (use_bucket.after(crate::interact::InteractSet), update_pipes));
+        app.add_systems(Update, (add_stores, simulate, show_levels).chain().after(MechSet))
+            .add_systems(Update, (use_bucket.after(crate::interact::InteractSet), update_pipes, valves.after(crate::interact::InteractSet).after(crate::logic::LogicSystems).before(MechSet)));
     }
 }
 
@@ -645,7 +701,9 @@ mod tests {
             let id = BlockId::k(key);
             let cell = IVec3::new(0, y, 0);
             let e = w.spawn((BlockEntity { grid: g, cell, id, facing }, Spin { rpm, angle: 0.0 }, Params::defaults(id))).id();
-            w.get_mut::<VoxelGrid>(g).unwrap().entities.insert(cell, e);
+            let mut grid = w.get_mut::<VoxelGrid>(g).unwrap();
+            grid.set(cell, crate::grid::Cell::new(id, facing));
+            grid.entities.insert(cell, e);
             e
         };
         let a = put(&mut w, -2, "fluid_tank", 2, 0.0);

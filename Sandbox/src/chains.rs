@@ -27,7 +27,7 @@ pub const MAX_LEN: i32 = 16;
 
 /// A chain run between two cogwheels and the side it passes each one on
 /// (+1 / −1, relative to the line from `a` to `b` turned about the axis).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChainLink {
     pub a: IVec3,
     pub b: IVec3,

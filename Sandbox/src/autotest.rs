@@ -248,11 +248,26 @@ pub fn build() -> Scenario {
     if want("links") {
         links(&mut steps);
     }
+    // Performance measurement: only on request (`AUTOTEST_ONLY=perf`).
+    if only.as_ref().is_some_and(|o| o.split(',').any(|x| x == "perf")) {
+        perf(&mut steps);
+    }
     if want("shapes") {
         shapes(&mut steps);
         showcase(&mut steps);
         doors(&mut steps);
         goggles(&mut steps);
+    }
+    if want("items") {
+        items(&mut steps);
+        workshop(&mut steps);
+    }
+    if want("roundtrip") {
+        roundtrip(&mut steps);
+    }
+    // Last: it replaces the whole world.
+    if want("saves") {
+        saves(&mut steps);
     }
     Scenario { steps, index: 0, ctx: Ctx::default(), total: 0.0 }
 }
@@ -1016,9 +1031,11 @@ fn guns(steps: &mut Vec<(String, StepFn)>) {
                 look_at(world, Vec3::new(11.5, 2.0, -8.5));
                 console(world, "fly");
             }
-            26 => click(world, MouseButton::Right, true),
-            27 => click(world, MouseButton::Right, false),
-            34 => {
+            // Aim again once landed (falling time depends on frame length).
+            40 => look_at(world, Vec3::new(11.5, 2.0, -8.5)),
+            42 => click(world, MouseButton::Right, true),
+            43 => click(world, MouseButton::Right, false),
+            50 => {
                 let c = contraptions(world);
                 ctx.check("glued cube (8 blocks) is physical, the unglued stone stays", c.len() == 1 && c[0].3 == 8 && !get_block(world, IVec3::new(13, 0, -10)).is_air(), format!("{:?}", c.iter().map(|c| c.3).collect::<Vec<_>>()));
                 return Step::Next;
@@ -1716,9 +1733,10 @@ fn fluids(steps: &mut Vec<(String, StepFn)>) {
                 click(world, MouseButton::Right, true);
             }
             9 => click(world, MouseButton::Right, false),
-            12 => click(world, MouseButton::Right, true),
-            13 => click(world, MouseButton::Right, false),
-            16 => {
+            // The port holds one bucket: wait until it has poured into the tank.
+            30 => click(world, MouseButton::Right, true),
+            31 => click(world, MouseButton::Right, false),
+            34 => {
                 let g = world_grid(world);
                 let port = store_at(world, g, o).map(|s| s.amount).unwrap_or(0.0);
                 let tank = store_at(world, g, o + IVec3::new(2, 0, 0)).map(|s| s.amount).unwrap_or(0.0);
@@ -1729,7 +1747,7 @@ fn fluids(steps: &mut Vec<(String, StepFn)>) {
             }
             _ => {}
         }
-        if ctx.frames > 16 && !ctx.vars.contains_key("ran") && ctx.t > ctx.vars["t0"] + 3.0 {
+        if ctx.frames > 34 && !ctx.vars.contains_key("ran") && ctx.t > ctx.vars["t0"] + 3.0 {
             let g = world_grid(world);
             let running = block_entity(world, eng).and_then(|e| world.get::<crate::engine::Engine>(e).copied()).is_some_and(|e| e.running);
             let r = rpm(world, eng + IVec3::X).abs();
@@ -2606,4 +2624,616 @@ fn help(steps: &mut Vec<(String, StepFn)>) {
         }
         Step::Wait
     }));
+}
+
+/// Big machine hall: frame time and entity counts before and after.
+fn perf(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("perf: 16 lines × 30 mechanisms", |world, ctx| {
+        let counts = |world: &mut World| {
+            let all = world.query::<Entity>().iter(world).count();
+            let meshes = world.query::<&Mesh3d>().iter(world).count();
+            let blocks = world.query::<&crate::mech::BlockEntity>().iter(world).count();
+            format!("entities {all}, meshes {meshes}, block entities {blocks}")
+        };
+        let report = |world: &World| crate::profile::report(world.resource::<crate::profile::Profile>()).replace('\n', " | ");
+        match ctx.frames {
+            1 => clear_area(world, IVec3::new(8, 0, -44), IVec3::new(44, 3, -8)),
+            90 => {
+                let c = counts(world);
+                info!("[PERF] empty: {c} :: {}", report(world));
+                for r in 0..16 {
+                    let z = -42 + r * 2;
+                    set_block(world, IVec3::new(10, 0, z), "creative_motor", 0);
+                    for x in 11..41 {
+                        let k = if x % 10 == 0 { "gearbox" } else if x % 2 == 0 { "cogwheel" } else { "shaft" };
+                        set_block(world, IVec3::new(x, 0, z), k, 0);
+                    }
+                }
+            }
+            240 => {
+                let c = counts(world);
+                info!("[PERF] machines: {c} :: {}", report(world));
+                ctx.check("perf numbers logged", true, c);
+                clear_area(world, IVec3::new(8, 0, -44), IVec3::new(44, 3, -8));
+            }
+            250 => return Step::Next,
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// World saves: build, save, load from disk, compare.
+fn saves(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("world save → load: blocks, settings, states, a machine, a bearing", |world, ctx| {
+        let name = "autotest_world";
+        let motor = IVec3::new(4, 0, -10);
+        let lever = IVec3::new(6, 0, -10);
+        let tank = IVec3::new(8, 0, -10);
+        let toggle = IVec3::new(12, 0, -12);
+        let bmotor = IVec3::new(18, 0, -10);
+        match ctx.frames {
+            1 => {
+                let _ = crate::save::delete(name);
+                console(world, &format!("world new {name}"));
+            }
+            6 => {
+                let ok = world.resource::<crate::save::CurrentWorld>().name.as_deref() == Some(name);
+                ctx.check("a new world is created and saved", ok && crate::save::path_of(name).exists(), "");
+                set_block(world, motor, "creative_motor", 0);
+                set_block(world, motor + IVec3::X, "shaft", 0);
+                set_block(world, lever, "lever", 2);
+                set_block(world, tank, "fluid_tank", 2);
+                // A small machine: three blocks glued to a physics toggle.
+                for x in 12..=14 {
+                    set_block(world, IVec3::new(x, 0, -12), "steel_block", 2);
+                }
+                set_block(world, toggle + IVec3::Y, "physics_toggle", 2);
+                let g = world_grid(world);
+                world.entity_mut(g).insert(crate::tools::glue::Glue(vec![(IVec3::new(12, 0, -12), IVec3::new(14, 1, -12)), (IVec3::new(17, 2, -10), IVec3::new(19, 2, -10))]));
+                // A bearing turning a glued bar.
+                set_block(world, bmotor, "creative_motor", 2);
+                set_block(world, bmotor + IVec3::Y, "mechanical_bearing", 2);
+                for x in 17..=19 {
+                    set_block(world, IVec3::new(x, 2, -10), "steel_block", 2);
+                }
+                teleport(world, Vec3::new(10.5, 0.0, -4.5));
+            }
+            10 => {
+                set_param(world, motor, "speed", 96.0);
+                set_param(world, bmotor, "speed", 8.0);
+                if let Some(e) = block_entity(world, lever) {
+                    world.get_mut::<crate::logic::LogicState>(e).unwrap().memory = true;
+                }
+                if let Some(e) = block_entity(world, tank) {
+                    world.get_mut::<crate::fluids::FluidStore>(e).unwrap().add(crate::fluids::Fluid::Water, 3000.0);
+                }
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: toggle + IVec3::Y, mech: crate::content::Mech::PhysicsToggle });
+                world.resource_mut::<crate::sky::Clock>().hours = 15.25;
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        // Let the machine settle and the bearing turn, then save.
+        if ctx.frames > 10 && !ctx.vars.contains_key("saved") && ctx.t > ctx.vars["t0"] + 2.0 {
+            let bodies = world.query_filtered::<(&crate::contraption::Contraption, &GlobalTransform), Without<crate::mounts::MountedOn>>().iter(world).map(|(c, t)| (c.mass, t.translation())).collect::<Vec<_>>();
+            ctx.check("before saving: one machine and one moving part", bodies.len() == 1 && moving_parts(world).len() == 1, format!("{} bodies, {} parts", bodies.len(), moving_parts(world).len()));
+            if let Some((m, p)) = bodies.first() {
+                ctx.vars.insert("mass".into(), *m);
+                ctx.vars.insert("bx".into(), p.x);
+                ctx.vars.insert("by".into(), p.y);
+            }
+            console(world, "world save");
+            ctx.vars.insert("saved".into(), ctx.t);
+        }
+        if ctx.vars.get("saved").is_some_and(|t| ctx.t > t + 0.5) && !ctx.vars.contains_key("loaded") {
+            // Mess the world up, then load it back from the disk.
+            set_param(world, motor, "speed", 8.0);
+            set_block(world, tank, "air", 2);
+            teleport(world, Vec3::new(-20.5, 0.0, 20.5));
+            world.resource_mut::<crate::sky::Clock>().hours = 3.0;
+            console(world, &format!("world load {name}"));
+            ctx.vars.insert("loaded".into(), ctx.t);
+        }
+        if ctx.vars.get("loaded").is_some_and(|t| ctx.t > t + 1.5) {
+            let speed = block_entity(world, motor).and_then(|e| world.get::<crate::mech::Params>(e).map(|p| p.0[0]));
+            ctx.check("settings come back (motor 96 RPM)", speed == Some(96.0), format!("{speed:?}"));
+            let lever_on = block_entity(world, lever).and_then(|e| world.get::<crate::logic::LogicState>(e).copied()).is_some_and(|s| s.memory);
+            ctx.check("the lever is still on", lever_on, "");
+            let water = store_at(world, world_grid(world), tank).map(|s| s.amount).unwrap_or(0.0);
+            ctx.check("the tank keeps its 3000 mB of water", (water - 3000.0).abs() < 1.0, format!("{water}"));
+            let bodies = world.query_filtered::<(&crate::contraption::Contraption, &GlobalTransform), Without<crate::mounts::MountedOn>>().iter(world).map(|(c, t)| (c.mass, t.translation())).collect::<Vec<_>>();
+            let same = bodies.first().is_some_and(|(m, p)| *m == ctx.vars["mass"] && (p.x - ctx.vars["bx"]).abs() < 0.3 && (p.y - ctx.vars["by"]).abs() < 0.5);
+            ctx.check("the machine is a physical body again, where it was", bodies.len() == 1 && same, format!("{bodies:?}"));
+            let parts = moving_parts(world);
+            ctx.check("the bearing's part is hinged to the world again", parts.len() == 1 && parts[0].1 == world_grid(world), format!("{}", parts.len()));
+            let (feet, _) = player(world);
+            ctx.check("the player stands where they saved", (feet.x - 10.5).abs() < 1.0 && (feet.z + 4.5).abs() < 1.0, format!("{feet:?}"));
+            let h = world.resource::<crate::sky::Clock>().hours;
+            ctx.check("time of day comes back", (h - 15.25).abs() < 0.2, format!("{h}"));
+            let listed = crate::save::list().iter().any(|(n, _)| n == name);
+            ctx.check("the world is in the list", listed, "");
+            screenshot(world, "9o_loaded_world");
+            world.resource_mut::<NextState<Ui>>().set(Ui::Worlds);
+            ctx.vars.insert("menu".into(), ctx.t);
+            ctx.vars.remove("loaded");
+        }
+        if ctx.vars.get("menu").is_some_and(|t| ctx.t > t + 0.6) && !ctx.vars.contains_key("shot") {
+            screenshot(world, "9p_worlds_screen");
+            ctx.vars.insert("shot".into(), ctx.t);
+        }
+        if ctx.vars.get("shot").is_some_and(|t| ctx.t > t + 0.3) {
+            world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+            let _ = crate::save::delete(name);
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+}
+
+/// Physics on → off, three times: nothing may change, move or fly away.
+fn roundtrip(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("physics round trips keep every block, setting and state", |world, ctx| {
+        let o = IVec3::new(30, 0, -50);
+        let toggle = o + IVec3::new(1, 1, 0);
+        let layout: Vec<(IVec3, &str, u8)> = vec![
+            (o, "steel_block", 2),
+            (o + IVec3::X, "steel_block", 2),
+            (o + IVec3::X * 2, "steel_block", 2),
+            (o + IVec3::X * 3, "steel_block", 2),
+            (toggle, "physics_toggle", 2),
+            (o + IVec3::new(0, 1, 0), "creative_motor", 0),
+            (o + IVec3::new(2, 1, 0), "fluid_tank", 2),
+            (o + IVec3::new(3, 1, 0), "lever", 2),
+            (o + IVec3::new(0, 1, 1), "steel_block", 2),
+            (o + IVec3::new(1, 1, 1), "shaft", 0),
+            (o + IVec3::new(2, 1, 1), "cogwheel", 0),
+        ];
+        let lay = layout.clone();
+        let check_world = move |world: &mut World| -> (bool, String) {
+            let bad: Vec<String> = lay.iter().filter(|(c, k, f)| { let cell = get_block(world, *c); cell.id != BlockId::k(k) || cell.facing != *f }).map(|(c, k, _)| format!("{k}@{c}")).collect();
+            (bad.is_empty(), bad.join(", "))
+        };
+        let bodies = |world: &mut World| world.query_filtered::<Entity, With<crate::contraption::Contraption>>().iter(world).count();
+        let round = ctx.vars.get("round").copied().unwrap_or(0.0) as i32;
+        match ctx.frames {
+            1 => {
+                clear_bodies(world);
+                clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(5, 3, 3));
+                for (c, k, f) in &layout {
+                    set_block(world, *c, k, *f);
+                }
+                let g = world_grid(world);
+                let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                glue.push((o, o + IVec3::new(3, 1, 1)));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+                teleport(world, Vec3::new(32.5, 0.0, -44.5));
+                look_at(world, o.as_vec3() + Vec3::new(2.0, 1.0, 0.5));
+            }
+            5 => {
+                set_param(world, o + IVec3::new(0, 1, 0), "speed", 48.0);
+                if let Some(e) = block_entity(world, o + IVec3::new(2, 1, 0)) {
+                    world.get_mut::<crate::fluids::FluidStore>(e).unwrap().add(crate::fluids::Fluid::Diesel, 2000.0);
+                }
+                if let Some(e) = block_entity(world, o + IVec3::new(3, 1, 0)) {
+                    world.get_mut::<crate::logic::LogicState>(e).unwrap().memory = true;
+                }
+                ctx.vars.insert("phase_t".into(), ctx.t);
+                ctx.vars.insert("phase".into(), 0.0);
+            }
+            _ => {}
+        }
+        if ctx.frames <= 5 {
+            return Step::Wait;
+        }
+        let phase = ctx.vars["phase"] as i32;
+        let since = ctx.t - ctx.vars["phase_t"];
+        let next = |ctx: &mut Ctx, p: i32| {
+            ctx.vars.insert("phase".into(), p as f32);
+            ctx.vars.insert("phase_t".into(), ctx.t);
+        };
+        match phase {
+            // On.
+            0 if since > 0.3 => {
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: toggle, mech: crate::content::Mech::PhysicsToggle });
+                next(ctx, 1);
+            }
+            // Physical for a second, then off.
+            1 if since > 1.2 => {
+                let n = bodies(world);
+                ctx.check(&format!("round {}: the machine is one body", round + 1), n == 1, format!("{n}"));
+                let body = world.query_filtered::<Entity, With<crate::contraption::Contraption>>().iter(world).next();
+                if let Some(b) = body {
+                    let cell = world.get::<VoxelGrid>(b).map(|g| g.cells().into_iter().find(|(_, c)| c.id == BlockId::k("physics_toggle")).map(|(c, _)| c)).flatten();
+                    if let Some(c) = cell {
+                        world.write_message(crate::interact::UseBlock { grid: b, cell: c, mech: crate::content::Mech::PhysicsToggle });
+                    }
+                }
+                next(ctx, 2);
+            }
+            2 if since > 0.6 => {
+                let (ok, bad) = check_world(world);
+                ctx.check(&format!("round {}: every block is back in its cell", round + 1), ok && bodies(world) == 0, bad);
+                let speed = block_entity(world, o + IVec3::new(0, 1, 0)).and_then(|e| world.get::<crate::mech::Params>(e).map(|p| p.0[0]));
+                let fuel = store_at(world, world_grid(world), o + IVec3::new(2, 1, 0)).map(|s| s.amount).unwrap_or(0.0);
+                let lever = block_entity(world, o + IVec3::new(3, 1, 0)).and_then(|e| world.get::<crate::logic::LogicState>(e).copied()).is_some_and(|s| s.memory);
+                ctx.check(&format!("round {}: settings, fuel and the lever stay", round + 1), speed == Some(48.0) && (fuel - 2000.0).abs() < 1.0 && lever, format!("{speed:?} {fuel} {lever}"));
+                let g = world_grid(world);
+                let glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.iter().filter(|b| b.0 == o).count()).unwrap_or(0);
+                ctx.check(&format!("round {}: the glue comes back once", round + 1), glue == 1, format!("{glue} boxes"));
+                let fast = world.query::<&avian3d::prelude::LinearVelocity>().iter(world).filter(|v| v.0.length() > 2.0).count();
+                ctx.check(&format!("round {}: nothing flies away", round + 1), fast == 0, format!("{fast} fast bodies"));
+                ctx.vars.insert("round".into(), (round + 1) as f32);
+                next(ctx, if round + 1 < 3 { 0 } else { 3 });
+            }
+            // The player in the way is detected.
+            3 => {
+                let target = IVec3::new(32, 0, -44);
+                teleport(world, target.as_vec3() + Vec3::new(0.5, 0.0, 0.5));
+                next(ctx, 4);
+            }
+            4 if since > 0.3 => {
+                let g = world_grid(world);
+                let (feet, _) = player(world);
+                let cell = (feet + Vec3::Y * 0.5).floor().as_ivec3();
+                let who = crate::assembly::bodies_in(world, Entity::PLACEHOLDER, g, &[cell]);
+                let p = world.query_filtered::<Entity, With<Player>>().iter(world).next();
+                ctx.check("the player standing where blocks would land is found", p.is_some_and(|p| who.contains(&p)), format!("{who:?}"));
+                teleport(world, Vec3::new(32.5, 0.0, -44.5));
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: toggle, mech: crate::content::Mech::PhysicsToggle });
+                next(ctx, 5);
+            }
+            // Sunk 0.4 into the floor: it still comes back (a block higher).
+            5 if since > 1.0 => {
+                if let Some(b) = world.query_filtered::<Entity, With<crate::contraption::Contraption>>().iter(world).next() {
+                    let mut t = world.get::<Transform>(b).copied().unwrap_or_default();
+                    t.translation.y -= 0.4;
+                    world.entity_mut(b).insert((t, GlobalTransform::from(t)));
+                    let cell = world.get::<VoxelGrid>(b).and_then(|g| g.cells().into_iter().find(|(_, c)| c.id == BlockId::k("physics_toggle")).map(|(c, _)| c));
+                    if let Some(c) = cell {
+                        world.write_message(crate::interact::UseBlock { grid: b, cell: c, mech: crate::content::Mech::PhysicsToggle });
+                    }
+                }
+                next(ctx, 6);
+            }
+            6 if since > 0.6 => {
+                let n = bodies(world);
+                let mut steel = Vec::new();
+                for x in o.x - 1..=o.x + 5 {
+                    for y in -1..4 {
+                        for z in o.z - 2..=o.z + 3 {
+                            if get_block(world, IVec3::new(x, y, z)).id == BlockId::k("steel_block") {
+                                steel.push(IVec3::new(x, y, z));
+                            }
+                        }
+                    }
+                }
+                ctx.check("a machine sunk into the floor still goes back into the grid", n == 0 && steel.len() == 5, format!("{n} bodies, steel at {steel:?}"));
+                screenshot(world, "9q_roundtrip");
+                clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(5, 3, 3));
+                clear_bodies(world);
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// Storages, item tubes and the drive.
+fn items(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("item tubes: a drive moves stone from a chest to a barrel", |world, ctx| {
+        let o = IVec3::new(40, 0, -40);
+        let chest = o;
+        let drive = o + IVec3::new(2, 0, 0);
+        let barrel = o + IVec3::new(4, 1, 0);
+        let count = |world: &mut World, c: IVec3| -> u32 {
+            block_entity(world, c).and_then(|e| world.get::<crate::storage::ItemStore>(e).map(|s| s.slots.iter().flatten().map(|x| x.count).sum())).unwrap_or(0)
+        };
+        match ctx.frames {
+            1 => {
+                clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(8, 3, 4));
+                set_block(world, chest, "chest", 4);
+                set_block(world, o + IVec3::X, "item_tube", 0);
+                set_block(world, drive, "item_drive", 0);
+                set_block(world, o + IVec3::new(3, 0, 0), "item_tube", 0);
+                set_block(world, o + IVec3::new(3, 1, 0), "item_tube", 2);
+                set_block(world, barrel, "barrel", 2);
+                // Motor → cog beside the drive (same axis): the ring meshes.
+                set_block(world, drive + IVec3::new(-1, 0, 1), "creative_motor", 0);
+                set_block(world, drive + IVec3::Z, "cogwheel", 0);
+                // Three joined containers.
+                for x in 6..=8 {
+                    set_block(world, o + IVec3::new(x, 0, 3), "item_container", 2);
+                }
+                teleport(world, o.as_vec3() + Vec3::new(2.5, 0.0, 3.6));
+                look_at(world, o.as_vec3() + Vec3::new(2.5, 0.6, 0.5));
+            }
+            4 => {
+                if let Some(e) = block_entity(world, chest) {
+                    let mut st = world.get_mut::<crate::storage::ItemStore>(e).unwrap();
+                    st.insert(crate::inventory::Stack::new(crate::content::ItemId::k("stone"), 64));
+                    st.insert(crate::inventory::Stack::new(crate::content::ItemId::k("planks"), 32));
+                }
+                set_param(world, drive + IVec3::new(-1, 0, 1), "speed", 64.0);
+                ctx.vars.insert("t0".into(), ctx.t);
+            }
+            _ => {}
+        }
+        if ctx.frames > 4 && !ctx.vars.contains_key("mid") && ctx.t > ctx.vars["t0"] + 1.2 {
+            let packets = world.query::<&crate::tubes::Packet>().iter(world).count();
+            let rpm = block_entity(world, drive).and_then(|e| world.get::<crate::mech::Spin>(e).map(|s| s.rpm)).unwrap_or(0.0);
+            ctx.check("the drive turns (its ring meshes with the cog)", rpm.abs() == 64.0, format!("{rpm}"));
+            ctx.check("packets travel in the tubes", packets > 0, format!("{packets}"));
+            screenshot(world, "9r_item_tubes");
+            ctx.vars.insert("mid".into(), ctx.t);
+        }
+        if ctx.vars.get("mid").is_some_and(|t| ctx.t > t + 6.0) && !ctx.vars.contains_key("done") {
+            let (a, b) = (count(world, chest), count(world, barrel));
+            let flying: u32 = world.query::<&crate::tubes::Packet>().iter(world).map(|p| p.stack.count).sum();
+            ctx.check("items arrive in the barrel, none lost", b > 0 && a + b + flying == 96, format!("chest {a}, barrel {b}, on the way {flying}"));
+            // Open the chest: its slots above the inventory.
+            let g = world_grid(world);
+            world.write_message(crate::interact::UseBlock { grid: g, cell: chest, mech: crate::content::Mech::Chest });
+            ctx.vars.insert("done".into(), ctx.t);
+        }
+        if ctx.vars.get("done").is_some_and(|t| ctx.t > t + 0.8) && !ctx.vars.contains_key("ui") {
+            let open = world.resource::<crate::storage::OpenStore>().len();
+            let ui = *world.resource::<State<Ui>>().get();
+            ctx.check("RMB opens the chest above the inventory", ui == Ui::Inventory && open == 27, format!("{ui:?} {open}"));
+            screenshot(world, "9s_chest_open");
+            ctx.vars.insert("ui".into(), ctx.t);
+        }
+        if ctx.vars.get("ui").is_some_and(|t| ctx.t > t + 0.5) && !ctx.vars.contains_key("cont") {
+            world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+            let g = world_grid(world);
+            world.write_message(crate::interact::UseBlock { grid: g, cell: o + IVec3::new(7, 0, 3), mech: crate::content::Mech::Container });
+            ctx.vars.insert("cont".into(), ctx.t);
+        }
+        if ctx.vars.get("cont").is_some_and(|t| ctx.t > t + 0.6) {
+            let open = world.resource::<crate::storage::OpenStore>().len();
+            ctx.check("three containers open as one storage (108 slots)", open == 108, format!("{open}"));
+            world.resource_mut::<NextState<Ui>>().set(Ui::Game);
+            clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(8, 3, 4));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+}
+
+/// Hand crank, winch + rope, valve, snorkel, a three-module diesel.
+fn workshop(steps: &mut Vec<(String, StepFn)>) {
+    steps.push(step("hand crank turns a shaft while held", |world, ctx| {
+        let shaft = IVec3::new(40, 0, -30);
+        match ctx.frames {
+            1 => {
+                clear_area(world, IVec3::new(38, 0, -32), IVec3::new(44, 2, -28));
+                set_block(world, shaft, "shaft", 0);
+                set_block(world, shaft + IVec3::X, "hand_crank", 0);
+            }
+            4..=20 => {
+                if let Some(e) = block_entity(world, shaft + IVec3::X)
+                    && let Some(mut c) = world.get_mut::<crate::ropes::Crank>(e)
+                {
+                    c.held = true;
+                }
+                if ctx.frames == 20 {
+                    let r = rpm(world, shaft).abs();
+                    ctx.check("held: the shaft turns at 32 RPM", r == 32.0, format!("{r}"));
+                }
+            }
+            24 => {
+                let r = rpm(world, shaft).abs();
+                ctx.check("let go: it stops", r == 0.0, format!("{r}"));
+                clear_area(world, IVec3::new(38, 0, -32), IVec3::new(44, 2, -28));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("winch and rope lift a machine", |world, ctx| {
+        let base = IVec3::new(50, 0, -20);
+        let winch = base + IVec3::new(0, 6, 0);
+        let crate_c = base;
+        let anchor = crate_c + IVec3::new(0, 2, 0);
+        match ctx.frames {
+            1 => {
+                clear_bodies(world);
+                clear_area(world, base - IVec3::new(3, 0, 3), base + IVec3::new(3, 8, 3));
+                // A gantry: a column with an arm, the winch under the arm.
+                for y in 0..8 {
+                    set_block(world, base + IVec3::new(2, y, 0), "steel_block", 2);
+                }
+                set_block(world, base + IVec3::new(1, 7, 0), "steel_block", 2);
+                set_block(world, base + IVec3::new(0, 7, 0), "steel_block", 2);
+                set_block(world, winch, "winch", 3);
+                // A glued load: two steel blocks + the physics toggle, anchor on top.
+                set_block(world, crate_c, "steel_block", 2);
+                set_block(world, crate_c + IVec3::Y, "physics_toggle", 2);
+                set_block(world, anchor, "rope_anchor", 3);
+                let g = world_grid(world);
+                let mut glue = world.get::<crate::tools::glue::Glue>(g).map(|g| g.0.clone()).unwrap_or_default();
+                glue.push((crate_c, anchor));
+                world.entity_mut(g).insert(crate::tools::glue::Glue(glue));
+                teleport(world, base.as_vec3() + Vec3::new(0.5, 0.0, 8.5));
+                look_at(world, base.as_vec3() + Vec3::new(0.5, 3.0, 0.5));
+            }
+            4 => {
+                // Drive the drum from its side with a motor.
+                let b = block_entity(world, winch).and_then(|e| world.get::<crate::mech::BlockEntity>(e).copied());
+                if let Some(b) = b {
+                    let side = crate::mech::side_axis(&b);
+                    set_block(world, winch + side, "creative_motor", crate::grid::facing_of(-side));
+                    ctx.vars.insert("sx".into(), side.x as f32);
+                    ctx.vars.insert("sz".into(), side.z as f32);
+                }
+                let (w, a) = (block_entity(world, winch), block_entity(world, anchor));
+                if let (Some(w), Some(a)) = (w, a) {
+                    world.entity_mut(w).insert(crate::ropes::RopeEnd::new(a, 4.0));
+                }
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: crate_c + IVec3::Y, mech: crate::content::Mech::PhysicsToggle });
+            }
+            10 => {
+                let side = IVec3::new(ctx.vars["sx"] as i32, 0, ctx.vars["sz"] as i32);
+                set_param(world, winch + side, "speed", 32.0);
+                ctx.vars.insert("t0".into(), ctx.t);
+                ctx.vars.insert("y0".into(), body_y(world));
+            }
+            _ => {}
+        }
+        if ctx.frames > 10 && !ctx.vars.contains_key("dir") && ctx.t > ctx.vars["t0"] + 1.0 {
+            // Reeling out instead of in? turn the motor around.
+            let len = block_entity(world, winch).and_then(|e| world.get::<crate::ropes::RopeEnd>(e).map(|r| r.length)).unwrap_or(0.0);
+            if len > 4.0 {
+                let side = IVec3::new(ctx.vars["sx"] as i32, 0, ctx.vars["sz"] as i32);
+                set_param(world, winch + side, "direction", 1.0);
+            }
+            ctx.vars.insert("dir".into(), ctx.t);
+        }
+        if ctx.vars.get("dir").is_some_and(|t| ctx.t > t + 6.0) && !ctx.vars.contains_key("shot") {
+            let y = body_y(world);
+            let joint = world.query::<&avian3d::prelude::DistanceJoint>().iter(world).count();
+            ctx.check("the rope is a joint between the world and the load", joint == 1, format!("{joint}"));
+            let len = block_entity(world, winch).and_then(|e| world.get::<crate::ropes::RopeEnd>(e).map(|r| r.length)).unwrap_or(-1.0);
+            let r = rpm(world, winch);
+            ctx.check("reeling in lifts the load", y > ctx.vars["y0"] + 0.8, format!("{:.2} → {y:.2}, rope {len:.2} m, drum {r} RPM", ctx.vars["y0"]));
+            screenshot(world, "9t_winch");
+            ctx.vars.insert("shot".into(), ctx.t);
+        }
+        if ctx.vars.get("shot").is_some_and(|t| ctx.t > t + 0.5) {
+            clear_bodies(world);
+            clear_area(world, base - IVec3::new(3, 0, 3), base + IVec3::new(3, 8, 3));
+            return Step::Next;
+        }
+        Step::Wait
+    }));
+    steps.push(step("valve: open passes water, shut (or a signal) stops it", |world, ctx| {
+        let o = IVec3::new(40, 0, -24);
+        let tank = o + IVec3::new(4, 0, 0);
+        let valve = o + IVec3::new(2, 0, 0);
+        let amount = |world: &mut World| store_at(world, world_grid(world), tank).map(|s| s.amount).unwrap_or(0.0);
+        match ctx.frames {
+            1 => {
+                clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(6, 2, 2));
+                set_block(world, o, "creative_tank", 2);
+                set_block(world, o + IVec3::X, "fluid_pipe", 0);
+                set_block(world, valve, "fluid_valve", 0);
+                set_block(world, o + IVec3::new(3, 0, 0), "fluid_pipe", 0);
+                set_block(world, tank, "fluid_tank", 2);
+            }
+            4 => set_param(world, o, "fluid", 0.0),
+            30 => {
+                let a = amount(world);
+                ctx.check("open: water flows into the tank", a > 100.0, format!("{a}"));
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: valve, mech: crate::content::Mech::Valve });
+            }
+            36 => {
+                let shut = get_block(world, valve).id == BlockId::k("fluid_valve_closed");
+                ctx.check("RMB turns the handwheel: shut", shut, "");
+                ctx.vars.insert("a1".into(), amount(world));
+            }
+            56 => {
+                let a = amount(world);
+                ctx.check("shut: nothing flows", (a - ctx.vars["a1"]).abs() < 1.0, format!("{} → {a}", ctx.vars["a1"]));
+                // Open again, then shut it with a lever's signal.
+                let g = world_grid(world);
+                world.write_message(crate::interact::UseBlock { grid: g, cell: valve, mech: crate::content::Mech::Valve });
+            }
+            60 => {
+                set_block(world, valve + IVec3::Y, "lever", 3);
+            }
+            64 => {
+                if let Some(e) = block_entity(world, valve + IVec3::Y) {
+                    world.get_mut::<crate::logic::LogicState>(e).unwrap().memory = true;
+                }
+            }
+            72 => {
+                let shut = get_block(world, valve).id == BlockId::k("fluid_valve_closed");
+                ctx.check("a lever's signal shuts it", shut, format!("{:?}", get_block(world, valve).id.def().key));
+                if let Some(e) = block_entity(world, valve + IVec3::Y) {
+                    world.get_mut::<crate::logic::LogicState>(e).unwrap().memory = false;
+                }
+            }
+            80 => {
+                let open = get_block(world, valve).id == BlockId::k("fluid_valve");
+                ctx.check("signal gone: open again", open, "");
+                screenshot(world, "9u_valve");
+            }
+            86 => {
+                clear_area(world, o - IVec3::new(1, 0, 2), o + IVec3::new(6, 2, 2));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+    steps.push(step("snorkel and a three-module diesel", |world, ctx| {
+        let o = IVec3::new(40, 0, -14);
+        // Three modules facing +Z, the output shaft in front.
+        let mods = [o, o + IVec3::Z, o + IVec3::Z * 2];
+        let shaft = o + IVec3::Z * 3;
+        match ctx.frames {
+            1 => {
+                clear_area(world, o - IVec3::new(2, 0, 2), o + IVec3::new(3, 5, 5));
+                for m in mods {
+                    set_block(world, m, "diesel_engine", 4);
+                }
+                set_block(world, shaft, "shaft", 4);
+                teleport(world, o.as_vec3() + Vec3::new(3.2, 0.0, 3.8));
+                look_at(world, o.as_vec3() + Vec3::new(0.5, 0.6, 1.5));
+            }
+            4 => {
+                for m in mods {
+                    if let Some(e) = block_entity(world, m) {
+                        world.get_mut::<crate::fluids::FluidStore>(e).unwrap().add(crate::fluids::Fluid::Diesel, 200.0);
+                    }
+                }
+            }
+            12 => {
+                let r = rpm(world, shaft).abs();
+                let cap = block_entity(world, shaft).and_then(|e| world.get::<crate::mech::NetState>(e).map(|n| n.capacity)).unwrap_or(0.0);
+                ctx.check("three modules are one engine: one output", r == 64.0, format!("{r}"));
+                ctx.check("with three times the power", cap == crate::engine::POWER * 3.0, format!("{cap}"));
+                let hidden = block_entity(world, mods[1]).map(|e| {
+                    let kids: Vec<Entity> = world.get::<Children>(e).map(|c| c.iter().collect()).unwrap_or_default();
+                    kids.iter().filter(|k| world.get::<crate::style::LayerNode>(**k).is_some_and(|l| matches!(l.0, crate::style::Layer::CapFront | crate::style::Layer::CapBack)) && world.get::<Visibility>(**k) == Some(&Visibility::Hidden)).count()
+                });
+                ctx.check("the middle module shows no end caps", hidden == Some(2), format!("{hidden:?}"));
+                screenshot(world, "9v_diesel_row");
+            }
+            // Snorkel: block the middle exhaust, give it a pipe to the air.
+            15 => set_block(world, mods[1] + IVec3::Y, "stone", 2),
+            23 => {
+                let stall = block_entity(world, mods[1]).and_then(|e| world.get::<crate::engine::Engine>(e).and_then(|g| g.stall));
+                ctx.check("exhaust blocked: that module has no air", stall == Some(crate::engine::Stall::NoAir), format!("{stall:?}"));
+                let cap = block_entity(world, shaft).and_then(|e| world.get::<crate::mech::NetState>(e).map(|n| n.capacity)).unwrap_or(0.0);
+                ctx.check("the row runs on with two modules' power", cap == crate::engine::POWER * 2.0, format!("{cap}"));
+                for y in 0..4 {
+                    set_block(world, mods[1] + IVec3::new(1, y, 0), "fluid_pipe", 2);
+                }
+            }
+            31 => {
+                let stall = block_entity(world, mods[1]).and_then(|e| world.get::<crate::engine::Engine>(e).and_then(|g| g.stall));
+                ctx.check("a snorkel pipe up into the air: it breathes again", stall.is_none(), format!("{stall:?}"));
+                screenshot(world, "9w_snorkel");
+            }
+            36 => {
+                clear_area(world, o - IVec3::new(2, 0, 2), o + IVec3::new(3, 5, 5));
+                return Step::Next;
+            }
+            _ => {}
+        }
+        Step::Wait
+    }));
+}
+
+/// Height of the first physical body (or −100).
+fn body_y(world: &mut World) -> f32 {
+    world.query_filtered::<&GlobalTransform, (With<crate::contraption::Contraption>, Without<crate::mounts::MountedOn>)>().iter(world).next().map(|t| t.translation().y).unwrap_or(-100.0)
 }

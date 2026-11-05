@@ -30,6 +30,8 @@ pub enum Ui {
     Settings,
     /// Texture editor (from the pause).
     Paint,
+    /// Saved worlds (main menu → «Играть»).
+    Worlds,
 }
 
 /// Keys a control-panel channel can use (index 0 = none). Shift leaves
@@ -80,6 +82,13 @@ impl Plugin for CorePlugin {
         app.init_state::<Ui>()
             .init_resource::<Scripted>()
             .add_message::<Toast>()
+            .add_systems(Startup, limit_catch_up)
             .add_systems(Update, cursor_follows_ui);
     }
+}
+
+/// A slow frame runs at most ~6 physics steps to catch up (100 ms), not
+/// 16: on a slow machine the game slows down instead of spiralling.
+fn limit_catch_up(mut time: ResMut<Time<Virtual>>) {
+    time.set_max_delta(std::time::Duration::from_millis(100));
 }

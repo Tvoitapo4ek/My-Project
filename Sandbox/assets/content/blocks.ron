@@ -120,6 +120,12 @@
      ]),
     (key: "fluid_pipe", name: "Труба", category: "mechanisms", mech: Some(Pipe), placement: Face,
      collision: Box(0.44, 1.0, 0.44), mass: 10.0),
+    // RMB turns the handwheel: open (passes along its axis) / shut. A
+    // logic signal shuts it while it lasts.
+    (key: "fluid_valve", name: "Вентиль", category: "mechanisms", mech: Some(Valve), placement: Face,
+     collision: Box(0.5, 1.0, 0.5), mass: 15.0),
+    (key: "fluid_valve_closed", name: "Вентиль (закрыт)", category: "mechanisms", mech: Some(Valve), placement: Face,
+     collision: Box(0.5, 1.0, 0.5), mass: 15.0, hidden: true),
     (key: "cased_pipe", name: "Труба в кожухе", category: "mechanisms", mech: Some(CasedPipe), placement: Face, mass: 10.0),
     (key: "cased_shaft", name: "Вал в кожухе", category: "mechanisms", mech: Some(CasedShaft), placement: Face, mass: 40.0),
     // Driven like a cogwheel (axis = facing); moves |RPM| × 8 mB/s.
@@ -244,4 +250,27 @@
     (key: "lamp", name: "Лампа", category: "logic", mech: Some(Lamp), placement: Face,
      collision: Box(0.7, 0.7, 0.7), mass: 10.0),
     (key: "physics_toggle", name: "Переключатель физики", category: "control", mech: Some(PhysicsToggle), mass: 80.0),
+    // --- storage and item tubes ---------------------------------------------
+    // RMB opens them. Containers next to each other are one storage.
+    (key: "chest", name: "Сундук", category: "logistics", mech: Some(Chest), placement: Horizontal,
+     collision: Box(0.88, 0.88, 0.88), mass: 40.0, buoyancy: Some(300.0)),
+    (key: "barrel", name: "Бочка", category: "logistics", mech: Some(Barrel), placement: Face,
+     collision: Box(0.86, 1.0, 0.86), mass: 30.0, buoyancy: Some(300.0)),
+    (key: "item_container", name: "Контейнер", category: "logistics", mech: Some(Container), mass: 80.0, buoyancy: Some(400.0)),
+    // Tubes join storages; a drive turned by a shaft moves items from the
+    // tubes behind it to the tubes in front, |RPM| / 16 packets a second.
+    (key: "item_tube", name: "Предметная труба", category: "logistics", mech: Some(ItemTube), placement: Face,
+     collision: Box(0.62, 1.0, 0.62), mass: 12.0),
+    // Hold RMB on it: 32 RPM into the block behind it.
+    (key: "hand_crank", name: "Ручка", category: "mechanisms", mech: Some(HandCrank), placement: Face,
+     collision: Box(0.5, 0.5, 0.5), mass: 10.0),
+    // The drum is turned from its sides; the rope leaves from its face.
+    (key: "winch", name: "Лебёдка", category: "mechanisms", mech: Some(Winch), placement: Face, mass: 90.0),
+    (key: "rope_anchor", name: "Крепление верёвки", category: "mechanisms", mech: Some(RopeAnchor), placement: Attach,
+     collision: None, mass: 5.0),
+    (key: "item_drive", name: "Конвейерный привод", category: "logistics", mech: Some(ItemDrive), placement: Face, mass: 60.0,
+     params: [
+        (key: "direction", label: "Направление", kind: Choice(["Вперёд", "Назад"]), default: 0.0),
+        (key: "batch", label: "Пачка", kind: Number(min: 1.0, max: 64.0, step: 1.0, unit: "шт."), default: 8.0),
+     ]),
 ]

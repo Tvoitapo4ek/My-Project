@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
-use crate::content::{BlockId, Collision, Shape};
+use crate::content::{BlockId, Collision, Mech, Shape};
 
 pub const CHUNK: i32 = 16;
 const VOLUME: usize = (CHUNK * CHUNK * CHUNK) as usize;
@@ -86,6 +86,9 @@ pub struct VoxelGrid {
     pub entities: HashMap<IVec3, Entity>,
     /// Cells changed since the block-entity sync last ran.
     pub changed: Vec<IVec3>,
+    /// Mechanism cells by kind (kept by `set`): systems visit only their
+    /// own blocks instead of every block entity of the grid.
+    pub by_mech: HashMap<Mech, HashSet<IVec3>>,
 }
 
 impl VoxelGrid {
@@ -105,6 +108,14 @@ impl VoxelGrid {
         }
         ch.cells[i] = cell;
         self.changed.push(c);
+        if let Some(m) = (!old.is_air()).then(|| old.id.def().mech).flatten()
+            && let Some(set) = self.by_mech.get_mut(&m)
+        {
+            set.remove(&c);
+        }
+        if let Some(m) = (!cell.is_air()).then(|| cell.id.def().mech).flatten() {
+            self.by_mech.entry(m).or_default().insert(c);
+        }
         match (old.is_air(), cell.is_air()) {
             (true, false) => ch.count += 1,
             (false, true) => ch.count -= 1,
@@ -119,6 +130,16 @@ impl VoxelGrid {
             }
         }
         old
+    }
+
+    /// Cells holding any of these mechanisms.
+    pub fn cells_of<'a>(&'a self, kinds: &'a [Mech]) -> impl Iterator<Item = IVec3> + 'a {
+        kinds.iter().filter_map(|m| self.by_mech.get(m)).flatten().copied()
+    }
+
+    /// Block entities of these mechanisms: (cell, entity).
+    pub fn entities_of<'a>(&'a self, kinds: &'a [Mech]) -> impl Iterator<Item = (IVec3, Entity)> + 'a {
+        self.cells_of(kinds).filter_map(|c| self.entities.get(&c).map(|e| (c, *e)))
     }
 
     /// Every non-air cell.

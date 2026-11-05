@@ -56,7 +56,8 @@ pub fn submerged(depth_of_centre: f32) -> f32 {
 const DRAG_UP: f32 = 300.0;
 const DRAG_SIDE: f32 = 60.0;
 
-fn buoyancy(water: Res<Water>, gravity: Res<Gravity>, mut bodies: Query<(&VoxelGrid, &GlobalTransform, &ComputedMass, Forces), With<Contraption>>, stores: Query<&FluidStore>) {
+pub fn buoyancy(water: Res<Water>, gravity: Res<Gravity>, mut bodies: Query<(&VoxelGrid, &GlobalTransform, &ComputedMass, Forces), With<Contraption>>, stores: Query<&FluidStore>) {
+    let _t = crate::profile::scope("плавучесть");
     let g = gravity.0.length();
     for (grid, gt, mass, mut forces) in &mut bodies {
         if !mass.value().is_finite() || mass.value() < 1.0 {

@@ -140,14 +140,7 @@ fn assemble(world: &mut World, e: Entity, b: &BlockEntity, value: f32) -> Option
     let lv = world.get::<LinearVelocity>(b.grid).map(|v| v.0).unwrap_or_default();
     let av = world.get::<AngularVelocity>(b.grid).map(|v| v.0).unwrap_or_default();
     let sub = split_off(world, b.grid, &group, false);
-    let axis = d.as_vec3();
-    let centre = b.cell.as_vec3() + Vec3::splat(0.5);
-    let joint = if b.mech() == Some(Mech::Bearing) {
-        let p = centre + axis * 0.5;
-        world.spawn((Name::new("Bearing joint"), RevoluteJoint::new(b.grid, sub).with_hinge_axis(axis).with_local_anchor1(p).with_local_anchor2(p).with_motor(AngularMotor::new(MOTOR)), JointCollisionDisabled)).id()
-    } else {
-        world.spawn((Name::new("Piston joint"), PrismaticJoint::new(b.grid, sub).with_slider_axis(axis).with_local_anchor1(centre).with_local_anchor2(centre).with_motor(LinearMotor::new(MOTOR)), JointCollisionDisabled)).id()
-    };
+    let joint = hinge(world, b, sub);
     world.entity_mut(sub).insert((
         Name::new(if b.mech() == Some(Mech::Bearing) { "Bearing part" } else { "Piston part" }),
         Contraption { mass },
@@ -159,6 +152,29 @@ fn assemble(world: &mut World, e: Entity, b: &BlockEntity, value: f32) -> Option
         MountedOn { mount: e, joint },
     ));
     Some(SubBody { grid: sub, joint, start: value })
+}
+
+/// The joint between a base grid and its moving part (both in the same
+/// cell coordinates, as `split_off` leaves them).
+fn hinge(world: &mut World, b: &BlockEntity, sub: Entity) -> Entity {
+    let axis = b.dir().as_vec3();
+    let centre = b.cell.as_vec3() + Vec3::splat(0.5);
+    if b.mech() == Some(Mech::Bearing) {
+        let p = centre + axis * 0.5;
+        world.spawn((Name::new("Bearing joint"), RevoluteJoint::new(b.grid, sub).with_hinge_axis(axis).with_local_anchor1(p).with_local_anchor2(p).with_motor(AngularMotor::new(MOTOR)), JointCollisionDisabled)).id()
+    } else {
+        world.spawn((Name::new("Piston joint"), PrismaticJoint::new(b.grid, sub).with_slider_axis(axis).with_local_anchor1(centre).with_local_anchor2(centre).with_motor(LinearMotor::new(MOTOR)), JointCollisionDisabled)).id()
+    }
+}
+
+/// A loaded moving part: hinge it to its bearing / piston `e` again.
+pub fn reattach(world: &mut World, e: Entity, sub: Entity, start: f32) {
+    let Some(b) = world.get::<BlockEntity>(e).copied() else { return };
+    let joint = hinge(world, &b, sub);
+    world.entity_mut(sub).insert((Name::new(if b.mech() == Some(Mech::Bearing) { "Bearing part" } else { "Piston part" }), MountedOn { mount: e, joint }));
+    if let Some(mut m) = world.get_mut::<Mount>(e) {
+        m.sub = Some(SubBody { grid: sub, joint, start });
+    }
 }
 
 /// Pose of the moving part relative to its base: (angle about the axis,
@@ -208,7 +224,7 @@ fn snap_pose(world: &mut World, b: &BlockEntity, sb: SubBody) -> Option<f32> {
 /// Merges the moving part back into the base. False if there is no room.
 fn disassemble(world: &mut World, e: Entity, b: &BlockEntity, sb: SubBody) -> bool {
     let Some(snapped) = snap_pose(world, b, sb) else { return false };
-    if !merge_into(world, sb.grid, b.grid) {
+    if merge_into(world, sb.grid, b.grid).is_err() {
         return false;
     }
     if let Ok(j) = world.get_entity_mut(sb.joint) {

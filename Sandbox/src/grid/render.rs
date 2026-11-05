@@ -102,12 +102,13 @@ pub struct ChunkViews(pub HashMap<IVec3, Entity>);
 #[derive(Component)]
 pub struct ChunkView;
 
-fn rebuild_chunks(
+pub fn rebuild_chunks(
     mut commands: Commands,
     atlas: Option<Res<BlockAtlas>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut grids: Query<(Entity, &mut VoxelGrid, Option<&mut ChunkViews>)>,
 ) {
+    let _t = crate::profile::scope("меши чанков");
     let Some(atlas) = atlas else { return };
     for (ge, mut grid, views) in &mut grids {
         if grid.dirty.is_empty() {
